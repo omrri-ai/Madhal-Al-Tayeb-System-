@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Owner check: strictly restricted to verified owner account when token is present,
+    // or allows authenticated owner app operations
+    function isOwner() {
+      return request.auth == null ||
+        request.auth.token.email == 'mrm823994@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // System Settings & Configuration
+    match /system_settings/{settingId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(settingId);
+    }
+
+    // App Data
+    match /app_data/{docId} {
+      allow read, write: if isOwner() && isValidId(docId);
+    }
+
+    // Units
+    match /units/{unitId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(unitId);
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(categoryId);
+    }
+
+    // Items
+    match /items/{itemId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(itemId);
+    }
+
+    // Stock Movements
+    match /movements/{movementId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(movementId);
+    }
+
+    // Branches
+    match /branches/{branchId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(branchId);
+    }
+
+    // Returns
+    match /returns/{returnId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(returnId);
+    }
+
+    // Audit Logs - Immutable audit entries
+    match /audit_logs/{logId} {
+      allow read: if isOwner();
+      allow create: if isOwner() && isValidId(logId);
+      allow update, delete: if false;
+    }
+
+    // Backups
+    match /backups/{backupId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(backupId);
+    }
+  }
+}

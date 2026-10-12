@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Tajawal", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  font-family: var(--font-sans);
+}
+
+/* Custom scrollbar for data tables and panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes bell-shake {
+  0%, 100% { transform: rotate(0); }
+  10%, 30% { transform: rotate(14deg); }
+  20%, 40% { transform: rotate(-14deg); }
+  50% { transform: rotate(8deg); }
+  60% { transform: rotate(-8deg); }
+  70% { transform: rotate(0); }
+}
+
+.animate-bell-shake {
+  animation: bell-shake 2.5s ease-in-out infinite;
+  transform-origin: top center;
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print, header, aside, nav, button {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .printable-voucher {
+    border: 1px solid #94a3b8 !important;
+    padding: 1.5rem !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
+}
+

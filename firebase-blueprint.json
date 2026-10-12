@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "Unit": {
+      "title": "Unit",
+      "description": "Measurement unit definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "symbol": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Item category or classification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Item": {
+      "title": "Item",
+      "description": "Inventory product item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "baseUnitId": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "minStockAlert": { "type": "number" },
+        "isArchived": { "type": "boolean" },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "baseUnitId"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Inward or outward stock transaction voucher",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "itemId": { "type": "string" },
+        "type": { "type": "string", "enum": ["IN", "OUT"] },
+        "unitId": { "type": "string" },
+        "quantity": { "type": "number" },
+        "baseQuantity": { "type": "number" },
+        "date": { "type": "string" },
+        "referenceNumber": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "itemId", "type", "unitId", "quantity", "baseQuantity", "date"]
+    },
+    "Branch": {
+      "title": "Branch",
+      "description": "Branch or warehouse location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "city": { "type": "string" },
+        "phone": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "ReturnRecord": {
+      "title": "ReturnRecord",
+      "description": "Return voucher inward or outward",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "returnNumber": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "date": { "type": "string" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "returnNumber", "type", "status", "date"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Operation audit trail and security log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "action": { "type": "string" },
+        "entityType": { "type": "string" },
+        "entityId": { "type": "string" },
+        "performedBy": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action", "performedBy"]
+    },
+    "BackupRecord": {
+      "title": "BackupRecord",
+      "description": "Snapshot backup record metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "version": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "createdBy"]
+    }
+  },
+  "firestore": {
+    "/units/{unitId}": {
+      "schema": "Unit",
+      "description": "Collection of measurement units"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Collection of item categories"
+    },
+    "/items/{itemId}": {
+      "schema": "Item",
+      "description": "Collection of inventory items"
+    },
+    "/movements/{movementId}": {
+      "schema": "StockMovement",
+      "description": "Collection of stock movements"
+    },
+    "/branches/{branchId}": {
+      "schema": "Branch",
+      "description": "Collection of branches and locations"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit trail logs"
+    },
+    "/backups/{backupId}": {
+      "schema": "BackupRecord",
+      "description": "Inventory snapshots"
+    },
+    "/system_settings/{settingId}": {
+      "schema": "object",
+      "description": "System settings and configuration"
+    }
+  }
+}

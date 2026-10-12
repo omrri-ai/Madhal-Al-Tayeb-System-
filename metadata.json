@@ -1,0 +1,6 @@
+{
+  "name": "نظام مدهال الطيب",
+  "description": "نظام مدهال الطيب لإدارة المخزون المتقدم، الأصناف، الفروع والشحنات، حركات الصادر والوارد متعدد الأصناف، وسجل الرقابة والأرشيف.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1394 @@
+{
+  "units": [
+    {
+      "id": "unit_حبة_sejc5",
+      "createdAt": "2026-10-09T21:44:50.056Z",
+      "description": "وحدة فردية بالقطعة (1)",
+      "symbol": "حبة",
+      "name": "حبة"
+    },
+    {
+      "name": "شدة",
+      "id": "unit_1791708718112_e46tx",
+      "symbol": "جرام",
+      "description": "١ جرام",
+      "createdAt": "2026-10-11T08:51:58.112Z"
+    },
+    {
+      "symbol": "ثمن كغ",
+      "id": "unit_ثمن_wppae",
+      "createdAt": "2026-10-09T21:44:50.056Z",
+      "name": "ثمن",
+      "description": "125 جرام"
+    },
+    {
+      "symbol": "ج",
+      "id": "unit_جرام_r7n1m",
+      "createdAt": "2026-10-09T21:44:50.056Z",
+      "name": "جرام",
+      "description": "وحدة قياس أساسية للوزن"
+    },
+    {
+      "name": "درزن",
+      "id": "unit_درزن_bfukr",
+      "createdAt": "2026-10-09T21:44:50.056Z",
+      "description": "12 حبة",
+      "symbol": "درزن"
+    },
+    {
+      "name": "ربع",
+      "id": "unit_ربع_jqtql",
+      "description": "250 جرام (ربع كيلو)",
+      "symbol": "ربع كغ",
+      "createdAt": "2026-10-09T21:44:50.056Z"
+    },
+    {
+      "name": "كرتون",
+      "createdAt": "2026-10-09T21:44:50.056Z",
+      "symbol": "كرتون",
+      "description": "سعة متغيرة بحسب الكمية المكتوبة بداخل الكرتون لكل صنف",
+      "id": "unit_كرتون_i9vas"
+    },
+    {
+      "id": "unit_كيلو_dd07g",
+      "symbol": "كغ",
+      "description": "1000 جرام",
+      "name": "كيلو",
+      "createdAt": "2026-10-09T21:44:50.056Z"
+    },
+    {
+      "createdAt": "2026-10-09T21:44:50.056Z",
+      "description": "500 جرام (نصف كيلو)",
+      "name": "نص",
+      "id": "unit_نص_5su25",
+      "symbol": "نصف كغ"
+    }
+  ],
+  "categories": [
+    {
+      "name": "الشنط الجلد",
+      "color": "#3b82f6",
+      "id": "cat_1791581871250_7y7op",
+      "createdAt": "2026-10-09T21:37:51.250Z"
+    },
+    {
+      "name": "علب عامه",
+      "description": "زعفران المانيوم مسقى",
+      "id": "cat_1791582802792_thchm",
+      "createdAt": "2026-10-09T21:53:22.792Z"
+    },
+    {
+      "name": "تولات",
+      "createdAt": "2026-10-11T08:47:10.289Z",
+      "id": "cat_1791708430289_a7ioy",
+      "color": "#f59e0b"
+    },
+    {
+      "createdAt": "2026-10-11T17:26:51.656Z",
+      "id": "cat_1791739611656_lak45",
+      "name": "للمباخر",
+      "color": "#8b5cf6"
+    },
+    {
+      "color": "#ec4899",
+      "createdAt": "2026-10-11T17:55:12.288Z",
+      "name": "اكسسوار أخرى",
+      "id": "cat_1791741312288_x9cvw"
+    }
+  ],
+  "items": [
+    {
+      "code": "ITM-0001",
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "isArchived": false,
+      "id": "item_1791706133881_9grjo",
+      "editReason": "غلط بكلمة كيبو",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:08:53.881Z",
+      "notes": "",
+      "name": "شنط اسود كيلو",
+      "categoryId": "cat_1791581871250_7y7op",
+      "updatedAt": "2026-10-11T08:12:41.744Z",
+      "isDeleted": false
+    },
+    {
+      "minStockAlert": 5,
+      "isArchived": false,
+      "updatedAt": "2026-10-11T08:10:02.541Z",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "id": "item_1791706202541_hcgvc",
+      "baseUnitId": "unit_حبة_sejc5",
+      "code": "ITM-0002",
+      "isDeleted": false,
+      "notes": "",
+      "createdAt": "2026-10-11T08:10:02.541Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "name": "شنط اسود نص كيلو"
+    },
+    {
+      "categoryId": "cat_1791581871250_7y7op",
+      "code": "ITM-0003",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:10:27.196Z",
+      "id": "item_1791706227196_11sc3",
+      "isArchived": false,
+      "updatedAt": "2026-10-11T08:10:27.196Z",
+      "notes": "",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "isDeleted": false,
+      "name": "شنط اسود ربع كيلو",
+      "baseUnitId": "unit_حبة_sejc5"
+    },
+    {
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:12:15.319Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "code": "ITM-0004",
+      "notes": "",
+      "isArchived": false,
+      "id": "item_1791706335319_bvpca",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "isDeleted": false,
+      "name": "شنط اسود ثمن",
+      "updatedAt": "2026-10-11T08:12:15.319Z",
+      "baseUnitId": "unit_حبة_sejc5"
+    },
+    {
+      "minStockAlert": 5,
+      "isDeleted": false,
+      "notes": "",
+      "name": "شنط اخضر كيلو",
+      "categoryId": "cat_1791581871250_7y7op",
+      "updatedAt": "2026-10-11T08:13:07.292Z",
+      "isArchived": false,
+      "createdAt": "2026-10-11T08:13:07.292Z",
+      "id": "item_1791706387292_7nup3",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "code": "ITM-0005",
+      "baseUnitId": "unit_حبة_sejc5"
+    },
+    {
+      "categoryId": "cat_1791581871250_7y7op",
+      "code": "ITM-0006",
+      "createdAt": "2026-10-11T08:15:33.681Z",
+      "updatedAt": "2026-10-11T08:15:33.681Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isArchived": false,
+      "minStockAlert": 5,
+      "name": "شنط اخضر نص كيلو",
+      "id": "item_1791706533681_a8nbs",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "isArchived": false,
+      "code": "ITM-0007",
+      "updatedAt": "2026-10-11T08:15:53.393Z",
+      "minStockAlert": 5,
+      "baseUnitId": "unit_حبة_sejc5",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "name": "شنط اخضر ربع كيلو",
+      "notes": "",
+      "createdAt": "2026-10-11T08:15:53.393Z",
+      "id": "item_1791706553393_1oabm",
+      "categoryId": "cat_1791581871250_7y7op"
+    },
+    {
+      "createdAt": "2026-10-11T08:16:12.861Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "code": "ITM-0008",
+      "isArchived": false,
+      "notes": "",
+      "id": "item_1791706572861_31x7w",
+      "categoryId": "cat_1791581871250_7y7op",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "isDeleted": false,
+      "updatedAt": "2026-10-11T08:16:12.861Z",
+      "minStockAlert": 5,
+      "name": "شنط اخضر ثمن"
+    },
+    {
+      "createdAt": "2026-10-11T08:16:54.312Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "id": "item_1791706614312_ednbw",
+      "code": "ITM-0009",
+      "notes": "",
+      "minStockAlert": 5,
+      "isDeleted": false,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T08:16:54.315Z",
+      "isArchived": false,
+      "name": "شنط بيج كيلو"
+    },
+    {
+      "createdAt": "2026-10-11T08:17:11.200Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "notes": "",
+      "name": "شنط بيج نص كيلو",
+      "minStockAlert": 5,
+      "isDeleted": false,
+      "id": "item_1791706631200_hcjtu",
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "updatedAt": "2026-10-11T08:17:11.200Z",
+      "code": "ITM-0010",
+      "isArchived": false
+    },
+    {
+      "code": "ITM-0011",
+      "updatedAt": "2026-10-11T08:17:29.003Z",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "id": "item_1791706649003_ua155",
+      "categoryId": "cat_1791581871250_7y7op",
+      "isDeleted": false,
+      "isArchived": false,
+      "name": "شنط بيج ربع كيلو",
+      "notes": "",
+      "baseUnitId": "unit_حبة_sejc5",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:17:29.003Z"
+    },
+    {
+      "notes": "",
+      "createdAt": "2026-10-11T08:17:48.024Z",
+      "name": "شنط بيج ثمن",
+      "id": "item_1791706668024_1lh8l",
+      "categoryId": "cat_1791581871250_7y7op",
+      "isArchived": false,
+      "code": "ITM-0012",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T08:17:48.024Z",
+      "minStockAlert": 5
+    },
+    {
+      "updatedAt": "2026-10-11T08:18:11.390Z",
+      "notes": "",
+      "name": "شنط جملي كيلو",
+      "isArchived": false,
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "minStockAlert": 5,
+      "code": "ITM-0013",
+      "createdAt": "2026-10-11T08:18:11.390Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "id": "item_1791706691390_cnq8r"
+    },
+    {
+      "updatedAt": "2026-10-11T08:18:27.748Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "notes": "",
+      "name": "شنط جملي نص كيلو",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "minStockAlert": 5,
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791706707746_5yp78",
+      "createdAt": "2026-10-11T08:18:27.748Z",
+      "code": "ITM-0014",
+      "isArchived": false
+    },
+    {
+      "minStockAlert": 5,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "createdAt": "2026-10-11T08:18:44.635Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "name": "شنط جملي ربع كيلو",
+      "id": "item_1791706724635_vw187",
+      "updatedAt": "2026-10-11T08:18:44.635Z",
+      "notes": "",
+      "isArchived": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "isDeleted": false,
+      "code": "ITM-0015"
+    },
+    {
+      "name": "شنط جملي ثمن",
+      "createdAt": "2026-10-11T08:19:03.425Z",
+      "isArchived": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791706743425_sodla",
+      "notes": "",
+      "isDeleted": false,
+      "code": "ITM-0016",
+      "categoryId": "cat_1791581871250_7y7op",
+      "minStockAlert": 5,
+      "updatedAt": "2026-10-11T08:19:03.425Z",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ]
+    },
+    {
+      "categoryId": "cat_1791581871250_7y7op",
+      "createdAt": "2026-10-11T08:20:22.073Z",
+      "minStockAlert": 5,
+      "code": "ITM-0017",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "notes": "",
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791706822073_kiqxh",
+      "name": "شنط تقسيم بيج ٢ ارباع تولات",
+      "updatedAt": "2026-10-11T08:20:22.073Z",
+      "isArchived": false
+    },
+    {
+      "name": "شنط تقسم جملي ٢ ارباع تولات",
+      "categoryId": "cat_1791581871250_7y7op",
+      "notes": "",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:20:46.874Z",
+      "editReason": "إضافة وحدة اكبر",
+      "updatedAt": "2026-10-11T08:22:36.999Z",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "code": "ITM-0018",
+      "id": "item_1791706846874_lqxim",
+      "isDeleted": false,
+      "isArchived": false
+    },
+    {
+      "name": "شنط تقسم اسود ٢ ارباع تولات",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "notes": "",
+      "isDeleted": false,
+      "isArchived": false,
+      "updatedAt": "2026-10-11T08:21:14.436Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "createdAt": "2026-10-11T08:21:14.436Z",
+      "id": "item_1791706874436_vh4s3",
+      "code": "ITM-0019",
+      "categoryId": "cat_1791581871250_7y7op",
+      "minStockAlert": 5
+    },
+    {
+      "name": "داخلي جملي كريستال نص كيلو",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "createdAt": "2026-10-11T08:21:55.456Z",
+      "minStockAlert": 5,
+      "categoryId": "cat_1791581871250_7y7op",
+      "id": "item_1791706915456_44tbs",
+      "updatedAt": "2026-10-11T08:21:55.456Z",
+      "notes": "",
+      "code": "ITM-0020",
+      "isArchived": false,
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5"
+    },
+    {
+      "categoryId": "cat_1791581871250_7y7op",
+      "minStockAlert": 5,
+      "notes": "",
+      "createdAt": "2026-10-11T08:22:13.763Z",
+      "name": "داخلي بيج كريستال نص كيلو",
+      "updatedAt": "2026-10-11T08:22:54.326Z",
+      "isDeleted": false,
+      "code": "ITM-0021",
+      "editReason": "إضافة وحدة اكبر",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791706933763_hr66q",
+      "isArchived": false
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "minStockAlert": 5,
+      "updatedAt": "2026-10-11T08:23:25.890Z",
+      "isArchived": false,
+      "isDeleted": false,
+      "notes": "",
+      "code": "ITM-0022",
+      "categoryId": "cat_1791581871250_7y7op",
+      "id": "item_1791707005890_0l2u9",
+      "name": "غطاء داخلي جملي كريستال نص كيلو",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "createdAt": "2026-10-11T08:23:25.890Z"
+    },
+    {
+      "updatedAt": "2026-10-11T08:28:19.048Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "code": "ITM-0023",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "createdAt": "2026-10-11T08:23:47.826Z",
+      "minStockAlert": 5,
+      "editReason": "تعديل الوحده",
+      "name": "غطاء داخلي بيج كريستال نص كيلو",
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791707027826_95hri",
+      "notes": "",
+      "isArchived": false
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "createdAt": "2026-10-11T08:27:09.336Z",
+      "notes": "",
+      "isArchived": false,
+      "name": "علب مسقى مع شعار بيج",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "minStockAlert": 5,
+      "id": "item_1791707229336_k5y5u",
+      "categoryId": "cat_1791582802792_thchm",
+      "isDeleted": false,
+      "code": "ITM-0024",
+      "updatedAt": "2026-10-11T08:27:09.336Z"
+    },
+    {
+      "name": "علي مسقى مع شعار احمر",
+      "notes": "",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:27:23.143Z",
+      "updatedAt": "2026-10-11T08:27:48.000Z",
+      "categoryId": "cat_1791582802792_thchm",
+      "isDeleted": false,
+      "isArchived": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "editReason": "تعديل القسم",
+      "code": "ITM-0025",
+      "id": "item_1791707243143_pqac9"
+    },
+    {
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "updatedAt": "2026-10-11T08:30:44.588Z",
+      "name": "علب مسقى مع شعار اسود",
+      "isDeleted": false,
+      "categoryId": "cat_1791582802792_thchm",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:29:24.154Z",
+      "editReason": "تعديل القسم",
+      "notes": "",
+      "isArchived": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791707364154_mfsbe",
+      "code": "ITM-0026"
+    },
+    {
+      "isArchived": false,
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "id": "item_1791707421973_9nl2m",
+      "updatedAt": "2026-10-11T08:30:21.973Z",
+      "minStockAlert": 5,
+      "name": "علب مسقى بدون شعار ذهبي",
+      "notes": "",
+      "createdAt": "2026-10-11T08:30:21.973Z",
+      "code": "ITM-0027",
+      "categoryId": "cat_1791582802792_thchm"
+    },
+    {
+      "isArchived": false,
+      "code": "ITM-0028",
+      "updatedAt": "2026-10-11T08:35:38.356Z",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "isDeleted": false,
+      "minStockAlert": 5,
+      "name": "علب المانيوم 1000 مل",
+      "categoryId": "cat_1791582802792_thchm",
+      "notes": "",
+      "id": "item_1791707738356_z0vgl",
+      "createdAt": "2026-10-11T08:35:38.356Z"
+    },
+    {
+      "categoryId": "cat_1791582802792_thchm",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "id": "item_1791707761936_abp2s",
+      "code": "ITM-0029",
+      "createdAt": "2026-10-11T08:36:01.936Z",
+      "minStockAlert": 5,
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T08:36:01.936Z",
+      "isArchived": false,
+      "notes": "",
+      "isDeleted": false,
+      "name": "علب المانيوم 500مل"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "id": "item_1791707779135_mb2o9",
+      "code": "ITM-0030",
+      "isArchived": false,
+      "createdAt": "2026-10-11T08:36:19.135Z",
+      "minStockAlert": 5,
+      "updatedAt": "2026-10-11T08:36:19.135Z",
+      "categoryId": "cat_1791582802792_thchm",
+      "notes": "",
+      "name": "علب المانيوم 250مل",
+      "isDeleted": false
+    },
+    {
+      "isArchived": false,
+      "notes": "",
+      "isDeleted": false,
+      "name": "علب المانيوم 150مل",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T08:36:43.098Z",
+      "id": "item_1791707803098_q2lym",
+      "code": "ITM-0031",
+      "createdAt": "2026-10-11T08:36:43.098Z",
+      "categoryId": "cat_1791582802792_thchm",
+      "minStockAlert": 5
+    },
+    {
+      "categoryId": "cat_1791582802792_thchm",
+      "createdAt": "2026-10-11T08:37:03.704Z",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "minStockAlert": 5,
+      "code": "ITM-0032",
+      "id": "item_1791707823704_2sjyi",
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T08:37:03.704Z",
+      "name": "علب المانيوم 100مل",
+      "isArchived": false,
+      "notes": ""
+    },
+    {
+      "categoryId": "cat_1791582802792_thchm",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "isDeleted": false,
+      "updatedAt": "2026-10-11T08:41:11.819Z",
+      "minStockAlert": 5,
+      "id": "item_1791708071819_83ewm",
+      "name": "علب زعفران من 1 - 5 جرام",
+      "createdAt": "2026-10-11T08:41:11.819Z",
+      "notes": "",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isArchived": false,
+      "code": "ITM-0033"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "name": "علب زعفران من 5 - 10 جرام",
+      "notes": "",
+      "createdAt": "2026-10-11T08:41:45.451Z",
+      "isArchived": false,
+      "updatedAt": "2026-10-11T08:41:45.451Z",
+      "categoryId": "cat_1791582802792_thchm",
+      "code": "ITM-0034",
+      "minStockAlert": 5,
+      "isDeleted": false,
+      "id": "item_1791708105451_zrvb5",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ]
+    },
+    {
+      "createdAt": "2026-10-11T08:42:36.700Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "name": "علب زعفران من 10 إلى 20 جرام",
+      "isArchived": false,
+      "categoryId": "cat_1791582802792_thchm",
+      "isDeleted": false,
+      "minStockAlert": 5,
+      "notes": "",
+      "updatedAt": "2026-10-11T08:42:36.700Z",
+      "code": "ITM-0035",
+      "id": "item_1791708156700_jgf4v"
+    },
+    {
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "categoryId": "cat_1791582802792_thchm",
+      "code": "ITM-0036",
+      "isDeleted": false,
+      "id": "item_1791708192386_bsawh",
+      "notes": "",
+      "updatedAt": "2026-10-11T08:43:12.386Z",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:43:12.386Z",
+      "name": "غطاء علب زعفران من 1 - 5 جرام",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isArchived": false
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791708214738_u38qb",
+      "name": "غطاء علب زعفران من 5 - 10 جرام",
+      "isArchived": false,
+      "createdAt": "2026-10-11T08:43:34.738Z",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "updatedAt": "2026-10-11T08:43:34.738Z",
+      "notes": "",
+      "categoryId": "cat_1791582802792_thchm",
+      "minStockAlert": 5,
+      "code": "ITM-0037",
+      "isDeleted": false
+    },
+    {
+      "updatedAt": "2026-10-11T08:44:08.934Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isArchived": false,
+      "name": "غطاء علب زعفران من 10 - 20 جرام",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "categoryId": "cat_1791581871250_7y7op",
+      "id": "item_1791708248934_h87yn",
+      "notes": "",
+      "createdAt": "2026-10-11T08:44:08.934Z",
+      "code": "ITM-0038",
+      "minStockAlert": 5
+    },
+    {
+      "updatedAt": "2026-10-11T08:45:30.356Z",
+      "id": "item_1791708330356_0fox9",
+      "code": "ITM-0039",
+      "categoryId": "cat_1791582802792_thchm",
+      "isDeleted": false,
+      "isArchived": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "minStockAlert": 5,
+      "notes": "",
+      "createdAt": "2026-10-11T08:45:30.356Z",
+      "name": "علب زجاج صيني 1000مل"
+    },
+    {
+      "categoryId": "cat_1791582802792_thchm",
+      "createdAt": "2026-10-11T08:45:47.457Z",
+      "code": "ITM-0040",
+      "notes": "",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "id": "item_1791708347457_40tow",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isDeleted": false,
+      "isArchived": false,
+      "name": "علب زجاج صيني 500مل",
+      "minStockAlert": 5,
+      "updatedAt": "2026-10-11T08:45:47.457Z"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "code": "ITM-0041",
+      "isArchived": false,
+      "createdAt": "2026-10-11T08:46:05.522Z",
+      "name": "علب زجاج صيني 250مل",
+      "updatedAt": "2026-10-11T08:46:05.522Z",
+      "categoryId": "cat_1791582802792_thchm",
+      "minStockAlert": 5,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "notes": "",
+      "id": "item_1791708365522_ptqzo",
+      "isDeleted": false
+    },
+    {
+      "id": "item_1791708380957_lwal4",
+      "categoryId": "cat_1791582802792_thchm",
+      "updatedAt": "2026-10-11T08:46:20.957Z",
+      "code": "ITM-0042",
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "minStockAlert": 5,
+      "name": "علب زجاج صيني 100مل",
+      "notes": "",
+      "isArchived": false,
+      "createdAt": "2026-10-11T08:46:20.957Z"
+    },
+    {
+      "isDeleted": false,
+      "name": "تولة ١٢مل",
+      "id": "item_1791708450598_8fqls",
+      "categoryId": "cat_1791708430289_a7ioy",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "updatedAt": "2026-10-11T08:47:30.598Z",
+      "notes": "",
+      "isArchived": false,
+      "code": "ITM-0043",
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T08:47:30.598Z",
+      "baseUnitId": "unit_حبة_sejc5"
+    },
+    {
+      "isDeleted": false,
+      "minStockAlert": 5,
+      "code": "ITM-0044",
+      "notes": "",
+      "updatedAt": "2026-10-11T08:47:44.683Z",
+      "id": "item_1791708464683_rm5ka",
+      "categoryId": "cat_1791708430289_a7ioy",
+      "isArchived": false,
+      "createdAt": "2026-10-11T08:47:44.683Z",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "name": "نص تولة ٦ مل"
+    },
+    {
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "categoryId": "cat_1791708430289_a7ioy",
+      "name": "ربع تولة ٣ مل",
+      "id": "item_1791708473020_i9r2l",
+      "minStockAlert": 5,
+      "code": "ITM-0045",
+      "editReason": "القسم",
+      "createdAt": "2026-10-11T08:47:53.020Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T08:48:40.473Z",
+      "notes": "",
+      "isArchived": false,
+      "isDeleted": false
+    },
+    {
+      "isArchived": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "code": "ITM-0046",
+      "updatedAt": "2026-10-11T08:48:06.925Z",
+      "notes": "",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isDeleted": false,
+      "name": "سدس تولة ٢ مل",
+      "id": "item_1791708486925_65j4s",
+      "minStockAlert": 5,
+      "categoryId": "cat_1791708430289_a7ioy",
+      "createdAt": "2026-10-11T08:48:06.925Z"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "name": "شدة عينات العود ١ مل",
+      "minStockAlert": 5,
+      "updatedAt": "2026-10-11T08:56:58.648Z",
+      "conversions": [
+        {
+          "factorToBase": 1000,
+          "unitId": "unit_1791708718112_e46tx"
+        }
+      ],
+      "isArchived": false,
+      "isDeleted": false,
+      "notes": "",
+      "code": "ITM-0048",
+      "id": "item_1791709018648_2qfnm",
+      "categoryId": "cat_1791708430289_a7ioy",
+      "createdAt": "2026-10-11T08:56:58.648Z"
+    },
+    {
+      "code": "ITM-0049",
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791709181282_mgm66",
+      "createdAt": "2026-10-11T08:59:41.282Z",
+      "isArchived": false,
+      "updatedAt": "2026-10-11T09:02:02.361Z",
+      "editReason": "الاسم",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "notes": "",
+      "name": "كريستال ذهبي دائري",
+      "categoryId": "cat_1791708430289_a7ioy",
+      "minStockAlert": 5
+    },
+    {
+      "createdAt": "2026-10-11T09:00:51.146Z",
+      "minStockAlert": 5,
+      "name": "نانو تولة",
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791709251146_78dfe",
+      "isArchived": false,
+      "categoryId": "cat_1791708430289_a7ioy",
+      "conversions": [
+        {
+          "factorToBase": 24,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "notes": "",
+      "code": "ITM-0050",
+      "isDeleted": false,
+      "updatedAt": "2026-10-11T09:00:51.146Z"
+    },
+    {
+      "categoryId": "cat_1791708430289_a7ioy",
+      "createdAt": "2026-10-11T09:02:22.814Z",
+      "code": "ITM-0051",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "updatedAt": "2026-10-11T09:02:22.814Z",
+      "minStockAlert": 5,
+      "isArchived": false,
+      "id": "item_1791709342814_mobd8",
+      "name": "كريستال ذهبي مربع",
+      "isDeleted": false,
+      "notes": "",
+      "baseUnitId": "unit_حبة_sejc5"
+    },
+    {
+      "createdAt": "2026-10-11T09:02:35.589Z",
+      "minStockAlert": 5,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "editReason": "الوحده",
+      "isDeleted": false,
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T09:02:46.711Z",
+      "isArchived": false,
+      "name": "كريستال اسود مربع",
+      "categoryId": "cat_1791581871250_7y7op",
+      "id": "item_1791709355589_f0kgt",
+      "code": "ITM-0052",
+      "notes": ""
+    },
+    {
+      "notes": "",
+      "isArchived": false,
+      "updatedAt": "2026-10-11T17:20:15.371Z",
+      "name": "شنط تقسيم زجاج جملي",
+      "baseUnitId": "unit_حبة_sejc5",
+      "minStockAlert": 5,
+      "id": "item_1791739215371_g7v7c",
+      "isDeleted": false,
+      "code": "ITM-0053",
+      "createdAt": "2026-10-11T17:20:15.371Z",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "categoryId": "cat_1791581871250_7y7op"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "minStockAlert": 5,
+      "isArchived": false,
+      "id": "item_1791739237599_680j1",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "createdAt": "2026-10-11T17:20:37.599Z",
+      "name": "شنط احمر مستطيل",
+      "categoryId": "cat_1791581871250_7y7op",
+      "notes": "",
+      "updatedAt": "2026-10-11T17:20:37.599Z",
+      "code": "ITM-0054",
+      "isDeleted": false
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "code": "ITM-0055",
+      "isArchived": false,
+      "notes": "الرف السفلي الثالث من جهة اليمين",
+      "createdAt": "2026-10-11T17:25:47.997Z",
+      "id": "item_1791739547997_f82r5",
+      "updatedAt": "2026-10-11T17:25:47.997Z",
+      "categoryId": "cat_1791708430289_a7ioy",
+      "name": "عينات عطور زجاج",
+      "minStockAlert": 5,
+      "isDeleted": false
+    },
+    {
+      "updatedAt": "2026-10-11T17:36:23.180Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "minStockAlert": 5,
+      "isDeleted": false,
+      "name": "مباخر كريستال",
+      "isArchived": false,
+      "categoryId": "cat_1791739611656_lak45",
+      "notes": "بجانب غطاء العطور",
+      "createdAt": "2026-10-11T17:36:23.180Z",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "id": "item_1791740183180_lwlyi",
+      "code": "ITM-0056"
+    },
+    {
+      "isArchived": false,
+      "name": "عطاء عطر ١٠٠ مل",
+      "updatedAt": "2026-10-11T17:37:51.948Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "id": "item_1791740271948_5eu2y",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "notes": "",
+      "code": "ITM-0057",
+      "minStockAlert": 5,
+      "categoryId": "cat_1791582802792_thchm",
+      "createdAt": "2026-10-11T17:37:51.948Z"
+    },
+    {
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "createdAt": "2026-10-11T17:38:22.790Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "name": "زجاج عطر ١٠٠ مل فاضي",
+      "isArchived": false,
+      "minStockAlert": 5,
+      "id": "item_1791740302790_ywrne",
+      "categoryId": "cat_1791582802792_thchm",
+      "isDeleted": false,
+      "notes": "",
+      "updatedAt": "2026-10-11T17:38:22.790Z",
+      "code": "ITM-0058"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "code": "ITM-0059",
+      "createdAt": "2026-10-11T17:39:47.139Z",
+      "notes": "",
+      "isArchived": false,
+      "name": "فوم اسود كبير",
+      "id": "item_1791740387139_0enb5",
+      "updatedAt": "2026-10-11T17:39:47.139Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "minStockAlert": 5
+    },
+    {
+      "updatedAt": "2026-10-11T17:40:48.764Z",
+      "categoryId": "cat_1791581871250_7y7op",
+      "name": "فوم تبيض وسط",
+      "id": "item_1791740448763_9ii3v",
+      "isDeleted": false,
+      "notes": "",
+      "code": "ITM-0060",
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "baseUnitId": "unit_حبة_sejc5",
+      "createdAt": "2026-10-11T17:40:48.764Z",
+      "minStockAlert": 5,
+      "isArchived": false
+    },
+    {
+      "id": "item_1791740465568_699c3",
+      "categoryId": "cat_1791581871250_7y7op",
+      "code": "ITM-0061",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "createdAt": "2026-10-11T17:41:05.568Z",
+      "baseUnitId": "unit_حبة_sejc5",
+      "updatedAt": "2026-10-11T17:41:05.568Z",
+      "minStockAlert": 5,
+      "notes": "",
+      "isArchived": false,
+      "name": "فوم صغير ابيض",
+      "isDeleted": false
+    },
+    {
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "updatedAt": "2026-10-11T17:44:30.109Z",
+      "notes": "",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isArchived": false,
+      "isDeleted": false,
+      "id": "item_1791740670109_cg6ug",
+      "name": "شنط تقسيم اخضر ٢ ارباع تولات",
+      "minStockAlert": 5,
+      "categoryId": "cat_1791581871250_7y7op",
+      "createdAt": "2026-10-11T17:44:30.109Z",
+      "code": "ITM-0062"
+    },
+    {
+      "createdAt": "2026-10-11T17:45:37.133Z",
+      "isArchived": false,
+      "notes": "",
+      "id": "item_1791740737133_unurg",
+      "baseUnitId": "unit_حبة_sejc5",
+      "name": "شنط اخضر كيلوا سيف ونخله",
+      "minStockAlert": 5,
+      "isDeleted": false,
+      "conversions": [
+        {
+          "factorToBase": 12,
+          "unitId": "unit_درزن_bfukr"
+        }
+      ],
+      "code": "ITM-0063",
+      "updatedAt": "2026-10-11T17:45:37.133Z",
+      "categoryId": "cat_1791581871250_7y7op"
+    },
+    {
+      "isArchived": false,
+      "code": "ITM-0064",
+      "updatedAt": "2026-10-11T17:46:23.572Z",
+      "id": "item_1791740783572_rvw5o",
+      "baseUnitId": "unit_حبة_sejc5",
+      "isDeleted": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "name": "شنط هارد كفر ربع",
+      "notes": "",
+      "minStockAlert": 5,
+      "categoryId": "cat_1791581871250_7y7op",
+      "createdAt": "2026-10-11T17:46:23.572Z"
+    },
+    {
+      "baseUnitId": "unit_حبة_sejc5",
+      "createdAt": "2026-10-11T17:53:26.407Z",
+      "isArchived": false,
+      "minStockAlert": 5,
+      "code": "ITM-0065",
+      "notes": "",
+      "categoryId": "cat_1791581871250_7y7op",
+      "isDeleted": false,
+      "id": "item_1791741206407_eja7f",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "name": "داخلي ربع بيج",
+      "updatedAt": "2026-10-11T17:53:26.407Z"
+    },
+    {
+      "id": "item_1791741255080_yiao8",
+      "minStockAlert": 5,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "updatedAt": "2026-10-11T17:54:15.080Z",
+      "isArchived": false,
+      "code": "ITM-0066",
+      "baseUnitId": "unit_حبة_sejc5",
+      "notes": "",
+      "isDeleted": false,
+      "name": "داخلي ربع جملي",
+      "createdAt": "2026-10-11T17:54:15.080Z",
+      "categoryId": "cat_1791581871250_7y7op"
+    },
+    {
+      "isArchived": false,
+      "minStockAlert": 5,
+      "createdAt": "2026-10-11T17:55:45.346Z",
+      "name": "اكياس كبير مع شعار",
+      "baseUnitId": "unit_حبة_sejc5",
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "notes": "تقريبا العدد ١٠٠ حبه",
+      "isDeleted": false,
+      "id": "item_1791741345346_smuhy",
+      "categoryId": "cat_1791741312288_x9cvw",
+      "updatedAt": "2026-10-11T17:55:45.346Z",
+      "code": "ITM-0067"
+    },
+    {
+      "notes": "تقريبا ١٠٠ حبه",
+      "baseUnitId": "unit_حبة_sejc5",
+      "name": "اكياس صغير مع شعار",
+      "id": "item_1791741377079_dj9qx",
+      "createdAt": "2026-10-11T17:56:17.079Z",
+      "isArchived": false,
+      "conversions": [
+        {
+          "unitId": "unit_درزن_bfukr",
+          "factorToBase": 12
+        }
+      ],
+      "categoryId": "cat_1791741312288_x9cvw",
+      "updatedAt": "2026-10-11T17:56:17.079Z",
+      "code": "ITM-0068",
+      "minStockAlert": 5,
+      "isDeleted": false
+    }
+  ],
+  "movements": [],
+  "branches": [
+    {
+      "id": "branch_1791705822065_ydvh",
+      "city": "الخرج",
+      "notes": "ابو حسين",
+      "createdAt": "2026-10-11T08:03:42.067Z",
+      "name": "الفرع الرئيسي",
+      "phone": "+966 56 205 4016"
+    }
+  ]
+}
