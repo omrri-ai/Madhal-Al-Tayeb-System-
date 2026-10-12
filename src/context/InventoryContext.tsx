@@ -291,18 +291,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Load initial audit logs & backups in background
       refreshAuditLogs().catch(() => {});
       refreshCloudBackups().catch(() => {});
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading inventory from Cloud Firestore:', err);
-      // Fallback gracefully to local storage
-      const fallback = StorageService.loadAll();
-      setUnits(sortUnitsWithHabbaFirst(fallback.units || []));
-      setCategories(fallback.categories || []);
-      setItems(fallback.items || []);
-      setMovements(fallback.movements || []);
-      setBranches(fallback.branches || []);
-      setReturns(fallback.returns || []);
-      setCloudSyncStatus('offline');
+      const errMsg = err?.message || 'فشل الاتصال بقاعدة بيانات السحابة (Firestore).';
+      setCloudSyncStatus('error');
       setIsOffline(true);
+      showToast(errMsg, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -416,35 +410,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         returns: newReturns,
       };
 
-      // 1. Immediate local storage cache update
-      await StorageService.saveAll(fullData);
-
-      // 2. If browser is offline, keep safe locally and queue for upload
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        setCloudSyncStatus('offline');
-        setIsOffline(true);
-        setHasUnsyncedOfflineData(true);
-        setUnsyncedOfflineCount((prev) => prev + 1);
-        return;
-      }
-
-      // 3. Persistent Cloud Firestore sync
+      // Persistent Cloud Firestore sync (Authoritative cloud-first write)
       setCloudSyncStatus('syncing');
-      FirestoreStorage.syncAllToFirestore(fullData)
-        .then(() => {
-          setCloudSyncStatus('synced');
-          setHasUnsyncedOfflineData(false);
-          setUnsyncedOfflineCount(0);
-          refreshAuditLogs().catch(() => {});
-        })
-        .catch((err) => {
-          console.warn('Could not sync to Cloud Firestore immediately (saving offline safely):', err);
-          setCloudSyncStatus('offline');
-          setHasUnsyncedOfflineData(true);
-          setUnsyncedOfflineCount((prev) => prev + 1);
-        });
+      try {
+        await FirestoreStorage.syncAllToFirestore(fullData);
+        setCloudSyncStatus('synced');
+        setHasUnsyncedOfflineData(false);
+        setUnsyncedOfflineCount(0);
+        await refreshAuditLogs();
+        await refreshCloudBackups();
+      } catch (err: any) {
+        console.error('Cloud Firestore sync error:', err);
+        setCloudSyncStatus('error');
+        const errMsg = err?.message || 'فشل حفظ وتحديث البيانات في سحابة Firestore. يرجى التحقق من الاتصال والصلاحيات.';
+        showToast(errMsg, 'error');
+        throw new Error(errMsg);
+      }
     },
-    [refreshAuditLogs]
+    [refreshAuditLogs, refreshCloudBackups, showToast]
   );
 
   // Online / Offline Listeners & Auto-Sync
@@ -1082,12 +1065,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const updated = [...items, newItem];
       setItems(updated);
       itemsRef.current = updated;
-      // Auto-save: immediately write to Cloud Firestore
-      FirestoreStorage.saveItem(newItem).catch((err) => {
-        console.warn('Auto-save item to Firestore deferred:', err);
-      });
-      persistChanges(units, categories, updated, movements, branches, returns);
-      showToast(`تمت إضافة وحفظ الصنف "${cleanName}" تلقائياً`, 'success');
+
+      FirestoreStorage.saveItem(newItem)
+        .then(() => {
+          persistChanges(units, categories, updated, movements, branches, returns);
+          showToast(`تمت إضافة وحفظ الصنف "${cleanName}" في السحابة بنجاح`, 'success');
+        })
+        .catch((err: any) => {
+          console.error('Failed to save item to Firestore:', err);
+          const errMsg = err?.message || 'فشل حفظ الصنف في سحابة Firestore. يرجى التحقق من الاتصال والصلاحيات.';
+          showToast(errMsg, 'error');
+        });
+
       return { success: true, item: newItem };
     },
     [items, units, categories, movements, branches, returns, persistChanges, showToast]

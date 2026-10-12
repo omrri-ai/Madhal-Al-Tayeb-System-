@@ -25,6 +25,11 @@ const firebaseConfig = {
 
 const firestoreDatabaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || config.firestoreDatabaseId;
 
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  const missingVar = !firebaseConfig.apiKey ? 'VITE_FIREBASE_API_KEY' : 'VITE_FIREBASE_PROJECT_ID';
+  throw new Error(`خطأ إعدادات Firebase: متغير البيئة الأساسي (${missingVar}) مفقود أو غير مُعرّف. يرجى ضبط متغيرات البيئة للاتصال بقاعدة بيانات Firestore.`);
+}
+
 // Initialize Firebase App
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
@@ -38,6 +43,7 @@ function createFirestoreInstance(): Firestore {
           localCache: persistentLocalCache({
             tabManager: persistentMultipleTabManager(),
           }),
+          ignoreUndefinedProperties: true,
         },
         firestoreDatabaseId || undefined
       );
@@ -46,9 +52,19 @@ function createFirestoreInstance(): Firestore {
     console.warn('Could not initialize persistentLocalCache, falling back to standard Firestore:', err);
   }
 
-  return firestoreDatabaseId
-    ? getFirestore(app, firestoreDatabaseId)
-    : getFirestore(app);
+  try {
+    return initializeFirestore(
+      app,
+      {
+        ignoreUndefinedProperties: true,
+      },
+      firestoreDatabaseId || undefined
+    );
+  } catch {
+    return firestoreDatabaseId
+      ? getFirestore(app, firestoreDatabaseId)
+      : getFirestore(app);
+  }
 }
 
 export const db: Firestore = createFirestoreInstance();

@@ -35,27 +35,26 @@ export interface CloudBackupRecord {
   createdBy: string;
 }
 
+function cleanObject(obj: any): any {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(cleanObject);
+  }
+  const cleaned: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      cleaned[key] = cleanObject(val);
+    }
+  }
+  return cleaned;
+}
+
 export const FirestoreStorage = {
-  // Load all collections from Cloud Firestore with intelligent two-way merge
+  // Load all collections strictly from Cloud Firestore
   async loadAll(): Promise<InventoryDatabaseData> {
-    // 1. Gather all local cache sources (LocalStorage and IndexedDB)
-    const localData = StorageService.loadAll();
-    let currentBestLocal = localData;
-
-    try {
-      const idbData = await StorageService.loadFromIndexedDB();
-      if (idbData && idbData.items && idbData.items.length > (localData.items?.length || 0)) {
-        currentBestLocal = {
-          units: idbData.units?.length ? idbData.units : localData.units,
-          categories: idbData.categories?.length ? idbData.categories : localData.categories,
-          items: idbData.items,
-          movements: idbData.movements?.length ? idbData.movements : localData.movements,
-          branches: idbData.branches?.length ? idbData.branches : localData.branches,
-          returns: idbData.returns?.length ? idbData.returns : localData.returns,
-        };
-      }
-    } catch {}
-
     try {
       const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap] = await Promise.all([
         getDocs(collection(db, 'units')),
@@ -93,55 +92,30 @@ export const FirestoreStorage = {
         .map((d) => d.data() as ReturnRecord)
         .filter((r) => r && r.id && r.type);
 
-      // 2. TWO-WAY SAFE MERGE: Preserve any local items created while offline or before sync!
-      const cloudItemIds = new Set(cloudItems.map((i) => i.id));
-      const unsyncedItems = (currentBestLocal.items || [])
-        .filter(isGenuineItem)
-        .filter((i) => !cloudItemIds.has(i.id));
-
-      const cloudCategoryIds = new Set(cloudCategories.map((c) => c.id));
-      const unsyncedCategories = (currentBestLocal.categories || []).filter((c) => !cloudCategoryIds.has(c.id));
-
-      const cloudUnitIds = new Set(cloudUnits.map((u) => u.id));
-      const unsyncedUnits = (currentBestLocal.units || []).filter((u) => !cloudUnitIds.has(u.id));
-
-      const cloudBranchIds = new Set(cloudBranches.map((b) => b.id));
-      const unsyncedBranches = (currentBestLocal.branches || []).filter((b) => !cloudBranchIds.has(b.id));
-
-      // Cloud movements & returns are the single authoritative source of truth.
-      // This guarantees that zeroed or deleted movements on one device never reappear on another device!
-      const mergedData: InventoryDatabaseData = {
-        units: [...cloudUnits, ...unsyncedUnits],
-        categories: [...cloudCategories, ...unsyncedCategories],
-        items: [...cloudItems, ...unsyncedItems],
+      const cloudData: InventoryDatabaseData = {
+        units: cloudUnits,
+        categories: cloudCategories,
+        items: cloudItems,
         movements: cloudMovements,
-        branches: [...cloudBranches, ...unsyncedBranches],
+        branches: cloudBranches,
         returns: cloudReturns,
       };
 
-      // Update local storage with the authoritative merged picture
-      await StorageService.saveAll(mergedData).catch(() => {});
-
-      // 3. If unsynced offline records were detected, immediately sync them to Cloud Firestore in the background
-      const totalUnsynced = unsyncedItems.length + unsyncedCategories.length + unsyncedUnits.length;
-      if (totalUnsynced > 0) {
-        console.log(`[Auto-Recovery] Found ${totalUnsynced} offline items/records. Syncing to Cloud Firestore...`);
-        this.syncAllToFirestore(mergedData).catch((err) => {
-          console.warn('[Auto-Recovery] Background sync of offline items deferred:', err);
-        });
+      return cloudData;
+    } catch (error: any) {
+      console.error('Failed to load from Cloud Firestore:', error);
+      const errorMessage = error?.message || '';
+      if (errorMessage.includes('permission') || errorMessage.includes('Missing or insufficient permissions')) {
+        throw new Error('عذراً، ليس لديك صلاحية قراءة البيانات من قاعدة سحابة Firestore. يرجى التأكد من تسجيل الدخول بحساب المالك الصحيح.');
       }
-
-      return mergedData;
-    } catch (error) {
-      console.warn('Failed to load from Cloud Firestore (offline mode active, falling back safely to local cache):', error);
-      return currentBestLocal;
+      throw new Error('فشل الاتصال بقاعدة بيانات السحابة (Firestore). يرجى التحقق من اتصال الإنترنت وصلاحيات الحساب.');
     }
   },
 
   // Save single item
   async saveItem(item: Item): Promise<void> {
     try {
-      await setDoc(doc(db, 'items', item.id), item);
+      await setDoc(doc(db, 'items', item.id), cleanObject(item));
       await this.recordAuditLog('SAVE_ITEM', 'item', item.id, `حفظ الصنف: ${item.name} (${item.code})`);
     } catch (err) {
       console.error('Error saving item to Firestore:', err);
@@ -163,7 +137,7 @@ export const FirestoreStorage = {
   // Save Category
   async saveCategory(category: Category): Promise<void> {
     try {
-      await setDoc(doc(db, 'categories', category.id), category);
+      await setDoc(doc(db, 'categories', category.id), cleanObject(category));
       await this.recordAuditLog('SAVE_CATEGORY', 'category', category.id, `حفظ القسم: ${category.name}`);
     } catch (err) {
       console.error('Error saving category to Firestore:', err);
@@ -185,7 +159,7 @@ export const FirestoreStorage = {
   // Save Unit
   async saveUnit(unit: Unit): Promise<void> {
     try {
-      await setDoc(doc(db, 'units', unit.id), unit);
+      await setDoc(doc(db, 'units', unit.id), cleanObject(unit));
       await this.recordAuditLog('SAVE_UNIT', 'unit', unit.id, `حفظ الوحدة: ${unit.name}`);
     } catch (err) {
       console.error('Error saving unit to Firestore:', err);
@@ -207,7 +181,7 @@ export const FirestoreStorage = {
   // Save Stock Movement
   async saveMovement(movement: StockMovement): Promise<void> {
     try {
-      await setDoc(doc(db, 'movements', movement.id), movement);
+      await setDoc(doc(db, 'movements', movement.id), cleanObject(movement));
       await this.recordAuditLog(
         'SAVE_MOVEMENT',
         'movement',
@@ -234,7 +208,7 @@ export const FirestoreStorage = {
   // Save Branch
   async saveBranch(branch: Branch): Promise<void> {
     try {
-      await setDoc(doc(db, 'branches', branch.id), branch);
+      await setDoc(doc(db, 'branches', branch.id), cleanObject(branch));
       await this.recordAuditLog('SAVE_BRANCH', 'branch', branch.id, `حفظ الفرع: ${branch.name}`);
     } catch (err) {
       console.error('Error saving branch to Firestore:', err);
@@ -256,7 +230,7 @@ export const FirestoreStorage = {
   // Save Return Record
   async saveReturn(ret: ReturnRecord): Promise<void> {
     try {
-      await setDoc(doc(db, 'returns', ret.id), ret);
+      await setDoc(doc(db, 'returns', ret.id), cleanObject(ret));
       await this.recordAuditLog('SAVE_RETURN', 'return', ret.id, `حفظ سجل المرتجع: ${ret.returnNumber} (${ret.type})`);
     } catch (err) {
       console.error('Error saving return to Firestore:', err);
@@ -422,7 +396,7 @@ export const FirestoreStorage = {
       const chunk = allOperations.slice(i, i + CHUNK_SIZE);
       const batch = writeBatch(db);
       for (const op of chunk) {
-        batch.set(doc(db, op.col, op.id), op.data);
+        batch.set(doc(db, op.col, op.id), cleanObject(op.data));
       }
       try {
         await batch.commit();
@@ -432,7 +406,7 @@ export const FirestoreStorage = {
         // Fallback to individual setDoc for resilience
         for (const op of chunk) {
           try {
-            await setDoc(doc(db, op.col, op.id), op.data);
+            await setDoc(doc(db, op.col, op.id), cleanObject(op.data));
             syncedCount++;
           } catch {}
         }
@@ -468,7 +442,7 @@ export const FirestoreStorage = {
         details,
         performedBy,
       };
-      await setDoc(doc(db, 'audit_logs', logId), logEntry);
+      await setDoc(doc(db, 'audit_logs', logId), cleanObject(logEntry));
     } catch (err) {
       console.warn('Could not write audit log:', err);
     }
@@ -499,7 +473,7 @@ export const FirestoreStorage = {
       data,
       createdBy: OWNER_EMAIL,
     };
-    await setDoc(doc(db, 'backups', backupId), record);
+    await setDoc(doc(db, 'backups', backupId), cleanObject(record));
     await this.recordAuditLog('CREATE_BACKUP', 'backup', backupId, `إنشاء نسخة احتياطية سحابية: ${name}`);
     return record;
   },
