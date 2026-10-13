@@ -36,6 +36,9 @@ import { StockMovement, Item } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 import { AnalyticsCharts } from './AnalyticsCharts';
 
+import { NavView } from '../common/Navigation';
+import { MovementVoucherModal } from '../movements/MovementVoucherModal';
+
 export type ExtendedPeriod =
   | 'today'
   | 'yesterday'
@@ -61,21 +64,57 @@ export type ReportTab =
   | 'turnover'
   | 'alerts';
 
-export const ReportsView: React.FC = () => {
+export interface ReportsFilterState {
+  period: ExtendedPeriod;
+  customStartDate?: string;
+  customEndDate?: string;
+  branchId: string;
+  categoryId: string;
+  selectedMovementType: string;
+  searchQuery: string;
+}
+
+interface ReportsViewProps {
+  onNavigateToView?: (view: NavView, params?: Record<string, any>) => void;
+  savedFilters?: Partial<ReportsFilterState>;
+  onSaveFilters?: (filters: ReportsFilterState) => void;
+}
+
+export const ReportsView: React.FC<ReportsViewProps> = ({
+  onNavigateToView,
+  savedFilters,
+  onSaveFilters,
+}) => {
   const { movements, items, categories, units, branches, returns, getItemStock, getItemStockSummary } =
     useInventory();
 
   // Tab navigation
   const [activeTab, setActiveTab] = useState<ReportTab>('dashboard');
 
-  // Filter States
-  const [period, setPeriod] = useState<ExtendedPeriod>('this_month');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('all');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
-  const [selectedMovementType, setSelectedMovementType] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  // Filter States initialized from savedFilters if provided
+  const [period, setPeriod] = useState<ExtendedPeriod>(savedFilters?.period || 'this_month');
+  const [customStartDate, setCustomStartDate] = useState<string>(savedFilters?.customStartDate || '');
+  const [customEndDate, setCustomEndDate] = useState<string>(savedFilters?.customEndDate || '');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(savedFilters?.branchId || 'all');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(savedFilters?.categoryId || 'all');
+  const [selectedMovementType, setSelectedMovementType] = useState<string>(savedFilters?.selectedMovementType || 'all');
+  const [searchQuery, setSearchQuery] = useState<string>(savedFilters?.searchQuery || '');
+
+  // Keep savedFilters synchronized in parent App.tsx
+  React.useEffect(() => {
+    onSaveFilters?.({
+      period,
+      customStartDate,
+      customEndDate,
+      branchId: selectedBranchId,
+      categoryId: selectedCategoryId,
+      selectedMovementType,
+      searchQuery,
+    });
+  }, [period, customStartDate, customEndDate, selectedBranchId, selectedCategoryId, selectedMovementType, searchQuery, onSaveFilters]);
+
+  // Selected movement voucher modal state
+  const [voucherMovement, setVoucherMovement] = useState<StockMovement | null>(null);
 
   // Expand / collapse states
   const [showAllTopMoving, setShowAllTopMoving] = useState<boolean>(false);
@@ -338,25 +377,14 @@ export const ReportsView: React.FC = () => {
 
     // Trend calculator
     const calcTrend = (cur: number, prev: number) => {
-      if (prev === 0 && cur === 0) {
-        return {
-          cur,
-          prev,
-          diff: 0,
-          percent: null as number | null,
-          text: 'مستقر (0)',
-          status: 'neutral' as const,
-          hasPrev: false,
-        };
-      }
-      if (prev === 0) {
+      if (prevMovements.length === 0 || prev === 0) {
         return {
           cur,
           prev,
           diff: cur,
           percent: null as number | null,
-          text: 'فترة جديدة (لا تتوفر بيانات سابقة)',
-          status: 'up' as const,
+          text: 'لا توجد بيانات للفترة السابقة',
+          status: 'neutral' as const,
           hasPrev: false,
         };
       }
@@ -1130,26 +1158,36 @@ export const ReportsView: React.FC = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
               {/* Card 1: Total Registered Items */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              <div
+                onClick={() => onNavigateToView?.('items', { viewMode: 'items' })}
+                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط لعرض قائمة الأصناف"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-slate-500 font-bold">1. إجمالي الأصناف المسجلة</span>
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                  <span className="text-[11px] text-slate-500 font-bold group-hover:text-emerald-700 transition-colors">1. إجمالي الأصناف المسجلة</span>
+                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center group-hover:bg-emerald-50 group-hover:text-emerald-700 transition-colors">
                     <Boxes className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-slate-900">
+                <div className="text-2xl font-black font-mono text-slate-900 group-hover:text-emerald-800 transition-colors">
                   {metrics.totalItemsCount.toLocaleString('ar-SA')}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1.5 flex items-center justify-between">
                   <span>منها {metrics.archivedItemsCount} مؤرشف</span>
-                  <span className="font-bold text-slate-600">النظام العام</span>
+                  <span className="font-bold text-emerald-700 flex items-center gap-0.5">
+                    فتح الأصناف ←
+                  </span>
                 </div>
               </div>
 
               {/* Card 2: Active Items */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              <div
+                onClick={() => onNavigateToView?.('items', { viewMode: 'items', statusFilter: 'IN_STOCK' })}
+                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط لعرض الأصناف النشطة المتوفرة"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-slate-500 font-bold">2. عدد الأصناف النشطة</span>
+                  <span className="text-[11px] text-slate-500 font-bold group-hover:text-emerald-700 transition-colors">2. عدد الأصناف النشطة</span>
                   <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                   </div>
@@ -1158,60 +1196,95 @@ export const ReportsView: React.FC = () => {
                   {metrics.activeItemsCount.toLocaleString('ar-SA')}
                 </div>
                 <div className="text-[10px] text-emerald-700 mt-1.5 flex items-center justify-between font-bold">
-                  <span>جاهزة للتداول بالمستودع</span>
-                  <span>{metrics.totalItemsCount > 0 ? `${Math.round((metrics.activeItemsCount / metrics.totalItemsCount) * 100)}%` : '0%'}</span>
+                  <span>جاهزة للتداول</span>
+                  <span>عرض المتوفر ←</span>
                 </div>
               </div>
 
-              {/* Card 3: Zero Stock Items */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 3: Zero Stock Items (Clickable -> Inventory Audit with zero stock) */}
+              <div
+                onClick={() => onNavigateToView?.('items', { viewMode: 'audit', zeroStockOnly: true })}
+                className="bg-white p-4 rounded-2xl border border-amber-200 shadow-2xs hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group bg-amber-50/20"
+                title="اضغط للانتقال إلى صفحة الجرد مفلترة على الأصناف التي رصيدها صفر"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-slate-500 font-bold">3. أصناف رصيدها صفر</span>
-                  <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <span className="text-[11px] text-amber-900 font-bold group-hover:text-amber-950 transition-colors">3. أصناف رصيدها صفر</span>
+                  <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Minus className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-amber-800">
+                <div className="text-2xl font-black font-mono text-amber-900">
                   {metrics.outOfStockCount.toLocaleString('ar-SA')}
                 </div>
-                <div className="text-[10px] text-amber-700 mt-1.5 flex items-center justify-between font-bold">
+                <div className="text-[10px] text-amber-800 mt-1.5 flex items-center justify-between font-bold">
                   <span>أرصدة فارغة أو مصفّرة</span>
-                  <span>{metrics.activeItemsCount > 0 ? `${Math.round((metrics.outOfStockCount / metrics.activeItemsCount) * 100)}%` : '0%'}</span>
+                  <span className="underline font-black">فتح الجرد الصفري ←</span>
                 </div>
               </div>
 
-              {/* Card 4: Inward Quantity (الوارد خلال الفترة) */}
-              <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 4: Inward Quantity (Clickable -> Movements filtered on IN and period) */}
+              <div
+                onClick={() =>
+                  onNavigateToView?.('movements', {
+                    typeFilter: 'IN',
+                    startDate: dateRange.startIso.split('T')[0],
+                    endDate: dateRange.endIso.split('T')[0],
+                    branchId: selectedBranchId !== 'all' ? selectedBranchId : undefined,
+                  })
+                }
+                className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group bg-emerald-50/20"
+                title="اضغط للانتقال إلى سجل الحركات مفلتر على الوارد للفترة المحددة"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] text-emerald-800 font-bold">4. إجمالي الوارد (توريد)</span>
-                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <ArrowDownLeft className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-emerald-700">
+                <div className="text-2xl font-black font-mono text-emerald-800">
                   +{metrics.inBaseQty.toLocaleString('ar-SA')}
                 </div>
                 {/* Comparison Details */}
                 <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-600 space-y-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">السابقة: {metrics.prevInBaseQty}</span>
+                    <span className="text-slate-400">
+                      السابقة: {metrics.inTrend.hasPrev ? metrics.prevInBaseQty : <span className="italic text-slate-400">لا توجد بيانات</span>}
+                    </span>
                     <span className="font-bold font-mono">
-                      {metrics.inTrend.status === 'up' && <span className="text-emerald-600 font-bold">↑ +{metrics.inTrend.diff}</span>}
-                      {metrics.inTrend.status === 'down' && <span className="text-rose-600 font-bold">↓ {metrics.inTrend.diff}</span>}
-                      {metrics.inTrend.status === 'neutral' && <span className="text-slate-500">مستقر</span>}
+                      {metrics.inTrend.hasPrev ? (
+                        <>
+                          {metrics.inTrend.status === 'up' && <span className="text-emerald-600 font-bold">↑ +{metrics.inTrend.diff}</span>}
+                          {metrics.inTrend.status === 'down' && <span className="text-rose-600 font-bold">↓ {metrics.inTrend.diff}</span>}
+                          {metrics.inTrend.status === 'neutral' && <span className="text-slate-500">مستقر</span>}
+                        </>
+                      ) : (
+                        <span className="text-[9px] text-slate-400 font-normal">جديدة</span>
+                      )}
                     </span>
                   </div>
-                  <div className="text-[9px] text-slate-500 truncate" title={metrics.inTrend.text}>
-                    {metrics.inTrend.hasPrev && metrics.inTrend.percent !== null ? `التغير: ${metrics.inTrend.percent}%` : metrics.inTrend.text}
+                  <div className="text-[9px] text-slate-500 truncate flex items-center justify-between">
+                    <span>{metrics.inTrend.hasPrev && metrics.inTrend.percent !== null ? `التغير: ${metrics.inTrend.percent}%` : 'لا توجد بيانات'}</span>
+                    <span className="text-emerald-700 font-bold group-hover:underline">سجل الوارد ←</span>
                   </div>
                 </div>
               </div>
 
-              {/* Card 5: Outward Quantity (الصادر خلال الفترة) */}
-              <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 5: Outward Quantity (Clickable -> Movements filtered on OUT and period) */}
+              <div
+                onClick={() =>
+                  onNavigateToView?.('movements', {
+                    typeFilter: 'OUT',
+                    startDate: dateRange.startIso.split('T')[0],
+                    endDate: dateRange.endIso.split('T')[0],
+                    branchId: selectedBranchId !== 'all' ? selectedBranchId : undefined,
+                  })
+                }
+                className="bg-white p-4 rounded-2xl border border-rose-200 shadow-2xs hover:border-rose-500 hover:shadow-md transition-all cursor-pointer group bg-rose-50/20"
+                title="اضغط للانتقال إلى سجل الحركات مفلتر على الصادر للفترة المحددة"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] text-rose-800 font-bold">5. إجمالي الصادر (صرف)</span>
-                  <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </div>
                 </div>
@@ -1221,21 +1294,41 @@ export const ReportsView: React.FC = () => {
                 {/* Comparison Details */}
                 <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-600 space-y-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">السابقة: {metrics.prevOutBaseQty}</span>
+                    <span className="text-slate-400">
+                      السابقة: {metrics.outTrend.hasPrev ? metrics.prevOutBaseQty : <span className="italic text-slate-400">لا توجد بيانات</span>}
+                    </span>
                     <span className="font-bold font-mono">
-                      {metrics.outTrend.status === 'up' && <span className="text-amber-700 font-bold">↑ +{metrics.outTrend.diff}</span>}
-                      {metrics.outTrend.status === 'down' && <span className="text-blue-700 font-bold">↓ {metrics.outTrend.diff}</span>}
-                      {metrics.outTrend.status === 'neutral' && <span className="text-slate-500">مستقر</span>}
+                      {metrics.outTrend.hasPrev ? (
+                        <>
+                          {metrics.outTrend.status === 'up' && <span className="text-amber-700 font-bold">↑ +{metrics.outTrend.diff}</span>}
+                          {metrics.outTrend.status === 'down' && <span className="text-blue-700 font-bold">↓ {metrics.outTrend.diff}</span>}
+                          {metrics.outTrend.status === 'neutral' && <span className="text-slate-500">مستقر</span>}
+                        </>
+                      ) : (
+                        <span className="text-[9px] text-slate-400 font-normal">جديدة</span>
+                      )}
                     </span>
                   </div>
-                  <div className="text-[9px] text-slate-500 truncate" title={metrics.outTrend.text}>
-                    {metrics.outTrend.hasPrev && metrics.outTrend.percent !== null ? `التغير: ${metrics.outTrend.percent}%` : metrics.outTrend.text}
+                  <div className="text-[9px] text-slate-500 truncate flex items-center justify-between">
+                    <span>{metrics.outTrend.hasPrev && metrics.outTrend.percent !== null ? `التغير: ${metrics.outTrend.percent}%` : 'لا توجد بيانات'}</span>
+                    <span className="text-rose-700 font-bold group-hover:underline">سجل الصادر ←</span>
                   </div>
                 </div>
               </div>
 
-              {/* Card 6: Net Stock Flow (صافي حركة المخزون) */}
-              <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 6: Net Stock Flow (Clickable -> Movements filtered) */}
+              <div
+                onClick={() =>
+                  onNavigateToView?.('movements', {
+                    typeFilter: 'ALL',
+                    startDate: dateRange.startIso.split('T')[0],
+                    endDate: dateRange.endIso.split('T')[0],
+                    branchId: selectedBranchId !== 'all' ? selectedBranchId : undefined,
+                  })
+                }
+                className="bg-white p-4 rounded-2xl border border-blue-100 shadow-2xs hover:border-blue-400 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط لعرض كافة الحركات"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] text-blue-800 font-bold">6. صافي حركة المخزون</span>
                   <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -1252,38 +1345,61 @@ export const ReportsView: React.FC = () => {
                 {/* Comparison Details */}
                 <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-600 space-y-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-400">السابقة: {metrics.prevNetChange}</span>
+                    <span className="text-slate-400">
+                      السابقة: {metrics.netTrend.hasPrev ? metrics.prevNetChange : <span className="italic text-slate-400">لا توجد بيانات</span>}
+                    </span>
                     <span className="font-bold font-mono">
-                      {metrics.netTrend.status === 'up' && <span className="text-emerald-700">↑ {metrics.netTrend.diff}</span>}
-                      {metrics.netTrend.status === 'down' && <span className="text-rose-700">↓ {metrics.netTrend.diff}</span>}
-                      {metrics.netTrend.status === 'neutral' && <span className="text-slate-500">مستقر</span>}
+                      {metrics.netTrend.hasPrev ? (
+                        <>
+                          {metrics.netTrend.status === 'up' && <span className="text-emerald-700">↑ {metrics.netTrend.diff}</span>}
+                          {metrics.netTrend.status === 'down' && <span className="text-rose-700">↓ {metrics.netTrend.diff}</span>}
+                          {metrics.netTrend.status === 'neutral' && <span className="text-slate-500">مستقر</span>}
+                        </>
+                      ) : (
+                        <span className="text-[9px] text-slate-400">جديدة</span>
+                      )}
                     </span>
                   </div>
-                  <div className="text-[9px] text-slate-500 truncate" title={metrics.netTrend.text}>
+                  <div className="text-[9px] text-slate-500 truncate">
                     فارق الوارد والصادر
                   </div>
                 </div>
               </div>
 
-              {/* Card 7: Total Operations Count (عدد عمليات الوارد والصادر) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 7: Total Operations Count (Clickable -> Movements) */}
+              <div
+                onClick={() =>
+                  onNavigateToView?.('movements', {
+                    typeFilter: 'ALL',
+                    startDate: dateRange.startIso.split('T')[0],
+                    endDate: dateRange.endIso.split('T')[0],
+                    branchId: selectedBranchId !== 'all' ? selectedBranchId : undefined,
+                  })
+                }
+                className="bg-white p-4 rounded-2xl border border-purple-100 shadow-2xs hover:border-purple-400 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط لعرض كافة الحركات"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-slate-500 font-bold">7. عدد عمليات الوارد والصادر</span>
+                  <span className="text-[11px] text-purple-900 font-bold">7. عدد عمليات الوارد والصادر</span>
                   <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
                     <Activity className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-slate-900">
+                <div className="text-2xl font-black font-mono text-purple-950">
                   {metrics.totalMovementsCount.toLocaleString('ar-SA')}
                 </div>
                 <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] text-slate-600 flex items-center justify-between">
-                  <span className="text-emerald-700 font-bold">{metrics.inCount} وارد (+)</span>
-                  <span className="text-rose-700 font-bold">{metrics.outCount} صادر (-)</span>
+                  <span className="text-emerald-700 font-bold">{metrics.inCount} وارد</span>
+                  <span className="text-rose-700 font-bold">{metrics.outCount} صادر</span>
                 </div>
               </div>
 
-              {/* Card 8: Stagnant Items Count (الأصناف الراكدة) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 8: Stagnant Items Count */}
+              <div
+                onClick={() => setActiveTab('stagnant')}
+                className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:border-amber-400 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط لعرض تبويب الأصناف الراكدة"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] text-slate-500 font-bold">8. عدد الأصناف الراكدة</span>
                   <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
@@ -1295,19 +1411,18 @@ export const ReportsView: React.FC = () => {
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1.5 flex items-center justify-between">
                   <span>لم تتحرك بالفترة</span>
-                  <button
-                    onClick={() => setActiveTab('stagnant')}
-                    className="text-amber-800 hover:underline font-bold"
-                  >
-                    عرض الراكد ←
-                  </button>
+                  <span className="text-amber-800 font-bold">عرض الراكد ←</span>
                 </div>
               </div>
 
-              {/* Card 9: Reorder Alert Items (حد إعادة الطلب) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 9: Reorder Alert Items (Clickable -> Items View with low stock) */}
+              <div
+                onClick={() => onNavigateToView?.('items', { viewMode: 'items', statusFilter: 'LOW_STOCK' })}
+                className="bg-white p-4 rounded-2xl border border-rose-200 shadow-2xs hover:border-rose-400 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط لعرض الأصناف تحت حد إعادة الطلب"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-slate-500 font-bold">9. حد إعادة الطلب</span>
+                  <span className="text-[11px] text-rose-800 font-bold">9. حد إعادة الطلب</span>
                   <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center">
                     <AlertTriangle className="w-3.5 h-3.5" />
                   </div>
@@ -1316,20 +1431,19 @@ export const ReportsView: React.FC = () => {
                   {metrics.lowStockCount.toLocaleString('ar-SA')}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1.5 flex items-center justify-between">
-                  <span>أصناف شارفت على النفاد</span>
-                  <button
-                    onClick={() => setActiveTab('alerts')}
-                    className="text-rose-700 hover:underline font-bold"
-                  >
-                    التنبيهات ←
-                  </button>
+                  <span>شارفت على النفاد</span>
+                  <span className="text-rose-700 font-bold">معاينة الأصناف ←</span>
                 </div>
               </div>
 
-              {/* Card 10: Registered Branches & Warehouses (الفروع والمواقع) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+              {/* Card 10: Registered Branches & Warehouses (Clickable -> Branches View) */}
+              <div
+                onClick={() => onNavigateToView?.('branches')}
+                className="bg-white p-4 rounded-2xl border border-teal-200 shadow-2xs hover:border-teal-400 hover:shadow-xs transition-all cursor-pointer group"
+                title="اضغط للانتقال إلى إدارة الفروع والمواقع"
+              >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] text-slate-500 font-bold">10. المواقع والفروع المسجلة</span>
+                  <span className="text-[11px] text-teal-800 font-bold">10. المواقع والفروع المسجلة</span>
                   <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
                     <Building2 className="w-3.5 h-3.5" />
                   </div>
@@ -1339,12 +1453,7 @@ export const ReportsView: React.FC = () => {
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1.5 flex items-center justify-between">
                   <span>فروع ووجهات شحن</span>
-                  <button
-                    onClick={() => setActiveTab('branches')}
-                    className="text-teal-700 hover:underline font-bold"
-                  >
-                    تحليل الفروع ←
-                  </button>
+                  <span className="text-teal-700 font-bold">إدارة الفروع ←</span>
                 </div>
               </div>
             </div>
@@ -1637,10 +1746,34 @@ export const ReportsView: React.FC = () => {
                     return (
                       <tr key={r.item.id} className="hover:bg-slate-50/80">
                         <td className="py-3 px-4">
-                          <span className="font-bold text-slate-900 block">{r.item.name}</span>
+                          <button
+                            onClick={() =>
+                              onNavigateToView?.('items', {
+                                viewMode: 'audit',
+                                searchQuery: r.item.name,
+                                detailItemId: r.item.id,
+                              })
+                            }
+                            className="font-bold text-slate-900 block hover:text-emerald-700 hover:underline text-right cursor-pointer"
+                            title="اضغط لفتح بطاقة وفحص جرد هذا الصنف"
+                          >
+                            {r.item.name}
+                          </button>
                           <span className="text-[10px] font-mono text-slate-400">{r.item.code}</span>
                         </td>
-                        <td className="py-3 px-4 text-slate-600">{r.categoryName}</td>
+                        <td className="py-3 px-4 text-slate-600">
+                          <button
+                            onClick={() =>
+                              onNavigateToView?.('items', {
+                                categoryId: r.item.categoryId,
+                              })
+                            }
+                            className="hover:text-emerald-700 hover:underline cursor-pointer text-right"
+                            title="اضغط لتصفية الأصناف حسب هذا القسم"
+                          >
+                            {r.categoryName}
+                          </button>
+                        </td>
                         <td className="py-3 px-4 font-mono font-bold text-emerald-700">
                           +{r.inQty} {r.baseUnitName}
                         </td>
@@ -1655,10 +1788,31 @@ export const ReportsView: React.FC = () => {
                           {net > 0 ? `+${net}` : net} {r.baseUnitName}
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-600">
-                          {r.movementsCount} عملية
+                          <button
+                            onClick={() =>
+                              onNavigateToView?.('movements', {
+                                searchQuery: r.item.name,
+                              })
+                            }
+                            className="text-emerald-700 hover:underline font-bold cursor-pointer"
+                            title="عرض حركات هذا الصنف في سجل الحركات"
+                          >
+                            {r.movementsCount} عملية ←
+                          </button>
                         </td>
                         <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                          {r.currentStock} {r.baseUnitName}
+                          <button
+                            onClick={() =>
+                              onNavigateToView?.('items', {
+                                viewMode: 'audit',
+                                detailItemId: r.item.id,
+                              })
+                            }
+                            className="hover:text-teal-700 hover:underline cursor-pointer"
+                            title="معاينة رصيد الجرد لهذا الصنف"
+                          >
+                            {r.currentStock} {r.baseUnitName}
+                          </button>
                         </td>
                       </tr>
                     );
@@ -1735,10 +1889,34 @@ export const ReportsView: React.FC = () => {
                     return (
                       <tr key={r.item.id} className="hover:bg-slate-50/80">
                         <td className="py-3 px-4">
-                          <span className="font-bold text-slate-900 block">{r.item.name}</span>
+                          <button
+                            onClick={() =>
+                              onNavigateToView?.('items', {
+                                viewMode: 'audit',
+                                searchQuery: r.item.name,
+                                detailItemId: r.item.id,
+                              })
+                            }
+                            className="font-bold text-slate-900 block hover:text-emerald-700 hover:underline text-right cursor-pointer"
+                            title="اضغط لفتح بطاقة وفحص جرد هذا الصنف"
+                          >
+                            {r.item.name}
+                          </button>
                           <span className="text-[10px] font-mono text-slate-400">{r.item.code}</span>
                         </td>
-                        <td className="py-3 px-4 text-slate-600">{r.categoryName}</td>
+                        <td className="py-3 px-4 text-slate-600">
+                          <button
+                            onClick={() =>
+                              onNavigateToView?.('items', {
+                                categoryId: r.item.categoryId,
+                              })
+                            }
+                            className="hover:text-emerald-700 hover:underline cursor-pointer text-right"
+                            title="اضغط لتصفية الأصناف حسب هذا القسم"
+                          >
+                            {r.categoryName}
+                          </button>
+                        </td>
                         <td className="py-3 px-4 text-slate-700">{r.baseUnitName}</td>
                         <td className="py-3 px-4 font-mono font-black text-amber-800">
                           {r.currentStock} {r.baseUnitName}
@@ -1815,7 +1993,13 @@ export const ReportsView: React.FC = () => {
                     <tr key={b.branchId} className="hover:bg-slate-50/80">
                       <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-slate-400" />
-                        <span>{b.branchName}</span>
+                        <button
+                          onClick={() => onNavigateToView?.('movements', { branchId: b.branchId })}
+                          className="hover:text-emerald-700 hover:underline cursor-pointer text-right font-bold"
+                          title="اضغط لتصفية سجل الحركات على هذا الفرع"
+                        >
+                          {b.branchName}
+                        </button>
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-700">
                         {b.outCount} شحنة / عملية
@@ -1860,17 +2044,28 @@ export const ReportsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
-                {categoryAnalysis.map((c, i) => (
-                  <tr key={i} className="hover:bg-slate-50/80">
-                    <td className="py-3 px-4 font-bold text-slate-900">{c.name}</td>
-                    <td className="py-3 px-4 font-mono text-slate-600">{c.itemsCount} صنف</td>
-                    <td className="py-3 px-4 font-mono font-bold text-emerald-700">+{c.inQty}</td>
-                    <td className="py-3 px-4 font-mono font-bold text-rose-700">-{c.outQty}</td>
-                    <td className="py-3 px-4 font-mono font-black text-slate-900">
-                      {c.currentStock}
-                    </td>
-                  </tr>
-                ))}
+                {categoryAnalysis.map((c, i) => {
+                  const catObj = categories.find((cat) => cat.name === c.name);
+                  return (
+                    <tr key={i} className="hover:bg-slate-50/80">
+                      <td className="py-3 px-4 font-bold text-slate-900">
+                        <button
+                          onClick={() => onNavigateToView?.('items', { categoryId: catObj?.id })}
+                          className="hover:text-emerald-700 hover:underline cursor-pointer text-right font-bold"
+                          title="اضغط لتصفية الأصناف على هذا القسم"
+                        >
+                          {c.name}
+                        </button>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-600">{c.itemsCount} صنف</td>
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-700">+{c.inQty}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-rose-700">-{c.outQty}</td>
+                      <td className="py-3 px-4 font-mono font-black text-slate-900">
+                        {c.currentStock}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2191,7 +2386,19 @@ export const ReportsView: React.FC = () => {
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/80">
                           <td className="py-3 px-4">
-                            <span className="font-bold text-slate-900 block">{item.name}</span>
+                            <button
+                              onClick={() =>
+                                onNavigateToView?.('items', {
+                                  viewMode: 'audit',
+                                  searchQuery: item.name,
+                                  detailItemId: item.id,
+                                })
+                              }
+                              className="font-bold text-slate-900 block hover:text-emerald-700 hover:underline text-right cursor-pointer"
+                              title="اضغط لمعاينة جرد وتفاصيل الصنف"
+                            >
+                              {item.name}
+                            </button>
                             <span className="text-[10px] font-mono text-slate-400">{item.code}</span>
                           </td>
                           <td className="py-3 px-4 font-mono font-bold text-rose-700">
@@ -2409,6 +2616,32 @@ export const ReportsView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Movement Voucher Modal */}
+      {voucherMovement && (
+        <MovementVoucherModal
+          isOpen={Boolean(voucherMovement)}
+          onClose={() => setVoucherMovement(null)}
+          movement={voucherMovement}
+          item={items.find((i) => i.id === voucherMovement.itemId) || null}
+          unit={units.find((u) => u.id === voucherMovement.unitId) || null}
+          baseUnit={
+            units.find(
+              (u) =>
+                u.id ===
+                items.find((i) => i.id === voucherMovement.itemId)?.baseUnitId
+            ) || null
+          }
+          category={
+            categories.find(
+              (c) =>
+                c.id ===
+                items.find((i) => i.id === voucherMovement.itemId)?.categoryId
+            ) || null
+          }
+          currentStock={getItemStock(voucherMovement.itemId)}
+        />
       )}
     </div>
   );

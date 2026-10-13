@@ -36,14 +36,14 @@ function cleanObject(obj: any): any {
     return obj;
   }
   if (Array.isArray(obj)) {
-    return obj
-      .filter((item) => item !== undefined)
-      .map(cleanObject);
+    return obj.map((item) => (item === undefined ? null : cleanObject(item)));
   }
   const cleaned: Record<string, any> = {};
   for (const key of Object.keys(obj)) {
     const val = obj[key];
-    if (val !== undefined) {
+    if (val === undefined) {
+      cleaned[key] = null;
+    } else {
       cleaned[key] = cleanObject(val);
     }
   }

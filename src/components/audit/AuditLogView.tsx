@@ -83,7 +83,9 @@ export const AuditLogView: React.FC = () => {
 
       // Date filter
       if (dateFilter !== 'ALL') {
+        if (!log.timestamp) return false;
         const t = new Date(log.timestamp).getTime();
+        if (isNaN(t)) return false;
         if (dateFilter === 'TODAY' && t < todayStart) return false;
         if (dateFilter === 'WEEK' && t < weekStart) return false;
         if (dateFilter === 'MONTH' && t < monthStart) return false;
@@ -138,6 +140,23 @@ export const AuditLogView: React.FC = () => {
     if (t.includes('حركة') || t.includes('movement')) return <ArrowLeftRight className="w-4 h-4 text-cyan-600" />;
     if (t.includes('مرتجع') || t.includes('return')) return <RotateCcw className="w-4 h-4 text-rose-600" />;
     return <FileText className="w-4 h-4 text-slate-600" />;
+  };
+
+  const formatDateSafe = (isoDate?: string | null): string => {
+    if (!isoDate) return '-';
+    try {
+      const d = new Date(isoDate);
+      if (isNaN(d.getTime())) return '-';
+      return d.toLocaleString('ar-SA', {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return '-';
+    }
   };
 
   // Compare diff for edit modal
@@ -445,15 +464,7 @@ export const AuditLogView: React.FC = () => {
                       <td className="p-3.5 whitespace-nowrap text-slate-500 font-mono text-[11px]">
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>
-                            {new Date(log.timestamp).toLocaleString('ar-SA', {
-                              year: 'numeric',
-                              month: 'numeric',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
+                          <span>{formatDateSafe(log.timestamp)}</span>
                         </div>
                       </td>
 
@@ -560,7 +571,7 @@ export const AuditLogView: React.FC = () => {
                 <div>
                   <span className="text-slate-400 block text-[10px] font-bold">التوقيت الدقيق</span>
                   <span className="font-mono text-slate-700 text-[11px]">
-                    {new Date(selectedLog.timestamp).toLocaleString('ar-SA')}
+                    {formatDateSafe(selectedLog.timestamp)}
                   </span>
                 </div>
               </div>

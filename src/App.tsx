@@ -23,7 +23,7 @@ import { BranchesView } from './components/branches/BranchesView';
 import { CustomersView } from './components/customers/CustomersView';
 import { ArchiveTrashView } from './components/archive/ArchiveTrashView';
 import { AuditLogView } from './components/audit/AuditLogView';
-import { ReportsView } from './components/reports/ReportsView';
+import { ReportsView, ReportsFilterState } from './components/reports/ReportsView';
 import { BackupSettingsView } from './components/settings/BackupSettingsView';
 import { LoginView } from './components/auth/LoginView';
 import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
@@ -39,6 +39,17 @@ const InventoryApp: React.FC = () => {
   const [currentView, setCurrentView] = useState<NavView>('dashboard');
   const [viewHistory, setViewHistory] = useState<NavView[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Reports filters retention and interactive navigation state
+  const [reportsSavedFilters, setReportsSavedFilters] = useState<ReportsFilterState>({
+    period: 'this_month',
+    branchId: 'all',
+    categoryId: 'all',
+    selectedMovementType: 'all',
+    searchQuery: '',
+  });
+  const [navParams, setNavParams] = useState<Record<string, any>>({});
+  const [cameFromReports, setCameFromReports] = useState(false);
 
   // Modals state
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -80,7 +91,23 @@ const InventoryApp: React.FC = () => {
     }
   };
 
+  const handleNavigateFromReports = (nextView: NavView, params?: Record<string, any>) => {
+    setNavParams(params || {});
+    setCameFromReports(true);
+    navigateToView(nextView);
+  };
+
+  const handleReturnToReports = () => {
+    setCameFromReports(false);
+    setNavParams({});
+    setCurrentView('reports');
+  };
+
   const handleGoBack = () => {
+    if (cameFromReports) {
+      handleReturnToReports();
+      return;
+    }
     if (viewHistory.length > 0) {
       const prev = viewHistory[viewHistory.length - 1];
       setViewHistory((old) => old.slice(0, old.length - 1));
@@ -200,6 +227,13 @@ const InventoryApp: React.FC = () => {
               onOpenMovementModal={(item, type) => handleOpenMovementModal(item, type)}
               onRequestArchive={handleRequestArchiveItem}
               onRequestDelete={handleRequestDeleteItem}
+              initialViewMode={navParams.viewMode}
+              initialCategoryId={navParams.categoryId}
+              initialStatusFilter={navParams.statusFilter}
+              initialZeroStockOnly={navParams.zeroStockOnly}
+              initialSearchQuery={navParams.searchQuery}
+              initialDetailItemId={navParams.detailItemId}
+              returnToReports={cameFromReports ? handleReturnToReports : undefined}
             />
           )}
 
@@ -207,6 +241,13 @@ const InventoryApp: React.FC = () => {
             <MovementsView
               onOpenNewMovement={(type) => handleOpenMovementModal(undefined, type || 'IN')}
               onOpenOutgoingDispatch={() => setIsOutgoingDispatchOpen(true)}
+              initialType={navParams.typeFilter}
+              initialBranchId={navParams.branchId}
+              initialStartDate={navParams.startDate}
+              initialEndDate={navParams.endDate}
+              initialSearchQuery={navParams.searchQuery}
+              initialMovementId={navParams.movementId}
+              returnToReports={cameFromReports ? handleReturnToReports : undefined}
             />
           )}
 
@@ -224,7 +265,13 @@ const InventoryApp: React.FC = () => {
 
           {currentView === 'audit_log' && <AuditLogView />}
 
-          {currentView === 'reports' && <ReportsView />}
+          {currentView === 'reports' && (
+            <ReportsView
+              onNavigateToView={handleNavigateFromReports}
+              savedFilters={reportsSavedFilters}
+              onSaveFilters={setReportsSavedFilters}
+            />
+          )}
 
           {currentView === 'settings' && <BackupSettingsView />}
         </main>

@@ -29,6 +29,13 @@ interface ItemsViewProps {
   onOpenMovementModal: (item: Item, type: 'IN' | 'OUT') => void;
   onRequestDelete: (item: Item) => void;
   onRequestArchive: (item: Item) => void;
+  initialViewMode?: 'items' | 'audit';
+  initialCategoryId?: string;
+  initialStatusFilter?: 'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+  initialZeroStockOnly?: boolean;
+  initialSearchQuery?: string;
+  initialDetailItemId?: string;
+  returnToReports?: () => void;
 }
 
 export const ItemsView: React.FC<ItemsViewProps> = ({
@@ -37,14 +44,23 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
   onOpenMovementModal,
   onRequestDelete,
   onRequestArchive,
+  initialViewMode = 'items',
+  initialCategoryId = 'ALL',
+  initialStatusFilter = 'ALL',
+  initialZeroStockOnly = false,
+  initialSearchQuery = '',
+  initialDetailItemId,
+  returnToReports,
 }) => {
   const { getAllItemsSummary, categories, units, recoverOrphanedLocalData, showToast } = useInventory();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'>('ALL');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategoryId || 'ALL');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'>(
+    initialZeroStockOnly ? 'OUT_OF_STOCK' : initialStatusFilter || 'ALL'
+  );
   const [viewLayout, setViewLayout] = useState<'table' | 'grid'>('table');
-  const [viewMode, setViewMode] = useState<'items' | 'audit'>('items');
+  const [viewMode, setViewMode] = useState<'items' | 'audit'>(initialViewMode || 'items');
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
 
@@ -116,9 +132,41 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
         )}
       </div>
 
+      {/* Return to Reports Banner if arrived from ReportsView in items mode */}
+      {returnToReports && viewMode === 'items' && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+              📊
+            </div>
+            <div>
+              <div className="text-xs font-black text-emerald-950">
+                أنت تتصفح الأصناف عبر التحليلات والتقارير
+              </div>
+              <div className="text-[11px] text-emerald-800">
+                تم تطبيق الفلاتر المختارة من لوحة التحليلات
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={returnToReports}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <span>← العودة إلى التقارير والتحليلات</span>
+          </button>
+        </div>
+      )}
+
       {/* Render Stock Taking / Audit View if active */}
       {viewMode === 'audit' ? (
-        <InventoryAuditView onBackToItems={() => setViewMode('items')} />
+        <InventoryAuditView
+          onBackToItems={() => setViewMode('items')}
+          initialZeroStockOnly={initialZeroStockOnly}
+          initialCategoryId={initialCategoryId}
+          initialSearchQuery={initialSearchQuery}
+          initialInspectedItemId={initialDetailItemId}
+          returnToReports={returnToReports}
+        />
       ) : (
         <>
           {/* Search & Filter Header Bar */}

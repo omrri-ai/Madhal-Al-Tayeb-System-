@@ -27,9 +27,21 @@ import { playNotificationSound } from '../../services/sound';
 
 interface InventoryAuditViewProps {
   onBackToItems?: () => void;
+  initialZeroStockOnly?: boolean;
+  initialCategoryId?: string;
+  initialSearchQuery?: string;
+  initialInspectedItemId?: string;
+  returnToReports?: () => void;
 }
 
-export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackToItems }) => {
+export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
+  onBackToItems,
+  initialZeroStockOnly = false,
+  initialCategoryId = 'ALL',
+  initialSearchQuery = '',
+  initialInspectedItemId,
+  returnToReports,
+}) => {
   const {
     items,
     movements,
@@ -44,9 +56,10 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackTo
   } = useInventory();
 
   // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
+  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId || 'ALL');
   const [showZeroStock, setShowZeroStock] = useState(true);
+  const [zeroStockOnly, setZeroStockOnly] = useState(initialZeroStockOnly);
 
   // Selected item modal for audit inspection
   const [inspectedItem, setInspectedItem] = useState<Item | null>(null);
@@ -54,6 +67,16 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackTo
 
   // Print Preview Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Auto-open inspected item if initialInspectedItemId is provided
+  React.useEffect(() => {
+    if (initialInspectedItemId) {
+      const match = items.find((i) => i.id === initialInspectedItemId);
+      if (match) {
+        setInspectedItem(match);
+      }
+    }
+  }, [initialInspectedItemId, items]);
 
   // Active items summaries
   const allSummaries = useMemo(() => {
@@ -63,8 +86,13 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackTo
   // Filtered summaries
   const filteredSummaries = useMemo(() => {
     return allSummaries.filter((s) => {
-      // Zero stock filter
-      if (!showZeroStock && s.currentStock <= 0) {
+      // Zero stock strictly only
+      if (zeroStockOnly && s.currentStock > 0) {
+        return false;
+      }
+
+      // Hide zero stock if showZeroStock is unchecked and not in zeroStockOnly mode
+      if (!zeroStockOnly && !showZeroStock && s.currentStock <= 0) {
         return false;
       }
 
@@ -86,7 +114,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackTo
 
       return true;
     });
-  }, [allSummaries, selectedCategoryId, showZeroStock, searchQuery]);
+  }, [allSummaries, selectedCategoryId, showZeroStock, zeroStockOnly, searchQuery]);
 
   // Statistics calculation
   const stats = useMemo(() => {
@@ -235,6 +263,31 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackTo
 
   return (
     <div className="space-y-6">
+      {/* Return to Reports Banner if arrived from ReportsView */}
+      {returnToReports && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+              📊
+            </div>
+            <div>
+              <div className="text-xs font-black text-emerald-950">
+                أنت تتصفح الجرد عبر التحليلات والتقارير
+              </div>
+              <div className="text-[11px] text-emerald-800">
+                {zeroStockOnly ? 'معاينة الأصناف التي رصيدها صفر' : 'معاينة تفاصيل أرصدة الجرد'}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={returnToReports}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <span>← العودة إلى التقارير والتحليلات</span>
+          </button>
+        </div>
+      )}
+
       {/* Top Header Card */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -354,19 +407,46 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({ onBackTo
             </select>
           </div>
 
-          {/* Zero Stock Toggle */}
-          <div className="flex items-center">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 w-full">
+          {/* Zero Stock Controls */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 flex-1">
               <input
                 type="checkbox"
                 checked={showZeroStock}
                 onChange={(e) => setShowZeroStock(e.target.checked)}
                 className="w-4 h-4 text-teal-600 rounded-md border-slate-300 focus:ring-teal-500 cursor-pointer"
               />
-              <span>إظهار الأصناف التي رصيدها صفر</span>
+              <span className="truncate">إظهار الأصناف الصفرية</span>
             </label>
+
+            <button
+              onClick={() => {
+                setZeroStockOnly((prev) => !prev);
+                if (!zeroStockOnly) setShowZeroStock(true);
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border whitespace-nowrap ${
+                zeroStockOnly
+                  ? 'bg-rose-50 border-rose-300 text-rose-800 font-black shadow-xs'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+              }`}
+              title="تصفية لعرض الأصناف التي نفد رصيدها فقط"
+            >
+              {zeroStockOnly ? '✓ الأصناف الصفرية فقط' : 'الأصناف الصفرية فقط'}
+            </button>
           </div>
         </div>
+
+        {zeroStockOnly && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-800 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between">
+            <span>تم تفعيل الفلتر: عرض الأصناف التي رصيدها صفر فقط ({filteredSummaries.length} صنف)</span>
+            <button
+              onClick={() => setZeroStockOnly(false)}
+              className="text-rose-900 underline hover:text-rose-950 font-black cursor-pointer text-[11px]"
+            >
+              إلغاء وإظهار جميع الأصناف
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Inventory Table */}

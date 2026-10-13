@@ -25,25 +25,50 @@ import { Building2, Truck } from 'lucide-react';
 interface MovementsViewProps {
   onOpenNewMovement: (type?: MovementType) => void;
   onOpenOutgoingDispatch?: () => void;
+  initialType?: 'ALL' | 'IN' | 'OUT';
+  initialBranchId?: string;
+  initialStartDate?: string;
+  initialEndDate?: string;
+  initialSearchQuery?: string;
+  initialMovementId?: string;
+  returnToReports?: () => void;
 }
 
 export const MovementsView: React.FC<MovementsViewProps> = ({
   onOpenNewMovement,
   onOpenOutgoingDispatch,
+  initialType = 'ALL',
+  initialBranchId = 'ALL',
+  initialStartDate = '',
+  initialEndDate = '',
+  initialSearchQuery = '',
+  initialMovementId,
+  returnToReports,
 }) => {
-  const { movements, items, units, categories, getItemStock, deleteMovement } = useInventory();
+  const { movements, items, units, categories, branches, getItemStock, deleteMovement } = useInventory();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>(initialType || 'ALL');
+  const [branchFilter, setBranchFilter] = useState<string>(initialBranchId || 'ALL');
   const [itemFilter, setItemFilter] = useState<string>('ALL');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>(initialStartDate || '');
+  const [endDate, setEndDate] = useState<string>(initialEndDate || '');
 
   // Editing movement modal state
   const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
 
   // Voucher / Invoice printable modal state
   const [voucherMovement, setVoucherMovement] = useState<StockMovement | null>(null);
+
+  // Auto-open voucher modal if initialMovementId is provided
+  React.useEffect(() => {
+    if (initialMovementId) {
+      const match = movements.find((m) => m.id === initialMovementId);
+      if (match) {
+        setVoucherMovement(match);
+      }
+    }
+  }, [initialMovementId, movements]);
 
   // Delete target state
   const [deleteTarget, setDeleteTarget] = useState<StockMovement | null>(null);
@@ -69,6 +94,17 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       // Item match
       const matchesItem = itemFilter === 'ALL' || m.itemId === itemFilter;
 
+      // Branch match
+      let matchesBranch = true;
+      if (branchFilter && branchFilter !== 'ALL' && branchFilter !== 'all') {
+        const branchObj = branches.find((b) => b.id === branchFilter);
+        const branchName = branchObj ? branchObj.name.toLowerCase() : '';
+        matchesBranch =
+          m.branchId === branchFilter ||
+          Boolean(m.branchName && m.branchName.toLowerCase() === branchFilter.toLowerCase()) ||
+          Boolean(branchName && m.branchName && m.branchName.toLowerCase() === branchName);
+      }
+
       // Date match
       let matchesDate = true;
       if (startDate) {
@@ -79,9 +115,9 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
         matchesDate = matchesDate && m.date <= `${endDate}T23:59:59`;
       }
 
-      return matchesSearch && matchesType && matchesItem && matchesDate;
+      return matchesSearch && matchesType && matchesItem && matchesBranch && matchesDate;
     });
-  }, [movements, items, searchQuery, typeFilter, itemFilter, startDate, endDate]);
+  }, [movements, items, branches, searchQuery, typeFilter, branchFilter, itemFilter, startDate, endDate]);
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
@@ -130,6 +166,35 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Return to Reports Banner if navigated from Reports */}
+      {returnToReports && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+              📊
+            </div>
+            <div>
+              <div className="text-xs font-black text-emerald-950">
+                أنت تتصفح سجل الحركات عبر التحليلات والتقارير
+              </div>
+              <div className="text-[11px] text-emerald-800">
+                {typeFilter === 'IN'
+                  ? 'تمت تصفية الحركات: الوارد (+) فقط'
+                  : typeFilter === 'OUT'
+                  ? 'تمت تصفية الحركات: الصادر (-) فقط'
+                  : 'معاينة حركات المخزون'}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={returnToReports}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <span>← العودة إلى التقارير والتحليلات</span>
+          </button>
+        </div>
+      )}
+
       {/* Search & Filter Card */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4 no-print">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -197,7 +262,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
         </div>
 
         {/* Detailed Filters Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-100 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-3 border-t border-slate-100 text-xs">
           {/* Movement Type Filter */}
           <div>
             <label className="block text-slate-500 mb-1 font-medium">نوع الحركة:</label>
@@ -244,6 +309,23 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
               {items.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.name} ({i.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Branch Filter */}
+          <div>
+            <label className="block text-slate-500 mb-1 font-medium">تصفية حسب الفرع/الجهة:</label>
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:bg-white"
+            >
+              <option value="ALL">جميع الفروع والجهات ({branches.length})</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
                 </option>
               ))}
             </select>
