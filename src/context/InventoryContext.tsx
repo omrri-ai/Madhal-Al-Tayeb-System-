@@ -56,8 +56,24 @@ interface InventoryContextType {
   clearToast: () => void;
 
   // Branch actions
-  addBranch: (name: string, city?: string, phone?: string, notes?: string) => { success: boolean; error?: string; branch?: Branch };
-  updateBranch: (id: string, name: string, city?: string, phone?: string, notes?: string, reason?: string) => { success: boolean; error?: string };
+  addBranch: (
+    name: string,
+    city?: string,
+    phone?: string,
+    notes?: string,
+    branchManagerName?: string,
+    branchManagerPhone?: string
+  ) => { success: boolean; error?: string; branch?: Branch };
+  updateBranch: (
+    id: string,
+    name: string,
+    city?: string,
+    phone?: string,
+    notes?: string,
+    branchManagerName?: string,
+    branchManagerPhone?: string,
+    reason?: string
+  ) => { success: boolean; error?: string };
   deleteBranch: (id: string, reason?: string) => { success: boolean; error?: string };
   clearAllBranches: () => void;
 
@@ -116,7 +132,11 @@ interface InventoryContextType {
     customerName?: string;
     customerPhone?: string;
     customerCity?: string;
+    destinationContactName?: string;
+    destinationPhone?: string;
+    destinationAddress?: string;
     shippingCompany?: ShippingCarrier;
+    customShippingCompany?: string;
     shippingTrackingNumber?: string;
     referenceNumber?: string;
     notes?: string;
@@ -321,11 +341,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       refreshAuditLogs().catch(() => {});
       refreshCloudBackups().catch(() => {});
     } catch (err: any) {
-      console.error('Error loading inventory from Cloud Firestore:', err);
-      const errMsg = err?.message || 'فشل الاتصال بقاعدة بيانات السحابة (Firestore).';
-      setCloudSyncStatus('error');
+      console.warn('Could not load inventory directly from Cloud Firestore, falling back to local storage cache:', err);
+      try {
+        const localData = await StorageService.loadAll();
+        if (localData) {
+          if (localData.units && localData.units.length > 0) {
+            setUnits(sortUnitsWithHabbaFirst(localData.units));
+          }
+          if (localData.categories) setCategories(localData.categories);
+          if (localData.items) setItems(localData.items);
+          if (localData.movements) setMovements(localData.movements);
+          if (localData.branches) setBranches(localData.branches);
+          if (localData.returns) setReturns(localData.returns);
+          if (localData.customers) setCustomers(localData.customers);
+          if (localData.settings) setCompanySettings(localData.settings);
+        }
+      } catch (localErr) {
+        console.warn('Local storage fallback error:', localErr);
+      }
+      setCloudSyncStatus('offline');
       setIsOffline(true);
-      showToast(errMsg, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -644,7 +679,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Branch operations
   const addBranch = useCallback(
-    (name: string, city?: string, phone?: string, notes?: string) => {
+    (
+      name: string,
+      city?: string,
+      phone?: string,
+      notes?: string,
+      branchManagerName?: string,
+      branchManagerPhone?: string
+    ) => {
       const cleanName = name.trim();
       if (!cleanName) {
         return { success: false, error: 'يرجى إدخال اسم الفرع' };
@@ -658,9 +700,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const newBranch: Branch = {
         id: 'branch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
         name: cleanName,
-        city: city?.trim(),
-        phone: phone?.trim(),
-        notes: notes?.trim(),
+        city: city?.trim() || undefined,
+        phone: phone?.trim() || undefined,
+        notes: notes?.trim() || undefined,
+        branchManagerName: branchManagerName?.trim() || undefined,
+        managerName: branchManagerName?.trim() || undefined,
+        branchManagerPhone: branchManagerPhone?.trim() || undefined,
         createdAt: new Date().toISOString(),
       };
 
@@ -703,7 +748,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const updateBranch = useCallback(
-    (id: string, name: string, city?: string, phone?: string, notes?: string, reason?: string) => {
+    (
+      id: string,
+      name: string,
+      city?: string,
+      phone?: string,
+      notes?: string,
+      branchManagerName?: string,
+      branchManagerPhone?: string,
+      reason?: string
+    ) => {
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الفرع' };
 
@@ -714,9 +768,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const updatedBranch: Branch = {
         id,
         name: cleanName,
-        city: city?.trim(),
-        phone: phone?.trim(),
-        notes: notes?.trim(),
+        city: city?.trim() || undefined,
+        phone: phone?.trim() || undefined,
+        notes: notes?.trim() || undefined,
+        branchManagerName: branchManagerName !== undefined ? branchManagerName.trim() : target?.branchManagerName,
+        managerName: branchManagerName !== undefined ? branchManagerName.trim() : target?.managerName,
+        branchManagerPhone: branchManagerPhone !== undefined ? branchManagerPhone.trim() : target?.branchManagerPhone,
         createdAt: target?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1615,7 +1672,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       customerName?: string;
       customerPhone?: string;
       customerCity?: string;
+      destinationContactName?: string;
+      destinationPhone?: string;
+      destinationAddress?: string;
       shippingCompany?: ShippingCarrier;
+      customShippingCompany?: string;
       shippingTrackingNumber?: string;
       referenceNumber?: string;
       notes?: string;
@@ -1711,6 +1772,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         `DSP-${new Date().getFullYear()}-${(movements.length + 1).toString().padStart(4, '0')}`;
       const nowIso = new Date().toISOString();
 
+      const targetBranch = dispatchData.destinationType === 'BRANCH'
+        ? branches.find((b) => b.id === dispatchData.branchId)
+        : undefined;
+
+      const destinationContact = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.destinationContactName?.trim() || targetBranch?.branchManagerName || targetBranch?.managerName || targetBranch?.name)
+        : dispatchData.customerName?.trim();
+
+      const destinationPhone = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.destinationPhone?.trim() || targetBranch?.branchManagerPhone || targetBranch?.phone)
+        : dispatchData.customerPhone?.trim();
+
+      const destinationAddress = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.destinationAddress?.trim() || targetBranch?.city || targetBranch?.address)
+        : dispatchData.customerCity?.trim();
+
+      const destinationName = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.branchName || targetBranch?.name)
+        : dispatchData.customerName?.trim();
+
       const newMovements: StockMovement[] = calculatedEntries.map((e) => ({
         id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
         itemId: e.item.id,
@@ -1723,12 +1804,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         referenceNumber: voucherNo,
         notes: e.notes || dispatchData.notes?.trim(),
         destinationType: dispatchData.destinationType,
+        destinationName,
+        destinationContactName: destinationContact,
+        destinationPhone,
+        destinationAddress,
         branchId: dispatchData.branchId,
-        branchName: dispatchData.branchName,
+        branchName: destinationName,
         customerName: dispatchData.customerName?.trim(),
-        customerPhone: dispatchData.customerPhone?.trim(),
-        customerCity: dispatchData.customerCity?.trim(),
+        customerPhone: destinationPhone,
+        customerCity: destinationAddress,
         shippingCompany: dispatchData.shippingCompany,
+        customShippingCompany: dispatchData.customShippingCompany?.trim(),
         shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
         batchId,
         createdAt: nowIso,

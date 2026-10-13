@@ -10,16 +10,14 @@ import {
   CheckCircle2,
   Printer,
   Download,
-  Calendar,
-  FileText,
   Package,
-  Layers,
-  ArrowRight,
-  Edit2,
   Save,
+  MapPin,
+  Phone,
+  User,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
-import { Branch, Customer, Item, ShippingCarrier, StockMovement } from '../../types/inventory';
+import { ShippingCarrier, StockMovement } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 
 interface OutgoingDispatchModalProps {
@@ -46,11 +44,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     units,
     categories,
     branches,
-    customers,
     companySettings,
-    addBranch,
-    updateBranch,
-    addCustomer,
     getItemStock,
     addMultiItemDispatch,
     showToast,
@@ -64,17 +58,15 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
   // Destination mode: 'BRANCH' | 'CUSTOMER'
   const [destinationType, setDestinationType] = useState<'BRANCH' | 'CUSTOMER'>('BRANCH');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
 
-  // Quick Add Customer Modal inside Dispatch
-  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
-  const [newCustName, setNewCustName] = useState('');
-  const [newCustPhone, setNewCustPhone] = useState('');
-  const [newCustAddress, setNewCustAddress] = useState('');
-  const [newCustTaxId, setNewCustTaxId] = useState('');
+  // Customer direct manual entry inside dispatch window (no pre-existing customer needed, no taxId)
+  const [directCustomerName, setDirectCustomerName] = useState('');
+  const [directCustomerPhone, setDirectCustomerPhone] = useState('');
+  const [directCustomerCity, setDirectCustomerCity] = useState('');
 
-  // Shipping details for customer
+  // Shipping company selection: SMSA, FASTLO, ARAMEX, OTHER
   const [shippingCompany, setShippingCompany] = useState<ShippingCarrier>('SMSA');
+  const [customShippingCompany, setCustomShippingCompany] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
 
   // Voucher metadata
@@ -95,18 +87,14 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       setDestinationType('BRANCH');
       if (branches.length > 0) {
         setSelectedBranchId(branches[0].id);
-      }
-      if (customers.length > 0) {
-        setSelectedCustomerId(customers[0].id);
       } else {
-        setSelectedCustomerId('');
+        setSelectedBranchId('');
       }
-      setShowAddCustomerModal(false);
-      setNewCustName('');
-      setNewCustPhone('');
-      setNewCustAddress('');
-      setNewCustTaxId('');
+      setDirectCustomerName('');
+      setDirectCustomerPhone('');
+      setDirectCustomerCity('');
       setShippingCompany('SMSA');
+      setCustomShippingCompany('');
       setTrackingNumber('');
       setVoucherDate(new Date().toISOString().substring(0, 16));
       setVoucherReference(`DSP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
@@ -130,7 +118,27 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
         setRows([]);
       }
     }
-  }, [isOpen, activeItems, branches, customers]);
+  }, [isOpen, activeItems, branches]);
+
+  const selectedBranch = useMemo(
+    () => branches.find((b) => b.id === selectedBranchId),
+    [branches, selectedBranchId]
+  );
+
+  const getCarrierLabel = (carrier: ShippingCarrier, customName?: string) => {
+    switch (carrier) {
+      case 'SMSA':
+        return 'سمسا (SMSA)';
+      case 'FASTLO':
+        return 'فاستلو (Fastlo)';
+      case 'ARAMEX':
+        return 'أرامكس دولي (Aramex International)';
+      case 'OTHER':
+        return customName?.trim() ? `أخرى (${customName.trim()})` : 'أخرى';
+      default:
+        return 'سمسا (SMSA)';
+    }
+  };
 
   const handleAddRow = () => {
     if (activeItems.length === 0) return;
@@ -166,30 +174,6 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
           : r
       )
     );
-  };
-
-  const handleQuickAddCustomer = () => {
-    if (!newCustName.trim()) {
-      showToast('يرجى إدخال اسم العميل', 'error');
-      return;
-    }
-    const res = addCustomer({
-      name: newCustName.trim(),
-      phone: newCustPhone.trim() || undefined,
-      address: newCustAddress.trim() || undefined,
-      taxId: newCustTaxId.trim() || undefined,
-    });
-    if (res.success && res.customer) {
-      setSelectedCustomerId(res.customer.id);
-      setShowAddCustomerModal(false);
-      setNewCustName('');
-      setNewCustPhone('');
-      setNewCustAddress('');
-      setNewCustTaxId('');
-      showToast(`تمت إضافة العميل بنجاح: ${res.customer.name}`, 'success');
-    } else {
-      showToast(res.error || 'خطأ أثناء إضافة العميل', 'error');
-    }
   };
 
   const itemTotalRequestedBase = useMemo(() => {
@@ -258,20 +242,29 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       return;
     }
 
-    if (destinationType === 'BRANCH' && !selectedBranchId) {
-      const err = 'يرجى تحديد الفرع المستلم قبل الحفظ.';
-      setFormError(err);
-      showToast(err, 'error');
-      playNotificationSound('alert');
-      return;
-    }
-
-    if (destinationType === 'CUSTOMER' && !selectedCustomerId) {
-      const err = 'يرجى تحديد العميل المستلم للشحنة قبل الحفظ أو إضافة عميل جديد.';
-      setFormError(err);
-      showToast(err, 'error');
-      playNotificationSound('alert');
-      return;
+    if (destinationType === 'BRANCH') {
+      if (!selectedBranchId) {
+        const err = 'يرجى تحديد الفرع المستلم قبل الحفظ.';
+        setFormError(err);
+        showToast(err, 'error');
+        playNotificationSound('alert');
+        return;
+      }
+    } else {
+      if (!directCustomerName.trim()) {
+        const err = 'يرجى إدخال اسم العميل المستلم للشحنة.';
+        setFormError(err);
+        showToast(err, 'error');
+        playNotificationSound('alert');
+        return;
+      }
+      if (shippingCompany === 'OTHER' && !customShippingCompany.trim()) {
+        const err = 'يرجى كتابة اسم شركة الشحن عند اختيار "أخرى".';
+        setFormError(err);
+        showToast(err, 'error');
+        playNotificationSound('alert');
+        return;
+      }
     }
 
     for (let i = 0; i < rowValidations.length; i++) {
@@ -292,17 +285,23 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       }
     }
 
-    const branch = branches.find((b) => b.id === selectedBranchId);
-    const customer = customers.find((c) => c.id === selectedCustomerId);
+    const branch = destinationType === 'BRANCH' ? branches.find((b) => b.id === selectedBranchId) : undefined;
+    const branchManagerName = branch?.branchManagerName || branch?.managerName || branch?.name || '';
+    const branchManagerPhone = branch?.branchManagerPhone || branch?.phone || '';
+    const branchCity = branch?.city || branch?.address || '';
 
     const result = addMultiItemDispatch({
       destinationType,
       branchId: destinationType === 'BRANCH' ? selectedBranchId : undefined,
       branchName: destinationType === 'BRANCH' ? branch?.name : undefined,
-      customerName: destinationType === 'CUSTOMER' ? customer?.name : undefined,
-      customerPhone: destinationType === 'CUSTOMER' ? customer?.phone : undefined,
-      customerCity: destinationType === 'CUSTOMER' ? customer?.address : undefined,
+      destinationContactName: destinationType === 'BRANCH' ? branchManagerName : directCustomerName.trim(),
+      destinationPhone: destinationType === 'BRANCH' ? branchManagerPhone : directCustomerPhone.trim(),
+      destinationAddress: destinationType === 'BRANCH' ? branchCity : directCustomerCity.trim(),
+      customerName: destinationType === 'CUSTOMER' ? directCustomerName.trim() : undefined,
+      customerPhone: destinationType === 'CUSTOMER' ? directCustomerPhone.trim() : undefined,
+      customerCity: destinationType === 'CUSTOMER' ? directCustomerCity.trim() : undefined,
       shippingCompany: destinationType === 'CUSTOMER' ? shippingCompany : undefined,
+      customShippingCompany: destinationType === 'CUSTOMER' && shippingCompany === 'OTHER' ? customShippingCompany.trim() : undefined,
       shippingTrackingNumber: destinationType === 'CUSTOMER' ? trackingNumber.trim() : undefined,
       referenceNumber: voucherReference.trim(),
       notes: generalNotes.trim(),
@@ -331,12 +330,23 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
   if (!isOpen) return null;
 
-  const selectedBranch = branches.find((b) => b.id === selectedBranchId);
-  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
-
   // If voucher created, show printable modal view
   if (createdVoucherNo && createdMovements && createdMovements.length > 0) {
     const firstMov = createdMovements[0];
+    const isBranch = firstMov.destinationType === 'BRANCH';
+    const branchName = firstMov.branchName || firstMov.destinationName || selectedBranch?.name || '-';
+    const branchManager = firstMov.destinationContactName || selectedBranch?.branchManagerName || selectedBranch?.managerName || selectedBranch?.name || '-';
+    const branchPhone = firstMov.destinationPhone || selectedBranch?.branchManagerPhone || selectedBranch?.phone || 'غير متوفر';
+    const branchCity = firstMov.destinationAddress || selectedBranch?.city || selectedBranch?.address || 'غير متوفر';
+
+    const custName = firstMov.customerName || firstMov.destinationName || directCustomerName.trim() || '-';
+    const custPhone = firstMov.customerPhone || firstMov.destinationPhone || directCustomerPhone.trim() || 'غير متوفر';
+    const custCity = firstMov.customerCity || firstMov.destinationAddress || directCustomerCity.trim() || 'غير متوفر';
+    const carrierName = getCarrierLabel(
+      (firstMov.shippingCompany || shippingCompany) as ShippingCarrier,
+      firstMov.customShippingCompany || customShippingCompany
+    );
+
     const handlePrint = () => window.print();
     const handleDownloadHTML = () => {
       const htmlContent = `<!DOCTYPE html>
@@ -380,12 +390,19 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
   <div class="title">سند صرف مخزني رسمي (إذن خروج متعدد الأصناف)</div>
 
   <div class="dest-card">
-    <div><strong>نوع الوجهة:</strong> ${destinationType === 'BRANCH' ? 'فرع تابع' : 'عميل'}</div>
-    <div><strong>اسم الجهة المستلمة:</strong> ${destinationType === 'BRANCH' ? selectedBranch?.name : selectedCustomer?.name}</div>
-    <div><strong>اسم المسؤول / المستلم:</strong> ${destinationType === 'BRANCH' ? (selectedBranch?.managerName || selectedBranch?.name) : selectedCustomer?.name}</div>
-    <div><strong>رقم الجوال:</strong> ${destinationType === 'BRANCH' ? (selectedBranch?.phone || 'غير متوفر') : (selectedCustomer?.phone || 'غير متوفر')}</div>
-    <div><strong>العنوان / المدينة:</strong> ${destinationType === 'BRANCH' ? (selectedBranch?.address || selectedBranch?.city) : selectedCustomer?.address}</div>
-    <div><strong>الرقم الضريبي:</strong> ${destinationType === 'BRANCH' ? 'غير متوفر' : (selectedCustomer?.taxId || 'غير متوفر')}</div>
+    ${
+      isBranch
+        ? `<div><strong>نوع الوجهة:</strong> فرع تابع</div>
+           <div><strong>اسم الفرع:</strong> ${branchName}</div>
+           <div><strong>اسم المسؤول / المستلم:</strong> ${branchManager}</div>
+           <div><strong>رقم جوال المسؤول:</strong> ${branchPhone}</div>
+           <div><strong>المدينة:</strong> ${branchCity}</div>`
+        : `<div><strong>نوع الوجهة:</strong> شحن لعميل</div>
+           <div><strong>اسم العميل:</strong> ${custName}</div>
+           <div><strong>رقم الجوال:</strong> ${custPhone}</div>
+           <div><strong>المدينة / العنوان:</strong> ${custCity}</div>
+           <div><strong>شركة الشحن المحددة:</strong> ${carrierName}</div>`
+    }
   </div>
 
   <table>
@@ -431,7 +448,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     <div>
       <div>المستلم / مسؤول الفرع</div>
       <div style="font-weight: bold; margin-top: 4px; color: #1e293b;">
-        ${destinationType === 'BRANCH' ? (selectedBranch?.managerName || selectedBranch?.name) : selectedCustomer?.name}
+        ${isBranch ? branchManager : custName}
       </div>
       <div class="sig-line">التوقيع والختم: .....................</div>
     </div>
@@ -460,7 +477,9 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
           <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-              <h3 className="text-base font-black text-slate-900">تم إصدار وحفظ سند الصرف بنجاح (رقم: #{createdVoucherNo})</h3>
+              <h3 className="text-base font-black text-slate-900">
+                تم إصدار وحفظ سند الصرف بنجاح (رقم: #{createdVoucherNo})
+              </h3>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -490,7 +509,9 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
             <div className="flex justify-between items-start border-b pb-4">
               <div>
                 <h4 className="text-base font-black text-slate-900">{companySettings.name}</h4>
-                <p className="text-slate-500">س.ت: {companySettings.commercialRegister} | الرقم الضريبي: {companySettings.taxId}</p>
+                <p className="text-slate-500">
+                  س.ت: {companySettings.commercialRegister} | الرقم الضريبي: {companySettings.taxId}
+                </p>
               </div>
               <div className="text-left font-mono">
                 <div className="text-slate-500">رقم السند</div>
@@ -498,20 +519,54 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl grid grid-cols-2 gap-3">
-              <div>
-                <span className="text-slate-500 block">الجهة المستلمة:</span>
-                <span className="font-bold text-slate-900">
-                  {destinationType === 'BRANCH' ? selectedBranch?.name : selectedCustomer?.name}
-                </span>
+            {/* Destination Preview Card */}
+            {isBranch ? (
+              <div className="p-3.5 bg-slate-50 rounded-xl grid grid-cols-2 sm:grid-cols-3 gap-3 border border-slate-200">
+                <div>
+                  <span className="text-slate-500 block text-[11px]">نوع الوجهة:</span>
+                  <span className="font-bold text-slate-900">فرع تابع</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">اسم الفرع:</span>
+                  <span className="font-bold text-slate-900">{branchName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">اسم المسؤول / المستلم:</span>
+                  <span className="font-bold text-slate-900">{branchManager}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">رقم جوال المسؤول:</span>
+                  <span className="font-bold font-mono text-slate-900">{branchPhone}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">المدينة:</span>
+                  <span className="font-medium text-slate-800">{branchCity}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-slate-500 block">رقم الجوال:</span>
-                <span className="font-bold font-mono">
-                  {destinationType === 'BRANCH' ? selectedBranch?.phone : selectedCustomer?.phone}
-                </span>
+            ) : (
+              <div className="p-3.5 bg-slate-50 rounded-xl grid grid-cols-2 sm:grid-cols-3 gap-3 border border-slate-200">
+                <div>
+                  <span className="text-slate-500 block text-[11px]">نوع الوجهة:</span>
+                  <span className="font-bold text-slate-900">شحن لعميل</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">اسم العميل:</span>
+                  <span className="font-bold text-slate-900">{custName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">رقم الجوال:</span>
+                  <span className="font-bold font-mono text-slate-900">{custPhone}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">المدينة / العنوان:</span>
+                  <span className="font-medium text-slate-800">{custCity}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">شركة الشحن المحددة:</span>
+                  <span className="font-bold text-emerald-800">{carrierName}</span>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="border rounded-xl overflow-hidden">
               <table className="w-full text-right">
@@ -623,73 +678,163 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
             {/* Branch Selection Details */}
             {destinationType === 'BRANCH' && (
               <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-slate-700 font-bold">اختر الفرع المستلم *</label>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">اختر الفرع المستلم *</label>
+                  <select
+                    value={selectedBranchId}
+                    onChange={(e) => setSelectedBranchId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
+                  >
+                    {branches.length === 0 ? (
+                      <option value="">لا توجد فروع مسجلة، يرجى إضافتها من شاشة إدارة الفروع</option>
+                    ) : (
+                      branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} {b.city ? `(${b.city})` : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
-                <select
-                  value={selectedBranchId}
-                  onChange={(e) => setSelectedBranchId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
-                >
-                  {branches.length === 0 ? (
-                    <option value="">لا توجد فروع مسجلة، يرجى إضافتها من إدارة الفروع</option>
-                  ) : (
-                    branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} {b.city ? `(${b.city})` : ''}
-                      </option>
-                    ))
-                  )}
-                </select>
 
-                {selectedBranch && (
-                  <div className="p-3 bg-white rounded-xl border border-emerald-200 text-slate-700 space-y-1">
-                    <p><strong>اسم الفرع:</strong> {selectedBranch.name}</p>
-                    <p><strong>مسؤول الفرع:</strong> {selectedBranch.managerName || 'غير متوفر'}</p>
-                    <p><strong>الجوال:</strong> <span className="font-mono">{selectedBranch.phone || 'غير متوفر'}</span></p>
-                    <p><strong>العنوان:</strong> {selectedBranch.address || selectedBranch.city || 'غير متوفر'}</p>
+                {selectedBranch ? (
+                  <div className="p-4 bg-white rounded-xl border border-emerald-200 shadow-2xs space-y-2">
+                    <div className="text-[11px] font-bold text-emerald-800 mb-1">
+                      معاينة بيانات الفرع المسحوبة تلقائياً:
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">اسم الفرع:</span>
+                        <span className="font-bold text-slate-900">{selectedBranch.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">اسم مسؤول الفرع:</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedBranch.branchManagerName || selectedBranch.managerName || 'غير محدد'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">رقم جوال المسؤول:</span>
+                        <span className="font-bold font-mono text-slate-800">
+                          {selectedBranch.branchManagerPhone || selectedBranch.phone || 'غير محدد'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">المدينة:</span>
+                        <span className="font-medium text-slate-800">
+                          {selectedBranch.city || selectedBranch.address || 'غير محدد'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  branches.length === 0 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs">
+                      لا يوجد فروع مضافة حالياً. يمكنك الذهاب إلى شاشة "إدارة الفروع" لإضافة فرع أولاً، أو التبديل إلى "صرف إلى عميل".
+                    </div>
+                  )
                 )}
               </div>
             )}
 
-            {/* Customer Selection Details */}
+            {/* Customer Direct Entry Details */}
             {destinationType === 'CUSTOMER' && (
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-slate-700 font-bold">اختر العميل المستلم *</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCustomerModal(true)}
-                    className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>إضافة عميل سريع</span>
-                  </button>
+              <div className="space-y-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      اسم العميل <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="الاسم الكامل للعميل المستلم"
+                      value={directCustomerName}
+                      onChange={(e) => setDirectCustomerName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">رقم الجوال</label>
+                    <input
+                      type="text"
+                      placeholder="05XXXXXXXX"
+                      value={directCustomerPhone}
+                      onChange={(e) => setDirectCustomerPhone(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">المدينة / العنوان</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: الرياض / حي العليا"
+                      value={directCustomerCity}
+                      onChange={(e) => setDirectCustomerCity(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
-                <select
-                  value={selectedCustomerId}
-                  onChange={(e) => setSelectedCustomerId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
-                >
-                  {customers.length === 0 ? (
-                    <option value="">لا توجد عملاء مسجلون، انقر "إضافة عميل سريع" أعلاه</option>
-                  ) : (
-                    customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.phone ? `- ${c.phone}` : ''}
-                      </option>
-                    ))
-                  )}
-                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      شركة الشحن المعتمدة <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={shippingCompany}
+                      onChange={(e) => setShippingCompany(e.target.value as ShippingCarrier)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="SMSA">سمسا (SMSA)</option>
+                      <option value="FASTLO">فاستلو (Fastlo)</option>
+                      <option value="ARAMEX">أرامكس دولي (Aramex International)</option>
+                      <option value="OTHER">أخرى</option>
+                    </select>
+                  </div>
 
-                {selectedCustomer && (
-                  <div className="p-3 bg-white rounded-xl border border-emerald-200 text-slate-700 space-y-1">
-                    <p><strong>اسم العميل:</strong> {selectedCustomer.name}</p>
-                    <p><strong>الجوال:</strong> <span className="font-mono">{selectedCustomer.phone || 'غير متوفر'}</span></p>
-                    <p><strong>العنوان:</strong> {selectedCustomer.address || 'غير متوفر'}</p>
-                    <p><strong>الرقم الضريبي:</strong> <span className="font-mono">{selectedCustomer.taxId || 'غير متوفر'}</span></p>
+                  {shippingCompany === 'OTHER' ? (
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">
+                        اسم شركة الشحن <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="اكتب اسم شركة الشحن هنا..."
+                        value={customShippingCompany}
+                        onChange={(e) => setCustomShippingCompany(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">
+                        رقم البوليصة / الشحنة (اختياري)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="رقم البوليصة أو التتبع إن وجد..."
+                        value={trackingNumber}
+                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {shippingCompany === 'OTHER' && (
+                  <div className="w-full sm:w-1/2">
+                    <label className="block text-slate-700 font-bold mb-1">
+                      رقم البوليصة / الشحنة (اختياري)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="رقم البوليصة أو التتبع إن وجد..."
+                      value={trackingNumber}
+                      onChange={(e) => setTrackingNumber(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                    />
                   </div>
                 )}
               </div>
@@ -861,84 +1006,6 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
             </button>
           </div>
         </form>
-
-        {/* Quick Add Customer Modal */}
-        {showAddCustomerModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-            <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 text-right space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b">
-                <h4 className="font-black text-slate-900 text-sm">إضافة عميل جديد سريعاً</h4>
-                <button
-                  type="button"
-                  onClick={() => setShowAddCustomerModal(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">اسم العميل *</label>
-                  <input
-                    type="text"
-                    value={newCustName}
-                    onChange={(e) => setNewCustName(e.target.value)}
-                    placeholder="اسم العميل أو الجهة..."
-                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">رقم الجوال</label>
-                  <input
-                    type="text"
-                    value={newCustPhone}
-                    onChange={(e) => setNewCustPhone(e.target.value)}
-                    placeholder="05xxxxxxxx"
-                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">العنوان / المدينة</label>
-                  <input
-                    type="text"
-                    value={newCustAddress}
-                    onChange={(e) => setNewCustAddress(e.target.value)}
-                    placeholder="المدينة، الحي..."
-                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">الرقم الضريبي (اختياري)</label>
-                  <input
-                    type="text"
-                    value={newCustTaxId}
-                    onChange={(e) => setNewCustTaxId(e.target.value)}
-                    placeholder="300xxxxxxxxxxxx"
-                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCustomerModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="button"
-                  onClick={handleQuickAddCustomer}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl"
-                >
-                  حفظ وإضافة
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

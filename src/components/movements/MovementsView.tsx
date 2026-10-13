@@ -81,11 +81,14 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       const itemCode = item?.code || '';
 
       // Search match
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.toLowerCase().trim();
+      const destinationStr = `${m.destinationName || ''} ${m.branchName || ''} ${m.customerName || ''} ${m.destinationContactName || ''} ${m.supplierName || ''} ${m.shippingCompany || ''} ${m.customShippingCompany || ''}`.toLowerCase();
       const matchesSearch =
+        !query ||
         itemName.toLowerCase().includes(query) ||
         itemCode.toLowerCase().includes(query) ||
         (m.referenceNumber && m.referenceNumber.toLowerCase().includes(query)) ||
+        destinationStr.includes(query) ||
         (m.notes && m.notes.toLowerCase().includes(query));
 
       // Type match

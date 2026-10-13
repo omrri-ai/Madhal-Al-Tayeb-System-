@@ -37,6 +37,8 @@ export interface Branch {
   id: string;
   name: string;
   managerName?: string;
+  branchManagerName?: string; // اسم المسؤول / مشرف الفرع
+  branchManagerPhone?: string; // رقم جوال المسؤول
   city?: string;
   phone?: string;
   address?: string;
@@ -115,6 +117,7 @@ export interface StockMovement {
   supplierTaxId?: string;
 
   shippingCompany?: ShippingCarrier;
+  customShippingCompany?: string;
   shippingTrackingNumber?: string;
   batchId?: string; // Groups multi-item dispatches together
   

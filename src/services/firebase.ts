@@ -33,7 +33,7 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
 // Initialize Firebase App
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore with resilient offline multi-tab persistent cache
+// Initialize Firestore with resilient offline multi-tab persistent cache and forced long-polling
 function createFirestoreInstance(): Firestore {
   try {
     if (typeof window !== 'undefined' && window.indexedDB) {
@@ -44,6 +44,7 @@ function createFirestoreInstance(): Firestore {
             tabManager: persistentMultipleTabManager(),
           }),
           ignoreUndefinedProperties: true,
+          experimentalForceLongPolling: true,
         },
         firestoreDatabaseId || undefined
       );
@@ -57,6 +58,7 @@ function createFirestoreInstance(): Firestore {
       app,
       {
         ignoreUndefinedProperties: true,
+        experimentalForceLongPolling: true,
       },
       firestoreDatabaseId || undefined
     );

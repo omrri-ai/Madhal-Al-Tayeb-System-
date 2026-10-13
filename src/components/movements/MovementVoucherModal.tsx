@@ -84,13 +84,28 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
          <div><strong>العنوان:</strong> ${movement.supplierAddress || 'غير متوفر'}</div>
          <div><strong>الرقم الضريبي:</strong> ${movement.supplierTaxId || 'غير متوفر'}</div>
        </div>`
-      : `<div class="dest-card">
-         <div><strong>نوع الوجهة:</strong> ${movement.destinationType === 'BRANCH' ? 'فرع تابع' : movement.destinationType === 'CUSTOMER' ? 'عميل' : movement.destinationType || 'جهة أخرى'}</div>
-         <div><strong>اسم الجهة المستلمة:</strong> ${movement.destinationName || 'غير متوفر'}</div>
+      : movement.destinationType === 'BRANCH'
+      ? `<div class="dest-card">
+         <div><strong>نوع الوجهة:</strong> فرع تابع</div>
+         <div><strong>اسم الفرع:</strong> ${movement.branchName || movement.destinationName || 'غير متوفر'}</div>
          <div><strong>اسم المسؤول / المستلم:</strong> ${movement.destinationContactName || movement.destinationName || 'غير متوفر'}</div>
-         <div><strong>رقم الجوال:</strong> ${movement.destinationPhone || 'غير متوفر'}</div>
-         <div><strong>العنوان / المدينة:</strong> ${movement.destinationAddress || 'غير متوفر'}</div>
-         <div><strong>الرقم الضريبي:</strong> ${movement.destinationTaxId || 'غير متوفر'}</div>
+         <div><strong>رقم جوال المسؤول:</strong> ${movement.destinationPhone || 'غير متوفر'}</div>
+         <div><strong>المدينة:</strong> ${movement.destinationAddress || 'غير متوفر'}</div>
+       </div>`
+      : `<div class="dest-card">
+         <div><strong>نوع الوجهة:</strong> شحن لعميل</div>
+         <div><strong>اسم العميل:</strong> ${movement.customerName || movement.destinationName || 'غير متوفر'}</div>
+         <div><strong>رقم الجوال:</strong> ${movement.destinationPhone || movement.customerPhone || 'غير متوفر'}</div>
+         <div><strong>المدينة / العنوان:</strong> ${movement.destinationAddress || movement.customerCity || 'غير متوفر'}</div>
+         <div><strong>شركة الشحن المحددة:</strong> ${
+           movement.shippingCompany === 'SMSA'
+             ? 'سمسا (SMSA)'
+             : movement.shippingCompany === 'FASTLO'
+             ? 'فاستلو (Fastlo)'
+             : movement.shippingCompany === 'ARAMEX'
+             ? 'أرامكس دولي (Aramex International)'
+             : movement.customShippingCompany || movement.shippingCompany || 'أخرى'
+         }</div>
        </div>`
   }
 
@@ -254,37 +269,58 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
                 <span className="font-mono font-medium text-slate-800">{movement.supplierTaxId || 'غير متوفر'}</span>
               </div>
             </div>
-          ) : (
+          ) : movement.destinationType === 'BRANCH' ? (
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <span className="text-slate-500 block mb-0.5">نوع الوجهة:</span>
-                <span className="font-bold text-slate-900">
-                  {movement.destinationType === 'BRANCH'
-                    ? 'فرع تابع'
-                    : movement.destinationType === 'CUSTOMER'
-                    ? 'عميل'
-                    : movement.destinationType || 'جهة أخرى'}
-                </span>
+                <span className="font-bold text-slate-900">فرع تابع</span>
               </div>
               <div>
-                <span className="text-slate-500 block mb-0.5">اسم الجهة المستلمة:</span>
-                <span className="font-bold text-slate-900 text-sm">{movement.destinationName || 'غير متوفر'}</span>
+                <span className="text-slate-500 block mb-0.5">اسم الفرع:</span>
+                <span className="font-bold text-slate-900 text-sm">{movement.branchName || movement.destinationName || 'غير متوفر'}</span>
               </div>
               <div>
                 <span className="text-slate-500 block mb-0.5">اسم المسؤول / المستلم:</span>
                 <span className="font-bold text-slate-900">{movement.destinationContactName || movement.destinationName || 'غير متوفر'}</span>
               </div>
               <div>
-                <span className="text-slate-500 block mb-0.5">رقم جوال المستلم:</span>
+                <span className="text-slate-500 block mb-0.5">رقم جوال المسؤول:</span>
                 <span className="font-bold font-mono text-slate-900">{movement.destinationPhone || 'غير متوفر'}</span>
               </div>
               <div>
-                <span className="text-slate-500 block mb-0.5">العنوان / المدينة:</span>
+                <span className="text-slate-500 block mb-0.5">المدينة:</span>
                 <span className="font-medium text-slate-800">{movement.destinationAddress || 'غير متوفر'}</span>
               </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
-                <span className="text-slate-500 block mb-0.5">الرقم الضريبي:</span>
-                <span className="font-mono font-medium text-slate-800">{movement.destinationTaxId || 'غير متوفر'}</span>
+                <span className="text-slate-500 block mb-0.5">نوع الوجهة:</span>
+                <span className="font-bold text-slate-900">شحن لعميل</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">اسم العميل:</span>
+                <span className="font-bold text-slate-900 text-sm">{movement.customerName || movement.destinationName || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">رقم الجوال:</span>
+                <span className="font-bold font-mono text-slate-900">{movement.destinationPhone || movement.customerPhone || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">المدينة / العنوان:</span>
+                <span className="font-medium text-slate-800">{movement.destinationAddress || movement.customerCity || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">شركة الشحن المحددة:</span>
+                <span className="font-bold text-emerald-800">
+                  {movement.shippingCompany === 'SMSA'
+                    ? 'سمسا (SMSA)'
+                    : movement.shippingCompany === 'FASTLO'
+                    ? 'فاستلو (Fastlo)'
+                    : movement.shippingCompany === 'ARAMEX'
+                    ? 'أرامكس دولي (Aramex International)'
+                    : movement.customShippingCompany || movement.shippingCompany || 'أخرى'}
+                </span>
               </div>
             </div>
           )}

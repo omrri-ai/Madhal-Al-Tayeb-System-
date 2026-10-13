@@ -15,6 +15,8 @@ import {
   FileText,
   Filter,
   RotateCcw,
+  Search,
+  X,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { NavView } from '../common/Navigation';
@@ -37,14 +39,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const { stats, items, movements, units, categories, getItemStock } = useInventory();
   const [voucherMovement, setVoucherMovement] = useState<StockMovement | null>(null);
   const [movementFilter, setMovementFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Filtered movements for the invoice table
+  // Filtered movements for the invoice table with real-time multi-field search
   const filteredMovements = useMemo(() => {
     let list = movements;
     if (movementFilter === 'IN') list = list.filter((m) => m.type === 'IN');
     if (movementFilter === 'OUT') list = list.filter((m) => m.type === 'OUT');
-    return list.slice(0, 15);
-  }, [movements, movementFilter]);
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((m) => {
+        const item = items.find((i) => i.id === m.itemId);
+        const itemName = (item?.name || '').toLowerCase();
+        const itemCode = (item?.code || '').toLowerCase();
+        const refNo = (m.referenceNumber || '').toLowerCase();
+        const destinationStr = `${m.destinationName || ''} ${m.branchName || ''} ${m.customerName || ''} ${m.destinationContactName || ''} ${m.supplierName || ''}`.toLowerCase();
+        const carrierStr = `${m.shippingCompany || ''} ${m.customShippingCompany || ''}`.toLowerCase();
+        const notesStr = (m.notes || '').toLowerCase();
+
+        return (
+          itemName.includes(q) ||
+          itemCode.includes(q) ||
+          refNo.includes(q) ||
+          destinationStr.includes(q) ||
+          carrierStr.includes(q) ||
+          notesStr.includes(q)
+        );
+      });
+    }
+
+    return list.slice(0, 30);
+  }, [movements, movementFilter, searchQuery, items]);
 
   return (
     <div className="space-y-6">
@@ -219,7 +245,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* FULL-WIDTH RECENT INVOICES & OPERATIONS TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div id="operations-table-section" className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shadow-2xs">
@@ -279,26 +305,78 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
+        {/* Real-time Search Toolbar for Movements / Invoices */}
+        <div className="p-3.5 sm:p-4 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-lg">
+            <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="بحث فوري: اسم الصنف، رمز SKU، رقم السند/الفاتورة، أو اسم الجهة المستلمة..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pr-10 pl-9 py-2 text-xs sm:text-sm bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium placeholder:text-slate-400 shadow-2xs transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 cursor-pointer"
+                title="مسح البحث"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-slate-500 justify-between sm:justify-end">
+            {searchQuery ? (
+              <span className="font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                نتائج البحث: {filteredMovements.length} سند
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-400">
+                فلترة فورية في الوقت الفعلي
+              </span>
+            )}
+          </div>
+        </div>
+
         {filteredMovements.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-400 space-y-3">
-            <p>لا توجد أي فواتير أو حركات مخزنية مسجلة حتى الآن في هذا التصنيف.</p>
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                onClick={() => onOpenQuickMovement('IN')}
-                className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-xs"
-              >
-                + تسجيل وارد
-              </button>
-              <button
-                onClick={() => {
-                  if (onOpenOutgoingDispatch) onOpenOutgoingDispatch();
-                  else onOpenQuickMovement('OUT');
-                }}
-                className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-bold text-xs"
-              >
-                - تسجيل صادر
-              </button>
-            </div>
+            {searchQuery ? (
+              <div className="space-y-2">
+                <p className="text-slate-700 font-bold">لا توجد أي نتائج مطابقة لبحثك "{searchQuery}".</p>
+                <p className="text-slate-400 text-[11px]">جرب البحث باسم الصنف، رمز SKU، رقم السند، أو اسم الجهة المستلمة (الفرع/العميل).</p>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer mt-2"
+                >
+                  مسح البحث
+                </button>
+              </div>
+            ) : (
+              <>
+                <p>لا توجد أي فواتير أو حركات مخزنية مسجلة حتى الآن في هذا التصنيف.</p>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <button
+                    onClick={() => onOpenQuickMovement('IN')}
+                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-xs"
+                  >
+                    + تسجيل وارد
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (onOpenOutgoingDispatch) onOpenOutgoingDispatch();
+                      else onOpenQuickMovement('OUT');
+                    }}
+                    className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-bold text-xs"
+                  >
+                    - تسجيل صادر
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

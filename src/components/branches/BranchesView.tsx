@@ -20,6 +20,8 @@ export const BranchesView: React.FC = () => {
   
   // New branch form state
   const [name, setName] = useState('');
+  const [branchManagerName, setBranchManagerName] = useState('');
+  const [branchManagerPhone, setBranchManagerPhone] = useState('');
   const [city, setCity] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
@@ -27,6 +29,8 @@ export const BranchesView: React.FC = () => {
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editBranchManagerName, setEditBranchManagerName] = useState('');
+  const [editBranchManagerPhone, setEditBranchManagerPhone] = useState('');
   const [editCity, setEditCity] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editNotes, setEditNotes] = useState('');
@@ -42,9 +46,18 @@ export const BranchesView: React.FC = () => {
       return;
     }
 
-    const res = addBranch(cleanName, city.trim(), phone.trim(), notes.trim());
+    const res = addBranch(
+      cleanName,
+      city.trim(),
+      phone.trim(),
+      notes.trim(),
+      branchManagerName.trim(),
+      branchManagerPhone.trim()
+    );
     if (res.success) {
       setName('');
+      setBranchManagerName('');
+      setBranchManagerPhone('');
       setCity('');
       setPhone('');
       setNotes('');
@@ -54,6 +67,8 @@ export const BranchesView: React.FC = () => {
   const startEdit = (b: Branch) => {
     setEditingId(b.id);
     setEditName(b.name);
+    setEditBranchManagerName(b.branchManagerName || b.managerName || '');
+    setEditBranchManagerPhone(b.branchManagerPhone || '');
     setEditCity(b.city || '');
     setEditPhone(b.phone || '');
     setEditNotes(b.notes || '');
@@ -70,7 +85,15 @@ export const BranchesView: React.FC = () => {
       return;
     }
 
-    const res = updateBranch(id, cleanName, editCity.trim(), editPhone.trim(), editNotes.trim());
+    const res = updateBranch(
+      id,
+      cleanName,
+      editCity.trim(),
+      editPhone.trim(),
+      editNotes.trim(),
+      editBranchManagerName.trim(),
+      editBranchManagerPhone.trim()
+    );
     if (res.success) {
       setEditingId(null);
       showToast(`تم تحديث بيانات الفرع "${cleanName}" بنجاح`, 'success');
@@ -91,8 +114,11 @@ export const BranchesView: React.FC = () => {
     const q = searchQuery.toLowerCase();
     return (
       b.name.toLowerCase().includes(q) ||
-      (b.city && b.city.toLowerCase().includes(q)) ||
-      (b.phone && b.phone.includes(q))
+      Boolean(b.city && b.city.toLowerCase().includes(q)) ||
+      Boolean(b.phone && b.phone.includes(q)) ||
+      Boolean(b.branchManagerName && b.branchManagerName.toLowerCase().includes(q)) ||
+      Boolean(b.managerName && b.managerName.toLowerCase().includes(q)) ||
+      Boolean(b.branchManagerPhone && b.branchManagerPhone.includes(q))
     );
   });
 
@@ -128,7 +154,7 @@ export const BranchesView: React.FC = () => {
         </h2>
 
         <form onSubmit={handleAdd} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 اسم الفرع <span className="text-rose-500">*</span>
@@ -139,6 +165,32 @@ export const BranchesView: React.FC = () => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                اسم المسؤول / مشرف الفرع
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: أبو فهد / محمد الشمري"
+                value={branchManagerName}
+                onChange={(e) => setBranchManagerName(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                رقم جوال المسؤول
+              </label>
+              <input
+                type="text"
+                placeholder="05XXXXXXXX"
+                value={branchManagerPhone}
+                onChange={(e) => setBranchManagerPhone(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
               />
             </div>
 
@@ -154,10 +206,10 @@ export const BranchesView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف / الجوال</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">هاتف الفرع (إضافي)</label>
               <input
                 type="text"
-                placeholder="05XXXXXXXX"
+                placeholder="011XXXXXXX"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
@@ -168,7 +220,7 @@ export const BranchesView: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات إضافية</label>
               <input
                 type="text"
-                placeholder="موقع الفرع أو المشرف..."
+                placeholder="موقع الفرع أو ساعات العمل..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
@@ -202,7 +254,7 @@ export const BranchesView: React.FC = () => {
               <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="بحث باسم الفرع أو المدينة..."
+                placeholder="بحث باسم الفرع، المسؤول، أو المدينة..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pr-9 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white font-medium"
@@ -232,8 +284,10 @@ export const BranchesView: React.FC = () => {
                 <tr>
                   <th className="py-3 px-4">#</th>
                   <th className="py-3 px-4">اسم الفرع</th>
+                  <th className="py-3 px-4">اسم المسؤول / المشرف</th>
+                  <th className="py-3 px-4">جوال المسؤول</th>
                   <th className="py-3 px-4">المدينة / المنطقة</th>
-                  <th className="py-3 px-4">رقم التواصل</th>
+                  <th className="py-3 px-4">هاتف الفرع</th>
                   <th className="py-3 px-4">ملاحظات</th>
                   <th className="py-3 px-4 text-center">إجراءات</th>
                 </tr>
@@ -251,6 +305,7 @@ export const BranchesView: React.FC = () => {
                     >
                       <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
 
+                      {/* Branch Name */}
                       <td className="py-3 px-4 font-bold text-slate-900">
                         {isEditing ? (
                           <input
@@ -268,6 +323,37 @@ export const BranchesView: React.FC = () => {
                         )}
                       </td>
 
+                      {/* Manager Name */}
+                      <td className="py-3 px-4 text-slate-800 font-medium">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            placeholder="اسم المسؤول"
+                            value={editBranchManagerName}
+                            onChange={(e) => setEditBranchManagerName(e.target.value)}
+                            className="w-full px-2.5 py-1 text-xs border border-emerald-400 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                          />
+                        ) : (
+                          <span>{b.branchManagerName || b.managerName || '-'}</span>
+                        )}
+                      </td>
+
+                      {/* Manager Phone */}
+                      <td className="py-3 px-4 text-slate-700 font-mono">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            placeholder="جوال المسؤول"
+                            value={editBranchManagerPhone}
+                            onChange={(e) => setEditBranchManagerPhone(e.target.value)}
+                            className="w-full px-2.5 py-1 text-xs border border-emerald-400 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-emerald-500 font-mono"
+                          />
+                        ) : (
+                          <span>{b.branchManagerPhone || '-'}</span>
+                        )}
+                      </td>
+
+                      {/* City */}
                       <td className="py-3 px-4 text-slate-600">
                         {isEditing ? (
                           <input
@@ -286,13 +372,14 @@ export const BranchesView: React.FC = () => {
                         )}
                       </td>
 
+                      {/* Phone */}
                       <td className="py-3 px-4 text-slate-600 font-mono">
                         {isEditing ? (
                           <input
                             type="text"
                             value={editPhone}
                             onChange={(e) => setEditPhone(e.target.value)}
-                            className="w-full px-2.5 py-1 text-xs border border-emerald-400 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                            className="w-full px-2.5 py-1 text-xs border border-emerald-400 rounded-lg bg-white focus:outline-hidden focus:ring-1 focus:ring-emerald-500 font-mono"
                           />
                         ) : b.phone ? (
                           <div className="flex items-center gap-1.5">
@@ -304,6 +391,7 @@ export const BranchesView: React.FC = () => {
                         )}
                       </td>
 
+                      {/* Notes */}
                       <td className="py-3 px-4 text-slate-500 text-[11px]">
                         {isEditing ? (
                           <input

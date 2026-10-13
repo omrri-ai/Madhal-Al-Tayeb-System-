@@ -51,54 +51,84 @@ function cleanObject(obj: any): any {
 }
 
 export const FirestoreStorage = {
-  // Load all collections strictly from Cloud Firestore
+  // Load all collections safely from Cloud Firestore with local cache resilience
   async loadAll(): Promise<InventoryDatabaseData> {
     try {
-      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap, customersSnap, settingsSnap] = await Promise.all([
-        getDocs(collection(db, 'units')),
-        getDocs(collection(db, 'categories')),
-        getDocs(collection(db, 'items')),
-        getDocs(collection(db, 'movements')),
-        getDocs(collection(db, 'branches')),
-        getDocs(collection(db, 'returns')),
-        getDocs(collection(db, 'customers')),
-        getDoc(doc(db, 'system_settings', 'company')),
+      const fetchColl = async (name: string) => {
+        try {
+          return await getDocs(collection(db, name));
+        } catch (err) {
+          console.warn(`Could not read collection "${name}" from Firestore (offline/latency):`, err);
+          return null;
+        }
+      };
+
+      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap, customersSnap] = await Promise.all([
+        fetchColl('units'),
+        fetchColl('categories'),
+        fetchColl('items'),
+        fetchColl('movements'),
+        fetchColl('branches'),
+        fetchColl('returns'),
+        fetchColl('customers'),
       ]);
+
+      let cloudSettings: CompanySettings | undefined = undefined;
+      try {
+        const settingsSnap = await getDoc(doc(db, 'system_settings', 'company'));
+        if (settingsSnap.exists()) {
+          cloudSettings = settingsSnap.data() as CompanySettings;
+        }
+      } catch (settingsErr) {
+        console.warn('Could not read system_settings document from Firestore (offline or uninitialized):', settingsErr);
+      }
 
       const isGenuineItem = (i: any): i is Item =>
         Boolean(i && i.id && !i.id.startsWith('unit_') && !i.id.startsWith('cat_') && !i.id.startsWith('branch_') && !i.id.startsWith('mov_') && !i.id.startsWith('ret_'));
 
-      const cloudUnits: Unit[] = unitsSnap.docs
+      const cloudUnits: Unit[] = (unitsSnap?.docs || [])
         .map((d) => d.data() as Unit)
         .filter((u) => u && u.id && !u.id.startsWith('item_') && !u.id.startsWith('cat_') && !u.id.startsWith('branch_'));
 
-      const cloudCategories: Category[] = categoriesSnap.docs
+      const cloudCategories: Category[] = (categoriesSnap?.docs || [])
         .map((d) => d.data() as Category)
         .filter((c) => c && c.id && !c.id.startsWith('item_') && !c.id.startsWith('unit_') && !c.id.startsWith('branch_'));
 
-      const cloudItems: Item[] = itemsSnap.docs
+      const cloudItems: Item[] = (itemsSnap?.docs || [])
         .map((d) => d.data() as Item)
         .filter(isGenuineItem);
 
-      const cloudMovements: StockMovement[] = movementsSnap.docs
+      const cloudMovements: StockMovement[] = (movementsSnap?.docs || [])
         .map((d) => d.data() as StockMovement)
         .filter((m) => m && m.id && m.itemId);
 
-      const cloudBranches: Branch[] = branchesSnap.docs
+      const cloudBranches: Branch[] = (branchesSnap?.docs || [])
         .map((d) => d.data() as Branch)
         .filter((b) => b && b.id && !b.id.startsWith('item_') && !b.id.startsWith('unit_') && !b.id.startsWith('cat_'));
 
-      const cloudReturns: ReturnRecord[] = returnsSnap.docs
+      const cloudReturns: ReturnRecord[] = (returnsSnap?.docs || [])
         .map((d) => d.data() as ReturnRecord)
         .filter((r) => r && r.id && r.type);
 
-      const cloudCustomers: Customer[] = customersSnap.docs
+      const cloudCustomers: Customer[] = (customersSnap?.docs || [])
         .map((d) => d.data() as Customer)
         .filter((c) => c && c.id);
 
-      const cloudSettings: CompanySettings | undefined = settingsSnap.exists()
-        ? (settingsSnap.data() as CompanySettings)
-        : undefined;
+      // If all collections returned null (e.g. completely offline with no local Firestore cache)
+      const hasAnyFirestoreData =
+        unitsSnap !== null ||
+        categoriesSnap !== null ||
+        itemsSnap !== null ||
+        movementsSnap !== null ||
+        branchesSnap !== null ||
+        returnsSnap !== null ||
+        customersSnap !== null;
+
+      if (!hasAnyFirestoreData) {
+        console.warn('Firestore is completely offline or unreachable. Loading from StorageService local cache.');
+        const localData = await StorageService.loadAll();
+        return localData;
+      }
 
       const cloudData: InventoryDatabaseData = {
         units: cloudUnits,
@@ -111,14 +141,26 @@ export const FirestoreStorage = {
         settings: cloudSettings,
       };
 
+      // Ensure local offline backup is synchronized with cloud data
+      StorageService.saveAll(cloudData).catch(() => {});
+
       return cloudData;
     } catch (error: any) {
-      console.error('Failed to load from Cloud Firestore:', error);
-      const errorMessage = error?.message || '';
-      if (errorMessage.includes('permission') || errorMessage.includes('Missing or insufficient permissions')) {
-        throw new Error('عذراً، ليس لديك صلاحية قراءة البيانات من قاعدة سحابة Firestore. يرجى التأكد من تسجيل الدخول بحساب المالك الصحيح.');
+      console.warn('Failed to load from Cloud Firestore, falling back to StorageService:', error);
+      try {
+        const localData = await StorageService.loadAll();
+        return localData;
+      } catch {
+        return {
+          units: [],
+          categories: [],
+          items: [],
+          movements: [],
+          branches: [],
+          returns: [],
+          customers: [],
+        };
       }
-      throw new Error('فشل الاتصال بقاعدة بيانات السحابة (Firestore). يرجى التحقق من اتصال الإنترنت وصلاحيات الحساب.');
     }
   },
 
