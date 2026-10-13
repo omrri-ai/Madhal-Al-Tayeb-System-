@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, Printer, ArrowDownLeft, ArrowUpRight, ArrowRight, Boxes, FileText, Download } from 'lucide-react';
+import { X, Printer, ArrowRight, Boxes, Download, FileText, CheckCircle2 } from 'lucide-react';
 import { StockMovement, Item, Unit, Category } from '../../types/inventory';
+import { useInventory } from '../../context/InventoryContext';
 
 interface MovementVoucherModalProps {
   isOpen: boolean;
@@ -23,10 +24,11 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
   category,
   currentStock,
 }) => {
+  const { companySettings } = useInventory();
   if (!isOpen || !movement || !item) return null;
 
   const isEntry = movement.type === 'IN';
-  const voucherTitle = isEntry ? 'سند توريد مخزني (إذن دخول)' : 'سند صرف مخزني (إذن خروج)';
+  const voucherTitle = isEntry ? 'سند توريد مخزني (إذن دخول رسمي)' : 'سند صرف مخزني (إذن خروج رسمي)';
   const invoiceNumber = movement.referenceNumber || movement.id.replace('mov_', 'INV-');
 
   const handlePrint = () => {
@@ -41,47 +43,71 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
   <title>${voucherTitle} - #${invoiceNumber}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
-    body { font-family: 'Tajawal', sans-serif; padding: 40px; color: #0f172a; margin: 0; }
+    body { font-family: 'Tajawal', sans-serif; padding: 40px; color: #0f172a; margin: 0; background: #fff; }
     .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; }
-    .title { background: ${isEntry ? '#ecfdf5' : '#fff1f2'}; color: ${isEntry ? '#065f46' : '#9f1239'}; border: 1px solid ${isEntry ? '#a7f3d0' : '#fecdd3'}; text-align: center; padding: 12px; font-weight: bold; border-radius: 8px; font-size: 16px; margin-bottom: 24px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; text-align: right; }
-    th { background: #f1f5f9; padding: 10px; font-size: 13px; border: 1px solid #cbd5e1; }
-    td { padding: 12px 10px; font-size: 13px; border: 1px solid #cbd5e1; }
-    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 30px; font-size: 13px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; text-align: center; margin-top: 50px; font-size: 13px; }
-    .sig-line { border-top: 1px dashed #94a3b8; margin-top: 50px; padding-top: 6px; color: #64748b; font-size: 12px; }
-    @media print {
-      body { padding: 0; }
-    }
+    .company-title { font-size: 18px; font-weight: 900; margin: 0 0 4px 0; }
+    .company-meta { font-size: 11px; color: #475569; line-height: 1.5; }
+    .title { background: ${isEntry ? '#ecfdf5' : '#fff1f2'}; color: ${isEntry ? '#065f46' : '#9f1239'}; border: 1px solid ${isEntry ? '#a7f3d0' : '#fecdd3'}; text-align: center; padding: 12px; font-weight: bold; border-radius: 8px; font-size: 15px; margin-bottom: 20px; }
+    .dest-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; text-align: right; }
+    th { background: #f1f5f9; padding: 10px; font-size: 12px; border: 1px solid #cbd5e1; }
+    td { padding: 10px; font-size: 12px; border: 1px solid #cbd5e1; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 24px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; text-align: center; margin-top: 40px; font-size: 12px; }
+    .sig-line { border-top: 1px dashed #94a3b8; margin-top: 40px; padding-top: 6px; color: #64748b; font-size: 11px; }
+    @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
   <div class="header">
     <div>
-      <h2 style="margin: 0 0 6px 0;">نظام مدهال الطيب لإدارة المخزون</h2>
-      <div style="color: #64748b; font-size: 13px;">سند حركة مخزنية معتمد وقابل للأرشفة والطباعة</div>
+      <h2 class="company-title">${companySettings.name}</h2>
+      <div class="company-meta">
+        س.ت: ${companySettings.commercialRegister} | الرقم الضريبي: ${companySettings.taxId}<br/>
+        العنوان: ${companySettings.address} | الجوال: ${companySettings.phone}
+      </div>
     </div>
     <div style="text-align: left;">
-      <div style="font-size: 12px; color: #64748b;">رقم السند / الفاتورة</div>
-      <div style="font-size: 20px; font-weight: 900;">#${invoiceNumber}</div>
-      <div style="font-size: 12px; color: #64748b; margin-top: 4px;">${new Date(movement.date).toLocaleString('ar-SA')}</div>
+      <div style="font-size: 11px; color: #64748b;">رقم السند</div>
+      <div style="font-size: 18px; font-weight: 900;">#${invoiceNumber}</div>
+      <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${new Date(movement.date).toLocaleString('ar-SA')}</div>
     </div>
   </div>
 
   <div class="title">${voucherTitle}</div>
 
+  ${
+    isEntry
+      ? `<div class="dest-card">
+         <div><strong>المورد / الجهة الموردة:</strong> ${movement.supplierName || 'مورد عام'}</div>
+         <div><strong>جوال المورد:</strong> ${movement.supplierPhone || 'غير متوفر'}</div>
+         <div><strong>العنوان:</strong> ${movement.supplierAddress || 'غير متوفر'}</div>
+         <div><strong>الرقم الضريبي:</strong> ${movement.supplierTaxId || 'غير متوفر'}</div>
+       </div>`
+      : `<div class="dest-card">
+         <div><strong>نوع الوجهة:</strong> ${movement.destinationType === 'BRANCH' ? 'فرع تابع' : movement.destinationType === 'CUSTOMER' ? 'عميل' : movement.destinationType || 'جهة أخرى'}</div>
+         <div><strong>اسم الجهة المستلمة:</strong> ${movement.destinationName || 'غير متوفر'}</div>
+         <div><strong>اسم المسؤول / المستلم:</strong> ${movement.destinationContactName || movement.destinationName || 'غير متوفر'}</div>
+         <div><strong>رقم الجوال:</strong> ${movement.destinationPhone || 'غير متوفر'}</div>
+         <div><strong>العنوان / المدينة:</strong> ${movement.destinationAddress || 'غير متوفر'}</div>
+         <div><strong>الرقم الضريبي:</strong> ${movement.destinationTaxId || 'غير متوفر'}</div>
+       </div>`
+  }
+
   <table>
     <thead>
       <tr>
+        <th>م</th>
         <th>بيان الصنف</th>
         <th>الرمز (SKU)</th>
         <th>القسم</th>
-        <th>الكمية المسجلة</th>
+        <th>الكمية المصروفة / الواردة</th>
         <th>المعادل بالوحدة الأساسية</th>
       </tr>
     </thead>
     <tbody>
       <tr>
+        <td>1</td>
         <td><strong>${item.name}</strong></td>
         <td>${item.code}</td>
         <td>${category?.name || '-'}</td>
@@ -92,7 +118,8 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
   </table>
 
   <div class="info-box">
-    <div><strong>نوع العملية:</strong> ${isEntry ? 'توريد كميات جديدة إلى المستودع (+)' : 'صرف كميات وتخفيض من الرصيد (-)'}</div>
+    <div><strong>حالة السند:</strong> <span style="color: #065f46; font-weight: bold;">معتمد ومرحل (${movement.status || 'APPROVED'})</span></div>
+    <div><strong>أمين المستودع / المُصدر:</strong> ${movement.createdByName || companySettings.managerName || 'إدارة النظام'}</div>
     <div><strong>رصيد الصنف الحالي:</strong> ${currentStock} ${baseUnit?.name || 'وحدة'}</div>
     ${movement.referenceNumber ? `<div><strong>رقم المرجع الخارجي:</strong> #${movement.referenceNumber}</div>` : ''}
     ${movement.notes ? `<div style="grid-column: span 2;"><strong>ملاحظات:</strong> ${movement.notes}</div>` : ''}
@@ -104,8 +131,9 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
       <div class="sig-line">التوقيع: .....................</div>
     </div>
     <div>
-      <div>المستلم / المورد</div>
-      <div class="sig-line">التوقيع: .....................</div>
+      <div>المستلم / مسؤول الفرع</div>
+      <div style="font-weight: bold; margin-top: 4px; color: #1e293b;">${isEntry ? (movement.supplierName || 'المورد') : (movement.destinationContactName || movement.destinationName || 'المستلم')}</div>
+      <div class="sig-line">التوقيع والختم: .....................</div>
     </div>
     <div>
       <div>اعتماد الإدارة</div>
@@ -123,7 +151,7 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `فاتورة_${invoiceNumber}_${item.name}.html`;
+    link.download = `سند_${invoiceNumber}_${item.name}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -132,8 +160,8 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 sm:p-8 my-8 text-right flex flex-col max-h-[95vh] overflow-y-auto">
-        {/* Top Control Bar (Hidden when printing) */}
+      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 sm:p-8 my-8 text-right flex flex-col max-h-[95vh] overflow-y-auto">
+        {/* Top Control Bar */}
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200 no-print">
           <div className="flex items-center gap-2">
             <button
@@ -143,7 +171,7 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
               <ArrowRight className="w-4 h-4" />
               <span>رجوع</span>
             </button>
-            <span className="text-xs text-slate-500 font-medium">معاينة الفاتورة قبل الطباعة</span>
+            <span className="text-xs text-slate-500 font-medium">معاينة السند الرسمي المعتمد</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -174,21 +202,19 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
 
         {/* PRINTABLE VOUCHER CONTENT AREA */}
         <div className="p-6 sm:p-8 border-2 border-slate-200 rounded-2xl bg-white text-slate-900 printable-voucher">
-          {/* Voucher Header */}
-          <div className="flex items-start justify-between border-b-2 border-slate-800 pb-5 mb-6">
+          {/* Company Header */}
+          <div className="flex items-start justify-between border-b-2 border-slate-900 pb-5 mb-6">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold">
-                  <Boxes className="w-5 h-5" />
-                </div>
-                <h2 className="text-xl font-black text-slate-900">نظام مدهال الطيب لإدارة المخزون</h2>
+              <h2 className="text-xl font-black text-slate-900 mb-1">{companySettings.name}</h2>
+              <div className="text-xs text-slate-600 space-y-0.5">
+                <p>سجل تجاري: <span className="font-mono">{companySettings.commercialRegister}</span> | الرقم الضريبي: <span className="font-mono">{companySettings.taxId}</span></p>
+                <p>العنوان: {companySettings.address} | الجوال: <span className="font-mono">{companySettings.phone}</span></p>
               </div>
-              <p className="text-xs text-slate-500">سند حركة مخزنية معتمد وقابل للأرشفة</p>
             </div>
 
             <div className="text-left font-mono">
-              <div className="text-xs text-slate-500">رقم السند / الفاتورة</div>
-              <div className="text-lg font-black text-slate-900">#{invoiceNumber}</div>
+              <div className="text-xs text-slate-500">رقم السند</div>
+              <div className="text-xl font-black text-slate-900">#{invoiceNumber}</div>
               <div className="text-[11px] text-slate-500 mt-0.5">
                 {new Date(movement.date).toLocaleDateString('ar-SA')} ·{' '}
                 {new Date(movement.date).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
@@ -196,31 +222,89 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
             </div>
           </div>
 
-          {/* Title Banner */}
+          {/* Voucher Title */}
           <div
-            className={`p-3 rounded-xl mb-6 text-center font-bold text-sm ${
+            className={`p-3.5 rounded-xl mb-6 text-center font-bold text-sm flex items-center justify-center gap-2 ${
               isEntry
                 ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
                 : 'bg-rose-50 text-rose-900 border border-rose-200'
             }`}
           >
-            {voucherTitle}
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{voucherTitle}</span>
           </div>
 
-          {/* Details Table */}
+          {/* Destination / Supplier Details Card */}
+          {isEntry ? (
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs grid grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-500 block mb-0.5">المورد / الجهة الموردة:</span>
+                <span className="font-bold text-slate-900 text-sm">{movement.supplierName || 'مورد عام'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">رقم جوال المورد:</span>
+                <span className="font-bold font-mono text-slate-900">{movement.supplierPhone || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">عنوان المورد:</span>
+                <span className="font-medium text-slate-800">{movement.supplierAddress || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">الرقم الضريبي للمورد:</span>
+                <span className="font-mono font-medium text-slate-800">{movement.supplierTaxId || 'غير متوفر'}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <span className="text-slate-500 block mb-0.5">نوع الوجهة:</span>
+                <span className="font-bold text-slate-900">
+                  {movement.destinationType === 'BRANCH'
+                    ? 'فرع تابع'
+                    : movement.destinationType === 'CUSTOMER'
+                    ? 'عميل'
+                    : movement.destinationType || 'جهة أخرى'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">اسم الجهة المستلمة:</span>
+                <span className="font-bold text-slate-900 text-sm">{movement.destinationName || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">اسم المسؤول / المستلم:</span>
+                <span className="font-bold text-slate-900">{movement.destinationContactName || movement.destinationName || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">رقم جوال المستلم:</span>
+                <span className="font-bold font-mono text-slate-900">{movement.destinationPhone || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">العنوان / المدينة:</span>
+                <span className="font-medium text-slate-800">{movement.destinationAddress || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">الرقم الضريبي:</span>
+                <span className="font-mono font-medium text-slate-800">{movement.destinationTaxId || 'غير متوفر'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Items Table */}
           <div className="border border-slate-200 rounded-xl overflow-hidden mb-6 text-xs">
             <table className="w-full text-right">
               <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
+                  <th className="py-2.5 px-3 w-12 text-center">م</th>
                   <th className="py-2.5 px-3">بيان الصنف</th>
                   <th className="py-2.5 px-3">الرمز (SKU)</th>
                   <th className="py-2.5 px-3">القسم</th>
-                  <th className="py-2.5 px-3">الكمية المسجلة</th>
-                  <th className="py-2.5 px-3">المعادل بالوحدة الأساسية</th>
+                  <th className="py-2.5 px-3">الكمية</th>
+                  <th className="py-2.5 px-3">المعادل بالأساسية</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 <tr>
+                  <td className="py-3 px-3 text-center font-mono">1</td>
                   <td className="py-3 px-3 font-bold text-slate-900">{item.name}</td>
                   <td className="py-3 px-3 font-mono text-slate-600">{item.code}</td>
                   <td className="py-3 px-3 text-slate-600">{category?.name || '-'}</td>
@@ -236,12 +320,14 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
           </div>
 
           {/* Additional Info Box */}
-          <div className="grid grid-cols-2 gap-4 mb-6 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+          <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
             <div>
-              <span className="text-slate-500 block">نوع العملية:</span>
-              <span className="font-bold text-slate-900">
-                {isEntry ? 'توريد كميات جديدة إلى المستودع' : 'صرف كميات وتخفيض من الرصيد'}
-              </span>
+              <span className="text-slate-500 block">حالة السند:</span>
+              <span className="font-bold text-emerald-700">معتمد ومرحل ({movement.status || 'APPROVED'})</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">أمين المستودع / المُصدر:</span>
+              <span className="font-bold text-slate-900">{movement.createdByName || companySettings.managerName || 'إدارة النظام'}</span>
             </div>
             <div>
               <span className="text-slate-500 block">رصيد الصنف المتوفر حالياً:</span>
@@ -252,39 +338,40 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
             {movement.referenceNumber && (
               <div>
                 <span className="text-slate-500 block">المرجع الخارجي / رقم الإذن:</span>
-                <span className="font-bold font-mono text-slate-900">
-                  {movement.referenceNumber}
-                </span>
+                <span className="font-bold font-mono text-slate-900">{movement.referenceNumber}</span>
               </div>
             )}
             {movement.notes && (
-              <div className="col-span-2">
-                <span className="text-slate-500 block">ملاحظات وبيان الحركة:</span>
-                <span className="font-medium text-slate-800 leading-relaxed">
-                  {movement.notes}
-                </span>
+              <div className="col-span-2 pt-2 border-t border-slate-200">
+                <span className="text-slate-500 block mb-1">ملاحظات وبيان الحركة:</span>
+                <span className="font-medium text-slate-800 leading-relaxed">{movement.notes}</span>
               </div>
             )}
           </div>
 
-          {/* Signatures */}
-          <div className="grid grid-cols-3 gap-4 pt-8 mt-6 border-t border-slate-200 text-center text-xs">
+          {/* Signatures Section */}
+          <div className="grid grid-cols-3 gap-4 pt-8 mt-6 border-t-2 border-slate-800 text-center text-xs">
             <div>
-              <span className="text-slate-500 block mb-8 font-medium">أمين المستودع</span>
+              <span className="text-slate-600 block mb-1 font-bold">أمين المستودع</span>
+              <div className="text-slate-900 font-medium mb-8">{companySettings.managerName}</div>
               <div className="border-t border-dashed border-slate-400 pt-1 text-slate-400 text-[11px]">
                 التوقيع: .....................
               </div>
             </div>
             <div>
-              <span className="text-slate-500 block mb-8 font-medium">المستلم / المورد</span>
+              <span className="text-slate-600 block mb-1 font-bold">المستلم / مسؤول الفرع</span>
+              <div className="text-slate-900 font-bold mb-8">
+                {isEntry ? (movement.supplierName || 'المورد') : (movement.destinationContactName || movement.destinationName || 'المستلم')}
+              </div>
               <div className="border-t border-dashed border-slate-400 pt-1 text-slate-400 text-[11px]">
-                التوقيع: .....................
+                التوقيع والختم: .....................
               </div>
             </div>
             <div>
-              <span className="text-slate-500 block mb-8 font-medium">اعتماد الإدارة</span>
+              <span className="text-slate-600 block mb-1 font-bold">اعتماد الإدارة</span>
+              <div className="text-slate-900 font-medium mb-8">{companySettings.name}</div>
               <div className="border-t border-dashed border-slate-400 pt-1 text-slate-400 text-[11px]">
-                الختم والتوقيع
+                الختم والاعتماد
               </div>
             </div>
           </div>

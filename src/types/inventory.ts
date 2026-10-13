@@ -36,6 +36,7 @@ export interface Item {
 export interface Branch {
   id: string;
   name: string;
+  managerName?: string;
   city?: string;
   phone?: string;
   address?: string;
@@ -44,6 +45,28 @@ export interface Branch {
   archiveReason?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  taxId?: string;
+  notes?: string;
+  isArchived?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CompanySettings {
+  name: string;
+  commercialRegister: string;
+  taxId: string;
+  phone: string;
+  address: string;
+  managerName: string;
+  logoUrl?: string;
 }
 
 export type ShippingCarrier = 'SMSA' | 'FASTLO' | 'ARAMEX' | 'OTHER';
@@ -69,17 +92,34 @@ export interface StockMovement {
   referenceNumber?: string; // Invoice / Receipt / Doc number
   notes?: string;
   
-  // Dispatch & Outgoing specific metadata
-  destinationType?: 'DIRECT' | 'BRANCH' | 'CUSTOMER';
+  // Destination / Source Snapshot metadata
+  destinationType?: 'DIRECT' | 'BRANCH' | 'CUSTOMER' | 'DAMAGED' | 'TRANSFER' | 'OTHER';
+  destinationId?: string;
+  destinationName?: string;
+  destinationContactName?: string;
+  destinationPhone?: string;
+  destinationAddress?: string;
+  destinationTaxId?: string;
+  
+  // Legacy / Direct fields
   branchId?: string;
   branchName?: string;
   customerName?: string;
   customerPhone?: string;
   customerCity?: string;
+
+  // Supplier Snapshot for IN movements
+  supplierName?: string;
+  supplierPhone?: string;
+  supplierAddress?: string;
+  supplierTaxId?: string;
+
   shippingCompany?: ShippingCarrier;
   shippingTrackingNumber?: string;
   batchId?: string; // Groups multi-item dispatches together
   
+  createdByName?: string;
+  status?: 'APPROVED' | 'CANCELLED';
   createdAt: string;
   updatedAt: string;
 }
@@ -179,3 +219,21 @@ export interface ReturnRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface AuditLogEntry {
+  id: string;
+  operationType: 'تعديل' | 'حذف' | string;
+  entityType: 'صنف' | 'قسم' | 'وحدة' | 'فرع' | 'عميل' | 'حركة مخزنية' | 'مرتجع' | 'إعدادات' | string;
+  entityId: string;
+  entityName: string;
+  reason: string;
+  userName: string;
+  timestamp: string;
+  dataBefore: any;
+  dataAfter: any | null;
+  // Backward compatibility fields
+  action?: string;
+  details?: string;
+  performedBy?: string;
+}
+

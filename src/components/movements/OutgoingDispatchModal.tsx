@@ -3,7 +3,7 @@ import {
   X,
   Truck,
   Building2,
-  User,
+  Users,
   Plus,
   Trash2,
   AlertCircle,
@@ -14,13 +14,12 @@ import {
   FileText,
   Package,
   Layers,
-  ArrowUpRight,
-  ChevronDown,
+  ArrowRight,
   Edit2,
   Save,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
-import { Branch, Item, ShippingCarrier, StockMovement } from '../../types/inventory';
+import { Branch, Customer, Item, ShippingCarrier, StockMovement } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 
 interface OutgoingDispatchModalProps {
@@ -30,7 +29,7 @@ interface OutgoingDispatchModalProps {
 }
 
 interface DispatchRowItem {
-  id: string; // Row unique ID
+  id: string;
   itemId: string;
   unitId: string;
   quantity: string;
@@ -47,10 +46,11 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     units,
     categories,
     branches,
+    customers,
+    companySettings,
     addBranch,
     updateBranch,
-    deleteBranch,
-    clearAllBranches,
+    addCustomer,
     getItemStock,
     addMultiItemDispatch,
     showToast,
@@ -61,27 +61,19 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     [items]
   );
 
-  // Destination mode
+  // Destination mode: 'BRANCH' | 'CUSTOMER'
   const [destinationType, setDestinationType] = useState<'BRANCH' | 'CUSTOMER'>('BRANCH');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
 
-  // Quick Add Branch modal/inline form
-  const [showAddBranch, setShowAddBranch] = useState(false);
-  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
-  const [newBranchName, setNewBranchName] = useState('');
-  const [newBranchCity, setNewBranchCity] = useState('');
-  const [newBranchPhone, setNewBranchPhone] = useState('');
+  // Quick Add Customer Modal inside Dispatch
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustAddress, setNewCustAddress] = useState('');
+  const [newCustTaxId, setNewCustTaxId] = useState('');
 
-  // Branch editing state
-  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
-  const [editBranchName, setEditBranchName] = useState('');
-  const [editBranchCity, setEditBranchCity] = useState('');
-  const [editBranchPhone, setEditBranchPhone] = useState('');
-
-  // Customer shipping details
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerCity, setCustomerCity] = useState('');
+  // Shipping details for customer
   const [shippingCompany, setShippingCompany] = useState<ShippingCarrier>('SMSA');
   const [trackingNumber, setTrackingNumber] = useState('');
 
@@ -98,20 +90,22 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
   const [createdVoucherNo, setCreatedVoucherNo] = useState<string | null>(null);
   const [createdMovements, setCreatedMovements] = useState<StockMovement[] | null>(null);
 
-  // Initialize form state
   useEffect(() => {
     if (isOpen) {
       setDestinationType('BRANCH');
       if (branches.length > 0) {
         setSelectedBranchId(branches[0].id);
       }
-      setShowAddBranch(false);
-      setNewBranchName('');
-      setNewBranchCity('');
-      setNewBranchPhone('');
-      setCustomerName('');
-      setCustomerPhone('');
-      setCustomerCity('');
+      if (customers.length > 0) {
+        setSelectedCustomerId(customers[0].id);
+      } else {
+        setSelectedCustomerId('');
+      }
+      setShowAddCustomerModal(false);
+      setNewCustName('');
+      setNewCustPhone('');
+      setNewCustAddress('');
+      setNewCustTaxId('');
       setShippingCompany('SMSA');
       setTrackingNumber('');
       setVoucherDate(new Date().toISOString().substring(0, 16));
@@ -121,14 +115,13 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       setCreatedVoucherNo(null);
       setCreatedMovements(null);
 
-      // Initialize first item row
       if (activeItems.length > 0) {
         const firstItem = activeItems[0];
         setRows([
           {
             id: 'row_' + Date.now(),
             itemId: firstItem.id,
-            unitId: firstItem.baseUnitId, // Automatically default to the item's specific unit!
+            unitId: firstItem.baseUnitId,
             quantity: '1',
             notes: '',
           },
@@ -137,19 +130,8 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
         setRows([]);
       }
     }
-  }, [isOpen, activeItems, branches]);
+  }, [isOpen, activeItems, branches, customers]);
 
-  // When user selects a branch or default changes
-  useEffect(() => {
-    if (branches && branches.length > 0 && !selectedBranchId) {
-      setSelectedBranchId(branches[0].id);
-    } else if (branches && branches.length > 0 && !branches.some(b => b.id === selectedBranchId)) {
-        // If current selection is deleted, reset to first
-        setSelectedBranchId(branches[0].id);
-    }
-  }, [branches]); // Removed selectedBranchId to prevent loop
-
-  // Add a new row to multi-item dispatch
   const handleAddRow = () => {
     if (activeItems.length === 0) return;
     const defaultItem = activeItems[0];
@@ -158,92 +140,58 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       {
         id: 'row_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
         itemId: defaultItem.id,
-        unitId: defaultItem.baseUnitId, // Item's specific unit automatically!
+        unitId: defaultItem.baseUnitId,
         quantity: '1',
         notes: '',
       },
     ]);
   };
 
-  // Remove a row
   const handleRemoveRow = (rowId: string) => {
     if (rows.length <= 1) return;
     setRows((prev) => prev.filter((r) => r.id !== rowId));
   };
 
-  // Change selected item in a row -> automatically assigns the item's base unit!
   const handleItemChange = (rowId: string, newItemId: string) => {
     const item = activeItems.find((i) => i.id === newItemId);
     if (!item) return;
-
     setRows((prev) =>
       prev.map((r) =>
         r.id === rowId
           ? {
               ...r,
               itemId: newItemId,
-              unitId: item.baseUnitId, // Auto-selects this item's specific base unit!
+              unitId: item.baseUnitId,
             }
           : r
       )
     );
   };
 
-  // Change unit in a row
-  const handleUnitChange = (rowId: string, newUnitId: string) => {
-    setRows((prev) =>
-      prev.map((r) => (r.id === rowId ? { ...r, unitId: newUnitId } : r))
-    );
-  };
-
-  // Change quantity in a row
-  const handleQuantityChange = (rowId: string, newQty: string) => {
-    setRows((prev) =>
-      prev.map((r) => (r.id === rowId ? { ...r, quantity: newQty } : r))
-    );
-  };
-
-  // Change notes in a row
-  const handleRowNotesChange = (rowId: string, newNotes: string) => {
-    setRows((prev) =>
-      prev.map((r) => (r.id === rowId ? { ...r, notes: newNotes } : r))
-    );
-  };
-
-  // Branch editing handlers
-  const startEditBranch = (b: Branch) => {
-    setEditingBranchId(b.id);
-    setEditBranchName(b.name);
-    setEditBranchCity(b.city || '');
-    setEditBranchPhone(b.phone || '');
-  };
-
-  const saveEditBranch = (id: string) => {
-    updateBranch(id, editBranchName, editBranchCity, editBranchPhone);
-    setEditingBranchId(null);
-  };
-
-  // Quick add new branch handler
-  const handleQuickAddBranch = () => {
-    if (!newBranchName.trim()) {
-      showToast('يرجى إدخال اسم الفرع', 'error');
+  const handleQuickAddCustomer = () => {
+    if (!newCustName.trim()) {
+      showToast('يرجى إدخال اسم العميل', 'error');
       return;
     }
-
-    const res = addBranch(newBranchName, newBranchCity, newBranchPhone);
-    if (res.success && res.branch) {
-      setSelectedBranchId(res.branch.id);
-      setShowAddBranch(false);
-      setNewBranchName('');
-      setNewBranchCity('');
-      setNewBranchPhone('');
-      showToast(`تمت إضافة الفرع بنجاح: ${res.branch.name}`, 'success');
+    const res = addCustomer({
+      name: newCustName.trim(),
+      phone: newCustPhone.trim() || undefined,
+      address: newCustAddress.trim() || undefined,
+      taxId: newCustTaxId.trim() || undefined,
+    });
+    if (res.success && res.customer) {
+      setSelectedCustomerId(res.customer.id);
+      setShowAddCustomerModal(false);
+      setNewCustName('');
+      setNewCustPhone('');
+      setNewCustAddress('');
+      setNewCustTaxId('');
+      showToast(`تمت إضافة العميل بنجاح: ${res.customer.name}`, 'success');
     } else {
-      showToast(res.error || 'حدث خطأ أثناء إضافة الفرع', 'error');
+      showToast(res.error || 'خطأ أثناء إضافة العميل', 'error');
     }
   };
 
-  // Cumulative requested base qty per item across all rows
   const itemTotalRequestedBase = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const r of rows) {
@@ -261,7 +209,6 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     return totals;
   }, [rows, activeItems]);
 
-  // Calculations & Validations per row
   const rowValidations = useMemo(() => {
     return rows.map((row) => {
       const item = activeItems.find((i) => i.id === row.itemId);
@@ -299,16 +246,12 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     });
   }, [rows, activeItems, units, categories, getItemStock, itemTotalRequestedBase]);
 
-  const hasAnyStockError = rowValidations.some((v) => v.isExceeded);
-  const totalBaseQtyDispatched = rowValidations.reduce((sum, v) => sum + (v.baseQty || 0), 0);
-
-  // Submit Multi-Item Dispatch
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
     if (rows.length === 0) {
-      const err = 'يرجى إضافة صنف واحد على الأقل في أمر التصدير.';
+      const err = 'يرجى إضافة صنف واحد على الأقل في سند الصرف.';
       setFormError(err);
       showToast(err, 'error');
       playNotificationSound('alert');
@@ -316,15 +259,15 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     }
 
     if (destinationType === 'BRANCH' && !selectedBranchId) {
-      const err = 'يرجى اختيار الفرع المستلم أو إضافة فرع جديد.';
+      const err = 'يرجى تحديد الفرع المستلم قبل الحفظ.';
       setFormError(err);
       showToast(err, 'error');
       playNotificationSound('alert');
       return;
     }
 
-    if (destinationType === 'CUSTOMER' && !customerName.trim()) {
-      const err = 'يرجى كتابة اسم العميل المستلم للشحنة.';
+    if (destinationType === 'CUSTOMER' && !selectedCustomerId) {
+      const err = 'يرجى تحديد العميل المستلم للشحنة قبل الحفظ أو إضافة عميل جديد.';
       setFormError(err);
       showToast(err, 'error');
       playNotificationSound('alert');
@@ -341,7 +284,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
         return;
       }
       if (val.isExceeded) {
-        const err = `الرصيد غير متوفر للصنف "${val.item?.name}": إجمالي الكمية المطلوبة للتصدير (${val.totalRequestedForThisItem} ${val.baseUnit?.name}) تتجاوز الرصيد المتوفر بالمخزن (${val.currentStock} ${val.baseUnit?.name}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
+        const err = `الرصيد غير متوفر للصنف "${val.item?.name}": إجمالي الكمية المطلوبة (${val.totalRequestedForThisItem} ${val.baseUnit?.name}) تتجاوز الرصيد المتوفر (${val.currentStock} ${val.baseUnit?.name}).`;
         setFormError(err);
         showToast(err, 'error');
         playNotificationSound('alert');
@@ -350,14 +293,15 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     }
 
     const branch = branches.find((b) => b.id === selectedBranchId);
+    const customer = customers.find((c) => c.id === selectedCustomerId);
 
     const result = addMultiItemDispatch({
       destinationType,
       branchId: destinationType === 'BRANCH' ? selectedBranchId : undefined,
       branchName: destinationType === 'BRANCH' ? branch?.name : undefined,
-      customerName: destinationType === 'CUSTOMER' ? customerName.trim() : undefined,
-      customerPhone: destinationType === 'CUSTOMER' ? customerPhone.trim() : undefined,
-      customerCity: destinationType === 'CUSTOMER' ? customerCity.trim() : undefined,
+      customerName: destinationType === 'CUSTOMER' ? customer?.name : undefined,
+      customerPhone: destinationType === 'CUSTOMER' ? customer?.phone : undefined,
+      customerCity: destinationType === 'CUSTOMER' ? customer?.address : undefined,
       shippingCompany: destinationType === 'CUSTOMER' ? shippingCompany : undefined,
       shippingTrackingNumber: destinationType === 'CUSTOMER' ? trackingNumber.trim() : undefined,
       referenceNumber: voucherReference.trim(),
@@ -381,862 +325,619 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
         onDispatchComplete(result.voucherNumber, result.movements);
       }
     } else {
-      setFormError(result.error || 'حدث خطأ أثناء حفظ أمر التصدير.');
+      setFormError(result.error || 'حدث خطأ أثناء حفظ سند الصرف.');
     }
   };
 
-  // Printable Dispatch HTML generator
-  const handlePrintOrDownloadVoucher = () => {
-    if (!createdVoucherNo || !createdMovements) return;
+  if (!isOpen) return null;
 
-    const branch = branches.find((b) => b.id === selectedBranchId);
-    const destTitle = destinationType === 'BRANCH' ? `فرع: ${branch?.name || ''}` : `عميل: ${customerName}`;
-    const carrierName =
-      shippingCompany === 'SMSA'
-        ? 'شركة سمسا إكسبريس (SMSA)'
-        : shippingCompany === 'FASTLO'
-        ? 'شركة فاستيلو (Fastlo)'
-        : shippingCompany === 'ARAMEX'
-        ? 'شركة أرامكس الدولي (Aramex)'
-        : 'شركة شحن معتمدة';
+  const selectedBranch = branches.find((b) => b.id === selectedBranchId);
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
-    const htmlContent = `<!DOCTYPE html>
+  // If voucher created, show printable modal view
+  if (createdVoucherNo && createdMovements && createdMovements.length > 0) {
+    const firstMov = createdMovements[0];
+    const handlePrint = () => window.print();
+    const handleDownloadHTML = () => {
+      const htmlContent = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>سند تصدير وشحنة - ${createdVoucherNo}</title>
+  <title>سند صرف مخزني رسمي - #${createdVoucherNo}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
     body { font-family: 'Tajawal', sans-serif; padding: 40px; color: #0f172a; margin: 0; background: #fff; }
-    .header { border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .badge { display: inline-block; padding: 4px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; font-size: 13px; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; font-size: 13px; }
-    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; text-align: right; }
-    th { background: #f1f5f9; padding: 10px; border: 1px solid #cbd5e1; font-weight: bold; }
-    td { padding: 10px; border: 1px solid #cbd5e1; }
-    .total-row { background: #f8fafc; font-weight: bold; font-size: 14px; }
-    .signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 50px; text-align: center; font-size: 13px; }
-    .sig-line { border-top: 1px dashed #94a3b8; margin-top: 40px; padding-top: 8px; }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; }
+    .company-title { font-size: 18px; font-weight: 900; margin: 0 0 4px 0; }
+    .company-meta { font-size: 11px; color: #475569; line-height: 1.5; }
+    .title { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; text-align: center; padding: 12px; font-weight: bold; border-radius: 8px; font-size: 15px; margin-bottom: 20px; }
+    .dest-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; text-align: right; }
+    th { background: #f1f5f9; padding: 10px; font-size: 12px; border: 1px solid #cbd5e1; }
+    td { padding: 10px; font-size: 12px; border: 1px solid #cbd5e1; }
+    .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 24px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; text-align: center; margin-top: 40px; font-size: 12px; }
+    .sig-line { border-top: 1px dashed #94a3b8; margin-top: 40px; padding-top: 6px; color: #64748b; font-size: 11px; }
     @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
   <div class="header">
     <div>
-      <h1 style="margin: 0 0 6px 0; font-size: 22px;">سند تصدير وبوليصة خروج مخزني</h1>
-      <div style="font-size: 13px; color: #64748b;">رقم السند: <strong>${createdVoucherNo}</strong> · التاريخ: ${new Date(voucherDate).toLocaleString('ar-SA')}</div>
+      <h2 class="company-title">${companySettings.name}</h2>
+      <div class="company-meta">
+        س.ت: ${companySettings.commercialRegister} | الرقم الضريبي: ${companySettings.taxId}<br/>
+        العنوان: ${companySettings.address} | الجوال: ${companySettings.phone}
+      </div>
     </div>
     <div style="text-align: left;">
-      <div style="font-size: 18px; font-weight: 900; color: #047857;">نظام مدهال الطيب</div>
-      <div style="font-size: 12px; color: #64748b;">إدارة المستودعات والشحنات</div>
+      <div style="font-size: 11px; color: #64748b;">رقم السند</div>
+      <div style="font-size: 18px; font-weight: 900;">#${createdVoucherNo}</div>
+      <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${new Date(firstMov.date).toLocaleString('ar-SA')}</div>
     </div>
   </div>
 
-  <div class="grid">
-    <div class="card">
-      <div style="color: #64748b; margin-bottom: 4px;">جهة الصادر (المستلم):</div>
-      <div style="font-size: 15px; font-weight: bold;">${destTitle}</div>
-      ${destinationType === 'CUSTOMER' && customerCity ? `<div style="margin-top: 4px;">المدينة: ${customerCity}</div>` : ''}
-      ${destinationType === 'CUSTOMER' && customerPhone ? `<div>الجوال: ${customerPhone}</div>` : ''}
-      ${destinationType === 'BRANCH' && branch?.city ? `<div>المدينة: ${branch.city} · الهاتف: ${branch.phone || '-'}</div>` : ''}
-    </div>
-    <div class="card">
-      <div style="color: #64748b; margin-bottom: 4px;">طريقة النقل / الشحن:</div>
-      <div style="font-size: 15px; font-weight: bold;">${destinationType === 'CUSTOMER' ? carrierName : 'نقل داخلي بين الفروع'}</div>
-      ${trackingNumber ? `<div style="margin-top: 4px;">رقم البوليصة / التتبع: <strong>${trackingNumber}</strong></div>` : ''}
-      ${generalNotes ? `<div style="margin-top: 4px; color: #64748b;">ملاحظات: ${generalNotes}</div>` : ''}
-    </div>
+  <div class="title">سند صرف مخزني رسمي (إذن خروج متعدد الأصناف)</div>
+
+  <div class="dest-card">
+    <div><strong>نوع الوجهة:</strong> ${destinationType === 'BRANCH' ? 'فرع تابع' : 'عميل'}</div>
+    <div><strong>اسم الجهة المستلمة:</strong> ${destinationType === 'BRANCH' ? selectedBranch?.name : selectedCustomer?.name}</div>
+    <div><strong>اسم المسؤول / المستلم:</strong> ${destinationType === 'BRANCH' ? (selectedBranch?.managerName || selectedBranch?.name) : selectedCustomer?.name}</div>
+    <div><strong>رقم الجوال:</strong> ${destinationType === 'BRANCH' ? (selectedBranch?.phone || 'غير متوفر') : (selectedCustomer?.phone || 'غير متوفر')}</div>
+    <div><strong>العنوان / المدينة:</strong> ${destinationType === 'BRANCH' ? (selectedBranch?.address || selectedBranch?.city) : selectedCustomer?.address}</div>
+    <div><strong>الرقم الضريبي:</strong> ${destinationType === 'BRANCH' ? 'غير متوفر' : (selectedCustomer?.taxId || 'غير متوفر')}</div>
   </div>
 
   <table>
     <thead>
       <tr>
-        <th style="width: 40px;">#</th>
-        <th>اسم الصنف والرمز</th>
-        <th>الكمية المنصرفة</th>
-        <th>الوحدة المعتمدة</th>
-        <th>المعادل بالأساسي</th>
-        <th>ملاحظات الصنف</th>
+        <th>م</th>
+        <th>بيان الصنف</th>
+        <th>الرمز (SKU)</th>
+        <th>الكمية المصروفة</th>
+        <th>المعادل بالوحدة الأساسية</th>
       </tr>
     </thead>
     <tbody>
-      ${createdMovements.map((m, idx) => {
-        const it = items.find((i) => i.id === m.itemId);
-        const u = units.find((un) => un.id === m.unitId);
-        const bu = units.find((un) => un.id === it?.baseUnitId);
-        return `
-          <tr>
+      ${createdMovements
+        .map((m, idx) => {
+          const itm = items.find((i) => i.id === m.itemId);
+          const u = units.find((un) => un.id === m.unitId);
+          const bu = units.find((un) => un.id === itm?.baseUnitId);
+          return `<tr>
             <td>${idx + 1}</td>
-            <td><strong>${it?.name}</strong> <span style="color:#64748b; font-size:11px;">(${it?.code})</span></td>
-            <td style="font-weight:bold; font-size:14px; color:#b91c1c;">-${m.quantity}</td>
-            <td>${u?.name}</td>
-            <td>${m.baseQuantity} ${bu?.name}</td>
-            <td>${m.notes || '-'}</td>
-          </tr>
-        `;
-      }).join('')}
-      <tr class="total-row">
-        <td colspan="2">إجمالي الأصناف: ${createdMovements.length} صنف</td>
-        <td colspan="4">إجمالي الكميات المنصرفة: ${createdMovements.reduce((sum, m) => sum + m.quantity, 0)} وحدة</td>
-      </tr>
+            <td><strong>${itm?.name || ''}</strong></td>
+            <td>${itm?.code || ''}</td>
+            <td><strong>${m.quantity} ${u?.name || ''}</strong></td>
+            <td><strong>${m.baseQuantity} ${bu?.name || ''}</strong></td>
+          </tr>`;
+        })
+        .join('')}
     </tbody>
   </table>
 
-  <div class="signatures">
-    <div>
-      <div>مسؤول المستودع والصرف</div>
-      <div class="sig-line">التوقيع / الختم</div>
-    </div>
-    <div>
-      <div>مندوب الشحن / السائق</div>
-      <div class="sig-line">التوقيع / الهوية</div>
-    </div>
-    <div>
-      <div>المستلم / الفرع</div>
-      <div class="sig-line">تأكيد الاستلام</div>
-    </div>
+  <div class="info-box">
+    <div><strong>إجمالي عدد البنود:</strong> ${createdMovements.length} أصناف</div>
+    <div><strong>حالة السند:</strong> معتمد ومرحل (APPROVED)</div>
+    <div><strong>أمين المستودع:</strong> ${companySettings.managerName}</div>
+    ${generalNotes ? `<div style="grid-column: span 2;"><strong>ملاحظات:</strong> ${generalNotes}</div>` : ''}
   </div>
 
-  <script>
-    window.onload = function() { window.print(); }
-  </script>
+  <div class="signatures">
+    <div>
+      <div>أمين المستودع</div>
+      <div class="sig-line">التوقيع: .....................</div>
+    </div>
+    <div>
+      <div>المستلم / مسؤول الفرع</div>
+      <div style="font-weight: bold; margin-top: 4px; color: #1e293b;">
+        ${destinationType === 'BRANCH' ? (selectedBranch?.managerName || selectedBranch?.name) : selectedCustomer?.name}
+      </div>
+      <div class="sig-line">التوقيع والختم: .....................</div>
+    </div>
+    <div>
+      <div>اعتماد الإدارة</div>
+      <div class="sig-line">الختم والاعتماد</div>
+    </div>
+  </div>
 </body>
 </html>`;
 
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `سند_تصدير_${createdVoucherNo}_${new Date().toISOString().split('T')[0]}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `سند_صرف_${createdVoucherNo}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    };
 
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-slate-200">
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-rose-900 via-rose-800 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shadow-xs">
-              <Truck className="w-5 h-5 text-rose-200" />
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+        <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 sm:p-8 text-right flex flex-col max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+              <h3 className="text-base font-black text-slate-900">تم إصدار وحفظ سند الصرف بنجاح (رقم: #{createdVoucherNo})</h3>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-white">
-                  قسم صادر (خرجيات وتصدير متعدد الأصناف)
-                </h3>
-              </div>
-              <p className="text-xs text-rose-200/80 mt-0.5">
-                تصدير شحنات للفروع أو للعملاء عبر شركات الشحن مع التعيين التلقائي للوحدات
-              </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDownloadHTML}
+                className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-slate-600" />
+                <span>تنزيل السند</span>
+              </button>
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة السند</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
+          <div className="p-6 border-2 border-slate-200 rounded-2xl bg-white space-y-4 text-xs">
+            <div className="flex justify-between items-start border-b pb-4">
+              <div>
+                <h4 className="text-base font-black text-slate-900">{companySettings.name}</h4>
+                <p className="text-slate-500">س.ت: {companySettings.commercialRegister} | الرقم الضريبي: {companySettings.taxId}</p>
+              </div>
+              <div className="text-left font-mono">
+                <div className="text-slate-500">رقم السند</div>
+                <div className="text-lg font-black">#{createdVoucherNo}</div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl grid grid-cols-2 gap-3">
+              <div>
+                <span className="text-slate-500 block">الجهة المستلمة:</span>
+                <span className="font-bold text-slate-900">
+                  {destinationType === 'BRANCH' ? selectedBranch?.name : selectedCustomer?.name}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">رقم الجوال:</span>
+                <span className="font-bold font-mono">
+                  {destinationType === 'BRANCH' ? selectedBranch?.phone : selectedCustomer?.phone}
+                </span>
+              </div>
+            </div>
+
+            <div className="border rounded-xl overflow-hidden">
+              <table className="w-full text-right">
+                <thead className="bg-slate-100 font-bold border-b">
+                  <tr>
+                    <th className="p-2.5">م</th>
+                    <th className="p-2.5">الصنف</th>
+                    <th className="p-2.5">الكمية</th>
+                    <th className="p-2.5">المعادل بالأساسية</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {createdMovements.map((m, idx) => {
+                    const itm = items.find((i) => i.id === m.itemId);
+                    const u = units.find((un) => un.id === m.unitId);
+                    const bu = units.find((un) => un.id === itm?.baseUnitId);
+                    return (
+                      <tr key={m.id}>
+                        <td className="p-2.5 font-mono">{idx + 1}</td>
+                        <td className="p-2.5 font-bold">{itm?.name}</td>
+                        <td className="p-2.5 font-mono">{m.quantity} {u?.name}</td>
+                        <td className="p-2.5 font-mono font-bold">{m.baseQuantity} {bu?.name}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={onClose}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl cursor-pointer"
+              >
+                إتمام وإغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 sm:p-8 my-8 text-right flex flex-col max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900">سند صرف مخزني رسمي (إذن خروج متعدد الأصناف)</h3>
+              <p className="text-xs text-slate-500">اختر وجهة الصرف (فرع أو عميل) وحدد الأصناف والكميات المطلوبة</p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-            aria-label="إغلاق"
+            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Successful Created Voucher Modal View */}
-        {createdVoucherNo ? (
-          <div className="p-6 sm:p-8 text-center flex-1 overflow-y-auto space-y-6">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <div>
-              <h4 className="text-xl font-black text-slate-900 mb-1">
-                تم تسجيل أمر التصدير والصرف بنجاح!
-              </h4>
-              <p className="text-xs text-slate-500 font-mono">
-                رقم السند: <strong className="text-slate-800 text-sm font-bold">{createdVoucherNo}</strong> · تم خصم الأرصدة وتوثيق خروج {createdMovements?.length} أصناف
-              </p>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 max-w-lg mx-auto text-xs space-y-2 text-right">
-              <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
-                <span className="text-slate-500">الوجهة / المستلم:</span>
-                <span className="font-bold text-slate-900">
-                  {destinationType === 'BRANCH'
-                    ? `فرع: ${branches.find((b) => b.id === selectedBranchId)?.name}`
-                    : `العميل: ${customerName} (${shippingCompany})`}
-                </span>
-              </div>
-              <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
-                <span className="text-slate-500">عدد الأصناف في الشحنة:</span>
-                <span className="font-bold text-slate-900">{createdMovements?.length} أصناف</span>
-              </div>
-              {trackingNumber && (
-                <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
-                  <span className="text-slate-500">رقم بوليصة التتبع:</span>
-                  <span className="font-mono font-bold text-slate-900">{trackingNumber}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
-              <button
-                onClick={handlePrintOrDownloadVoucher}
-                className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
-              >
-                <Printer className="w-4 h-4 text-emerald-400" />
-                <span>طباعة سند التصدير والبوليصة (PDF)</span>
-              </button>
-              <button
-                onClick={handlePrintOrDownloadVoucher}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>تنزيل مستند السند</span>
-              </button>
-              <button
-                onClick={onClose}
-                className="px-4 py-2.5 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                إغلاق والعودة
-              </button>
-            </div>
+        {formError && (
+          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{formError}</span>
           </div>
-        ) : (
-          /* Form Content */
-          <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-            <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
-              {/* Form Error Banner */}
-              {formError && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span className="font-medium leading-relaxed">{formError}</span>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6 text-xs">
+          {/* Destination Selector Section */}
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+            <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-slate-600" />
+              <span>1. تحديد جهة الصرف المستلمة (إلزامي):</span>
+            </h4>
+
+            {/* Destination Type Toggle */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setDestinationType('BRANCH')}
+                className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                  destinationType === 'BRANCH'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                <span>صرف إلى فرع تابع</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDestinationType('CUSTOMER')}
+                className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs transition-all cursor-pointer border ${
+                  destinationType === 'CUSTOMER'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>صرف إلى عميل</span>
+              </button>
+            </div>
+
+            {/* Branch Selection Details */}
+            {destinationType === 'BRANCH' && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-700 font-bold">اختر الفرع المستلم *</label>
                 </div>
-              )}
+                <select
+                  value={selectedBranchId}
+                  onChange={(e) => setSelectedBranchId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
+                >
+                  {branches.length === 0 ? (
+                    <option value="">لا توجد فروع مسجلة، يرجى إضافتها من إدارة الفروع</option>
+                  ) : (
+                    branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} {b.city ? `(${b.city})` : ''}
+                      </option>
+                    ))
+                  )}
+                </select>
 
-              {/* Step 1: Destination Selection (تصدير لفرع أو لعميل) */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <Truck className="w-4 h-4 text-rose-600" />
-                    <span>1. تحديد وجهة التصدير والخروج</span>
-                  </span>
-
-                  {/* Destination Segmented Toggle */}
-                  <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => setDestinationType('BRANCH')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        destinationType === 'BRANCH'
-                          ? 'bg-rose-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>تصدير إلى فرع</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDestinationType('CUSTOMER')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        destinationType === 'CUSTOMER'
-                          ? 'bg-rose-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <User className="w-3.5 h-3.5" />
-                      <span>تصدير وشحن لعميل</span>
-                    </button>
+                {selectedBranch && (
+                  <div className="p-3 bg-white rounded-xl border border-emerald-200 text-slate-700 space-y-1">
+                    <p><strong>اسم الفرع:</strong> {selectedBranch.name}</p>
+                    <p><strong>مسؤول الفرع:</strong> {selectedBranch.managerName || 'غير متوفر'}</p>
+                    <p><strong>الجوال:</strong> <span className="font-mono">{selectedBranch.phone || 'غير متوفر'}</span></p>
+                    <p><strong>العنوان:</strong> {selectedBranch.address || selectedBranch.city || 'غير متوفر'}</p>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Customer Selection Details */}
+            {destinationType === 'CUSTOMER' && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-700 font-bold">اختر العميل المستلم *</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomerModal(true)}
+                    className="text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة عميل سريع</span>
+                  </button>
                 </div>
 
-                {/* Option A: Branch Selection */}
-                {destinationType === 'BRANCH' && (
-                  <div className="space-y-3">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
-                      <div className="flex-1 w-full">
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          اختر الفرع المستلم:
-                        </label>
-                        {branches.length === 0 ? (
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between gap-2">
-                            <span>لا توجد فروع مسجلة. يرجى إضافة فرع جديد:</span>
-                          </div>
-                        ) : (
-                          <div className="relative">
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)}
-                                className="flex-1 flex items-center justify-between px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-rose-500 shadow-2xs"
-                              >
-                                {branches.find((b) => b.id === selectedBranchId)?.name || 'اختر الفرع المستلم'}
-                                <ChevronDown className="w-4 h-4 text-slate-400" />
-                              </button>
-                            </div>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => setSelectedCustomerId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-emerald-500"
+                >
+                  {customers.length === 0 ? (
+                    <option value="">لا توجد عملاء مسجلون، انقر "إضافة عميل سريع" أعلاه</option>
+                  ) : (
+                    customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.phone ? `- ${c.phone}` : ''}
+                      </option>
+                    ))
+                  )}
+                </select>
 
-                            {isBranchDropdownOpen && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto">
-                                { (branches || []).map((b) => (
-                                  <div key={b?.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 transition-colors">
-                                    {editingBranchId === b?.id ? (
-                                      <div className="flex-1 flex gap-1">
-                                        <input value={editBranchName} onChange={(e) => setEditBranchName(e.target.value)} className="flex-1 px-2 py-1 border rounded text-xs" />
-                                        <button type="button" onClick={() => saveEditBranch(b?.id)} className="p-1.5 text-emerald-600"><Save className="w-4 h-4" /></button>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setSelectedBranchId(b?.id || '');
-                                            setIsBranchDropdownOpen(false);
-                                          }}
-                                          className="flex-1 text-right"
-                                        >
-                                          <div className="text-xs font-bold text-slate-900">{b?.name || 'فرع بدون اسم'}</div>
-                                          {b?.phone && <div className="text-[10px] text-slate-500 font-mono mt-0.5">هاتف: {b?.phone}</div>}
-                                        </button>
-                                        <div className="flex items-center gap-1">
-                                          <button type="button" onClick={() => startEditBranch(b)} className="p-1.5 text-slate-400 hover:text-emerald-600"><Edit2 className="w-3.5 h-3.5" /></button>
-                                          <button type="button" onClick={() => deleteBranch(b?.id || '')} className="p-1.5 text-slate-400 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                {selectedCustomer && (
+                  <div className="p-3 bg-white rounded-xl border border-emerald-200 text-slate-700 space-y-1">
+                    <p><strong>اسم العميل:</strong> {selectedCustomer.name}</p>
+                    <p><strong>الجوال:</strong> <span className="font-mono">{selectedCustomer.phone || 'غير متوفر'}</span></p>
+                    <p><strong>العنوان:</strong> {selectedCustomer.address || 'غير متوفر'}</p>
+                    <p><strong>الرقم الضريبي:</strong> <span className="font-mono">{selectedCustomer.taxId || 'غير متوفر'}</span></p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+          {/* Items Table Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Package className="w-4 h-4 text-slate-600" />
+                <span>2. أصناف سند الصرف المخزني:</span>
+              </h4>
+              <button
+                type="button"
+                onClick={handleAddRow}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <span>إضافة صنف آخر</span>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {rows.map((row, index) => {
+                const val = rowValidations[index];
+                return (
+                  <div
+                    key={row.id}
+                    className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 relative group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-slate-700 text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-mono">
+                        بند #{index + 1}
+                      </span>
+                      {rows.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => setShowAddBranch(!showAddBranch)}
-                          className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                          onClick={() => handleRemoveRow(row.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="حذف البند"
                         >
-                          <Plus className="w-3.5 h-3.5 text-rose-600" />
-                          <span>{showAddBranch ? 'إلغاء' : '+ إضافة فرع جديد'}</span>
+                          <Trash2 className="w-4 h-4" />
                         </button>
+                      )}
+                    </div>
 
-                        {branches.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('هل تريد حذف وتصفير جميع الفروع للبدء من الصفر؟')) {
-                                clearAllBranches();
-                                setSelectedBranchId('');
-                              }
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-xl text-xs font-medium transition-colors cursor-pointer"
-                            title="تصفير وحذف كل الفروع"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">تصفير الفروع</span>
-                          </button>
-                        )}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-5">
+                        <label className="block text-slate-600 font-medium mb-1">الصنف:</label>
+                        <select
+                          value={row.itemId}
+                          onChange={(e) => handleItemChange(row.id, e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium focus:border-emerald-500"
+                        >
+                          {activeItems.map((i) => (
+                            <option key={i.id} value={i.id}>
+                              {i.name} (رمز: {i.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block text-slate-600 font-medium mb-1">الوحدة:</label>
+                        <select
+                          value={row.unitId}
+                          onChange={(e) => {
+                            const valId = e.target.value;
+                            setRows((prev) =>
+                              prev.map((r) => (r.id === row.id ? { ...r, unitId: valId } : r))
+                            );
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium focus:border-emerald-500"
+                        >
+                          {val?.item && (
+                            <>
+                              <option value={val.item.baseUnitId}>
+                                {units.find((u) => u.id === val.item.baseUnitId)?.name || 'وحدة أساسية'} (أساسية)
+                              </option>
+                              {val.item.conversions.map((conv) => {
+                                const uName = units.find((u) => u.id === conv.unitId)?.name || conv.unitId;
+                                return (
+                                  <option key={conv.unitId} value={conv.unitId}>
+                                    {uName} (معامل: {conv.factorToBase})
+                                  </option>
+                                );
+                              })}
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <label className="block text-slate-600 font-medium mb-1">الكمية المطلوبة:</label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0.001"
+                          value={row.quantity}
+                          onChange={(e) => {
+                            const valQty = e.target.value;
+                            setRows((prev) =>
+                              prev.map((r) => (r.id === row.id ? { ...r, quantity: valQty } : r))
+                            );
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold font-mono focus:border-emerald-500"
+                          placeholder="الكمية..."
+                        />
                       </div>
                     </div>
 
-                    {/* Inline Add Branch Form */}
-                    {showAddBranch && (
-                      <div className="p-3 bg-white rounded-xl border border-rose-200/80 shadow-2xs space-y-3">
-                        <span className="text-xs font-bold text-rose-900 block">
-                          إضافة فرع جديد إلى قائمة الفروع المعتمدة:
+                    {val && (
+                      <div className="flex items-center justify-between text-[11px] pt-1 text-slate-500">
+                        <span>
+                          الرصيد المتوفر: <strong className="font-mono text-slate-800">{val.currentStock} {val.baseUnit?.name}</strong>
                         </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <input
-                            type="text"
-                            placeholder="اسم الفرع (مثلاً: فرع الأحساء)"
-                            value={newBranchName}
-                            onChange={(e) => setNewBranchName(e.target.value)}
-                            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                          />
-                          <input
-                            type="text"
-                            placeholder="المدينة"
-                            value={newBranchCity}
-                            onChange={(e) => setNewBranchCity(e.target.value)}
-                            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                          />
-                          <input
-                            type="text"
-                            placeholder="رقم الهاتف / الجوال"
-                            value={newBranchPhone}
-                            onChange={(e) => setNewBranchPhone(e.target.value)}
-                            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                          />
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setShowAddBranch(false)}
-                            className="px-3 py-1 text-slate-600 text-xs font-medium"
-                          >
-                            إلغاء
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleQuickAddBranch}
-                            disabled={!newBranchName.trim()}
-                            className="px-3 py-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"
-                          >
-                            حفظ الفرع واختياره
-                          </button>
-                        </div>
+                        {val.isExceeded ? (
+                          <span className="text-rose-600 font-bold">عفواً، الكمية المطلوبة تتجاوز الرصيد المتوفر!</span>
+                        ) : (
+                          <span className="text-emerald-700 font-medium">الكمية معادلها: {val.baseQty} {val.baseUnit?.name}</span>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+                );
+              })}
+            </div>
+          </div>
 
-                {/* Option B: Customer Shipping Details */}
-                {destinationType === 'CUSTOMER' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        اسم العميل <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="اسم العميل المستلم"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:border-rose-500 shadow-2xs"
-                      />
-                    </div>
+          {/* Reference & Notes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">رقم المرجع / رقم الإذن (اختياري)</label>
+              <input
+                type="text"
+                value={voucherReference}
+                onChange={(e) => setVoucherReference(e.target.value)}
+                placeholder="DSP-2026-XXXX"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-bold mb-1">ملاحظات عامة على السند (اختياري)</label>
+              <input
+                type="text"
+                value={generalNotes}
+                onChange={(e) => setGeneralNotes(e.target.value)}
+                placeholder="شروط التسليم، رقم وسيلة النقل..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+              />
+            </div>
+          </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        شركة الشحن المعتمدة
-                      </label>
-                      <select
-                        value={shippingCompany}
-                        onChange={(e) => setShippingCompany(e.target.value as ShippingCarrier)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:border-rose-500 shadow-2xs"
-                      >
-                        <option value="SMSA">🚚 شركة سمسا إكسبريس (SMSA)</option>
-                        <option value="FASTLO">📦 شركة فاستيلو (Fastlo)</option>
-                        <option value="ARAMEX">✈️ شركة أرامكس الدولي (Aramex)</option>
-                        <option value="OTHER">🚛 شركة شحن أخرى</option>
-                      </select>
-                    </div>
+          <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              className="flex items-center gap-2 px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-colors shadow-md cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>حفظ واعتماد سند الصرف</span>
+            </button>
+          </div>
+        </form>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        مدينة الوجهة
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="الرياض، جدة، الدمام..."
-                        value={customerCity}
-                        onChange={(e) => setCustomerCity(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:border-rose-500 shadow-2xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        رقم البوليصة / التتبع
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="رقم بوليصة الشحن"
-                        value={trackingNumber}
-                        onChange={(e) => setTrackingNumber(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-medium focus:border-rose-500 shadow-2xs"
-                      />
-                    </div>
-                  </div>
-                )}
+        {/* Quick Add Customer Modal */}
+        {showAddCustomerModal && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 text-right space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b">
+                <h4 className="font-black text-slate-900 text-sm">إضافة عميل جديد سريعاً</h4>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              {/* Step 2: Multi-Item Table (الأصناف المتعددة للشحنة مع الوحدة التلقائية) */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <Package className="w-4 h-4 text-emerald-600" />
-                    <span>2. جدول أصناف الشحنة (متعدد الأصناف بالوحدات المخصصة)</span>
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={handleAddRow}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>+ إضافة صنف آخر للشحنة</span>
-                  </button>
-                </div>
-
-                {/* Mobile Cards View (Below sm) & Desktop/Tablet Table (sm and up) */}
-                
-                {/* 1. Mobile Cards Layout */}
-                <div className="md:hidden space-y-3">
-                  {rows.map((row, idx) => {
-                    const val = rowValidations[idx];
-                    const currentItem = val.item;
-
-                    // Build available units for this row's item
-                    const itemUnits: { id: string; name: string; factor: number; isBase: boolean }[] = [];
-                    if (currentItem) {
-                      const bu = units.find((u) => u.id === currentItem.baseUnitId);
-                      if (bu) itemUnits.push({ id: bu.id, name: `${bu.name} (أساسية)`, factor: 1, isBase: true });
-                      for (const c of currentItem.conversions) {
-                        const cu = units.find((u) => u.id === c.unitId);
-                        if (cu) itemUnits.push({ id: cu.id, name: `${cu.name} (×${c.factorToBase})`, factor: c.factorToBase, isBase: false });
-                      }
-                    }
-
-                    return (
-                      <div
-                        key={row.id}
-                        className={`p-3.5 bg-white rounded-xl border ${
-                          val.isExceeded ? 'border-rose-400 bg-rose-50/20 ring-1 ring-rose-300' : 'border-slate-200'
-                        } shadow-xs space-y-2.5`}
-                      >
-                        {/* Header: Row #, Selected Item Name badge & Delete Button */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black bg-rose-100 text-rose-900 px-2.5 py-0.5 rounded-md">
-                              #{idx + 1}
-                            </span>
-                            <span className="text-xs font-black text-slate-900">
-                              {currentItem ? currentItem.name : 'اختر صنفاً للتصدير'}
-                            </span>
-                          </div>
-                          {rows.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(row.id)}
-                              className="text-rose-600 hover:text-rose-800 p-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>حذف الصنف</span>
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Item Picker */}
-                        <div>
-                          <label className="block text-xs font-black text-rose-950 mb-1">
-                            📦 اسم الصنف للتصدير:
-                          </label>
-                          <select
-                            value={row.itemId}
-                            onChange={(e) => handleItemChange(row.id, e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:bg-white focus:border-rose-500 shadow-2xs"
-                          >
-                            {activeItems.map((i) => {
-                              const stock = getItemStock(i.id);
-                              return (
-                                <option key={i.id} value={i.id}>
-                                  {i.name} (المتوفر: {stock})
-                                </option>
-                              );
-                            })}
-                          </select>
-
-                          {/* Prominently Highlighted Selected Item Name Box */}
-                          {currentItem && (
-                            <div className="mt-2 p-2 bg-rose-50/90 border border-rose-200 rounded-lg flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Package className="w-4 h-4 text-rose-600 shrink-0" />
-                                <div>
-                                  <span className="text-xs font-black text-rose-950 block">
-                                    اسم الصنف: <span className="text-rose-700 text-sm font-black">{currentItem.name}</span>
-                                  </span>
-                                  <span className="text-[10px] text-slate-500 font-mono">
-                                    كود: {currentItem.code} {val.category ? `· ${val.category.name}` : ''}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="text-left bg-white px-2 py-0.5 rounded border border-rose-200">
-                                <span className="text-[9px] text-slate-500 block">المتاح بالمستودع</span>
-                                <span className={`text-xs font-black font-mono ${val.currentStock <= 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                  {val.currentStock} {val.baseUnit?.name}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Unit and Quantity Row */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              الوحدة المخصصة:
-                            </label>
-                            <select
-                              value={row.unitId}
-                              onChange={(e) => handleUnitChange(row.id, e.target.value)}
-                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-rose-500"
-                            >
-                              {itemUnits.map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              الكمية المطلوبة:
-                            </label>
-                            <input
-                              type="number"
-                              min="0.001"
-                              step="any"
-                              required
-                              value={row.quantity}
-                              onChange={(e) => handleQuantityChange(row.id, e.target.value)}
-                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-black font-mono text-center focus:bg-white focus:border-rose-500"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Stock Balance & Notes */}
-                        <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                          <div className="text-[11px]">
-                            <span className="text-slate-500 font-medium">الرصيد المتاح: </span>
-                            <span className="font-black font-mono text-slate-900">
-                              {val.currentStock} {val.baseUnit?.name}
-                            </span>
-                          </div>
-
-                          <div className="flex-1 max-w-[50%] mr-2">
-                            <input
-                              type="text"
-                              placeholder="ملاحظة..."
-                              value={row.notes}
-                              onChange={(e) => handleRowNotesChange(row.id, e.target.value)}
-                              className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* 2. Desktop/Tablet Table Layout */}
-                <div className="hidden md:block border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                  <table className="w-full text-right text-xs">
-                    <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3 w-8">#</th>
-                        <th className="py-2.5 px-3 min-w-[260px]">📦 اسم الصنف للتصدير</th>
-                        <th className="py-2.5 px-3 w-40">الوحدة المخصصة للصنف</th>
-                        <th className="py-2.5 px-3 w-32">الكمية</th>
-                        <th className="py-2.5 px-3 w-36">الرصيد المتاح</th>
-                        <th className="py-2.5 px-3">ملاحظة</th>
-                        <th className="py-2.5 px-3 w-10 text-center">حذف</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {rows.map((row, idx) => {
-                        const val = rowValidations[idx];
-                        const currentItem = val.item;
-
-                        // Build available units for this row's item
-                        const itemUnits: { id: string; name: string; factor: number; isBase: boolean }[] = [];
-                        if (currentItem) {
-                          const bu = units.find((u) => u.id === currentItem.baseUnitId);
-                          if (bu) itemUnits.push({ id: bu.id, name: `${bu.name} (أساسية)`, factor: 1, isBase: true });
-                          for (const c of currentItem.conversions) {
-                            const cu = units.find((u) => u.id === c.unitId);
-                            if (cu) itemUnits.push({ id: cu.id, name: `${cu.name} (×${c.factorToBase})`, factor: c.factorToBase, isBase: false });
-                          }
-                        }
-
-                        return (
-                          <tr key={row.id} className="hover:bg-slate-50/70">
-                            <td className="py-2.5 px-3 font-mono text-slate-400 font-bold">{idx + 1}</td>
-
-                            {/* Item Selector & Explicit Prominent Item Name Display */}
-                            <td className="py-2.5 px-3">
-                              <div className="space-y-1.5">
-                                <select
-                                  value={row.itemId}
-                                  onChange={(e) => handleItemChange(row.id, e.target.value)}
-                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-black text-slate-900 focus:border-rose-500 shadow-2xs cursor-pointer"
-                                >
-                                  {activeItems.map((i) => (
-                                    <option key={i.id} value={i.id} className="text-slate-900 font-bold py-1">
-                                      {i.name} (كود: {i.code})
-                                    </option>
-                                  ))}
-                                </select>
-
-                                {/* Prominent Chosen Item Name Badge */}
-                                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-xs font-bold">
-                                  <Package className="w-4 h-4 text-emerald-600 shrink-0" />
-                                  <span className="text-slate-600 text-[11px]">الصنف المختار:</span>
-                                  <span className="text-xs sm:text-sm font-extrabold text-emerald-900 truncate">
-                                    {currentItem?.name || activeItems.find((i) => i.id === row.itemId)?.name || 'اختر صنفاً'}
-                                  </span>
-                                  {currentItem && (
-                                    <span className="text-slate-400 font-mono text-[10px] mr-auto">({currentItem.code})</span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Unit Selector (Defaults automatically to item's own base unit!) */}
-                            <td className="py-2 px-3">
-                              <select
-                                value={row.unitId}
-                                onChange={(e) => handleUnitChange(row.id, e.target.value)}
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-rose-500"
-                              >
-                                {itemUnits.map((u) => (
-                                  <option key={u.id} value={u.id}>
-                                    {u.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-
-                            {/* Quantity Input */}
-                            <td className="py-2 px-3">
-                              <input
-                                type="number"
-                                min="0.001"
-                                step="any"
-                                required
-                                value={row.quantity}
-                                onChange={(e) => handleQuantityChange(row.id, e.target.value)}
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold font-mono text-center focus:border-rose-500"
-                              />
-                            </td>
-
-                            {/* Available Stock Indicator */}
-                            <td className="py-2 px-3">
-                              <span className="font-bold text-slate-800 font-mono">
-                                {val.currentStock} {val.baseUnit?.name}
-                              </span>
-                            </td>
-
-                            {/* Note */}
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                placeholder="ملاحظة خاصة بالصنف"
-                                value={row.notes}
-                                onChange={(e) => handleRowNotesChange(row.id, e.target.value)}
-                                className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-600"
-                              />
-                            </td>
-
-                            {/* Remove Row Button */}
-                            <td className="py-2 px-3 text-center">
-                              {rows.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveRow(row.id)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors cursor-pointer"
-                                  title="حذف هذا الصنف"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Stock Warning Box */}
-                {hasAnyStockError && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>تنبيه: الكميات المطلوبة لبعض الأصناف تتجاوز الرصيد المتوفر في المستودع؛ يرجى تعديل الكميات للمتابعة.</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Step 3: Date, Reference & General Notes */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    رقم السند / الإشارة
-                  </label>
+                  <label className="block text-slate-700 font-bold mb-1">اسم العميل *</label>
                   <input
                     type="text"
-                    value={voucherReference}
-                    onChange={(e) => setVoucherReference(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold"
+                    value={newCustName}
+                    onChange={(e) => setNewCustName(e.target.value)}
+                    placeholder="اسم العميل أو الجهة..."
+                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    تاريخ ووقت الخروج
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={voucherDate}
-                    onChange={(e) => setVoucherDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    ملاحظات عامة على السند
-                  </label>
+                  <label className="block text-slate-700 font-bold mb-1">رقم الجوال</label>
                   <input
                     type="text"
-                    placeholder="ملاحظات التسليم أو السائق..."
-                    value={generalNotes}
-                    onChange={(e) => setGeneralNotes(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                    value={newCustPhone}
+                    onChange={(e) => setNewCustPhone(e.target.value)}
+                    placeholder="05xxxxxxxx"
+                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">العنوان / المدينة</label>
+                  <input
+                    type="text"
+                    value={newCustAddress}
+                    onChange={(e) => setNewCustAddress(e.target.value)}
+                    placeholder="المدينة، الحي..."
+                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">الرقم الضريبي (اختياري)</label>
+                  <input
+                    type="text"
+                    value={newCustTaxId}
+                    onChange={(e) => setNewCustTaxId(e.target.value)}
+                    placeholder="300xxxxxxxxxxxx"
+                    className="w-full px-3.5 py-2 bg-slate-50 border rounded-xl font-mono"
                   />
                 </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-slate-600">
-                  <span className="font-bold text-slate-900">{rows.length} أصناف</span> في أمر التصدير · الإجمالي: <span className="font-mono font-bold text-rose-700">{totalBaseQtyDispatched}</span> وحدة أساسية
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 border border-slate-200 hover:bg-slate-200/60 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    إلغاء
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={hasAnyStockError || rows.length === 0}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer ${
-                      hasAnyStockError || rows.length === 0
-                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                        : 'bg-rose-600 hover:bg-rose-700 text-white'
-                    }`}
-                  >
-                    <ArrowUpRight className="w-4 h-4" />
-                    <span>تأكيد التصدير وإصدار السند</span>
-                  </button>
-                </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickAddCustomer}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl"
+                >
+                  حفظ وإضافة
+                </button>
               </div>
             </div>
-          </form>
+          </div>
         )}
       </div>
     </div>

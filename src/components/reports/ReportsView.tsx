@@ -2399,7 +2399,7 @@ export const ReportsView: React.FC = () => {
                   <span>تنزيل التقرير الرسمي HTML/PDF</span>
                 </button>
                 <button
-                  onClick={handleDownloadReportHTML}
+                  onClick={() => window.print()}
                   className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                 >
                   <Printer className="w-4 h-4 text-emerald-400" />

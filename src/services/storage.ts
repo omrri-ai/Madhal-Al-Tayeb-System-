@@ -1,4 +1,4 @@
-import { Branch, Category, Item, ReturnRecord, StockMovement, Unit } from '../types/inventory';
+import { Branch, Category, CompanySettings, Customer, Item, ReturnRecord, StockMovement, Unit } from '../types/inventory';
 
 const DB_NAME = 'MakhzouniInventoryDB';
 const DB_VERSION = 4;
@@ -84,6 +84,8 @@ export interface InventoryDatabaseData {
   movements: StockMovement[];
   branches?: Branch[];
   returns?: ReturnRecord[];
+  customers?: Customer[];
+  settings?: CompanySettings;
 }
 
 export const isGenuineItem = (obj: any): obj is Item => {

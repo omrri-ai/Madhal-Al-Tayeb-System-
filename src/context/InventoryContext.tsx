@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import {
   Branch,
   Category,
+  CompanySettings,
+  Customer,
   InventoryStats,
   Item,
   ItemStockSummary,
@@ -22,6 +24,7 @@ import {
   AuditLogEntry,
   CloudBackupRecord,
 } from '../services/firestoreStorage';
+import { OWNER_EMAIL } from '../services/firebase';
 
 interface InventoryContextType {
   // State
@@ -54,20 +57,28 @@ interface InventoryContextType {
 
   // Branch actions
   addBranch: (name: string, city?: string, phone?: string, notes?: string) => { success: boolean; error?: string; branch?: Branch };
-  updateBranch: (id: string, name: string, city?: string, phone?: string, notes?: string) => { success: boolean; error?: string };
-  deleteBranch: (id: string) => { success: boolean; error?: string };
+  updateBranch: (id: string, name: string, city?: string, phone?: string, notes?: string, reason?: string) => { success: boolean; error?: string };
+  deleteBranch: (id: string, reason?: string) => { success: boolean; error?: string };
   clearAllBranches: () => void;
+
+  // Customers actions & state
+  customers: Customer[];
+  companySettings: CompanySettings;
+  addCustomer: (data: Omit<Customer, 'id' | 'createdAt'>) => { success: boolean; error?: string; customer?: Customer };
+  updateCustomer: (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>, reason?: string) => { success: boolean; error?: string };
+  deleteCustomer: (id: string, reason?: string) => { success: boolean; error?: string };
+  saveCompanySettings: (settings: CompanySettings) => { success: boolean; error?: string };
 
   // Units actions
   addUnit: (name: string, symbol?: string, description?: string) => { success: boolean; error?: string; unit?: Unit };
-  updateUnit: (id: string, name: string, symbol?: string, description?: string) => { success: boolean; error?: string };
-  deleteUnit: (id: string) => { success: boolean; error?: string };
+  updateUnit: (id: string, name: string, symbol?: string, description?: string, reason?: string) => { success: boolean; error?: string };
+  deleteUnit: (id: string, reason?: string) => { success: boolean; error?: string };
   seedCommonUnits: () => void;
 
   // Categories actions
   addCategory: (name: string, description?: string, color?: string) => { success: boolean; error?: string; category?: Category };
-  updateCategory: (id: string, name: string, description?: string, color?: string) => { success: boolean; error?: string };
-  deleteCategory: (id: string) => { success: boolean; error?: string };
+  updateCategory: (id: string, name: string, description?: string, color?: string, reason?: string) => { success: boolean; error?: string };
+  deleteCategory: (id: string, reason?: string) => { success: boolean; error?: string };
 
   // Items actions
   addItem: (itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'isArchived' | 'isDeleted'>) => { success: boolean; error?: string; item?: Item };
@@ -126,7 +137,7 @@ interface InventoryContextType {
     referenceNumber?: string;
     notes?: string;
   }) => { success: boolean; error?: string };
-  deleteMovement: (id: string) => { success: boolean; error?: string };
+  deleteMovement: (id: string, reason?: string) => { success: boolean; error?: string };
 
   // Returns actions
   addReturn: (returnData: {
@@ -153,7 +164,7 @@ interface InventoryContextType {
   }) => { success: boolean; error?: string; returnId?: string; returnNumber?: string };
   approveReturn: (id: string) => { success: boolean; error?: string };
   cancelReturn: (id: string, cancellationReason?: string) => { success: boolean; error?: string };
-  deleteReturnRecord: (id: string) => { success: boolean; error?: string };
+  deleteReturnRecord: (id: string, reason?: string) => { success: boolean; error?: string };
 
   // Helpers & Calculations
   getItemStock: (itemId: string) => number; // in base units
@@ -203,6 +214,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [returns, setReturns] = useState<ReturnRecord[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [companySettings, setCompanySettings] = useState<CompanySettings>({
+    name: 'نظام مخزون مدهال الطيب',
+    commercialRegister: '1010000000',
+    taxId: '300000000000003',
+    phone: '0500000000',
+    address: 'المملكة العربية السعودية',
+    managerName: 'إدارة المخزون',
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('synced');
   const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false);
@@ -219,6 +239,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const movementsRef = React.useRef(movements);
   const branchesRef = React.useRef(branches);
   const returnsRef = React.useRef(returns);
+  const customersRef = React.useRef(customers);
+
+  useEffect(() => {
+    customersRef.current = customers;
+  }, [customers]);
 
   useEffect(() => {
     unitsRef.current = units;
@@ -285,6 +310,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setMovements(loaded.movements || []);
       setBranches(currentBranches);
       setReturns(loaded.returns || []);
+      setCustomers(loaded.customers || []);
+      if (loaded.settings) {
+        setCompanySettings(loaded.settings);
+      }
       setCloudSyncStatus(navigator.onLine ? 'synced' : 'offline');
       setIsOffline(!navigator.onLine);
 
@@ -333,6 +362,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       onReturns: (cloudReturns) => {
         setReturns(cloudReturns);
         returnsRef.current = cloudReturns;
+      },
+      onCustomers: (cloudCustomers) => {
+        setCustomers(cloudCustomers);
+        customersRef.current = cloudCustomers;
       },
     });
 
@@ -524,6 +557,91 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [persistChanges, showToast]);
 
+  // CUSTOMERS ACTIONS
+  const addCustomer = useCallback(
+    (data: Omit<Customer, 'id' | 'createdAt'>) => {
+      const now = new Date().toISOString();
+      const newCustomer: Customer = {
+        id: 'cust_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        name: data.name.trim(),
+        phone: data.phone?.trim() || undefined,
+        address: data.address?.trim() || undefined,
+        taxId: data.taxId?.trim() || undefined,
+        notes: data.notes?.trim() || undefined,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const updated = [newCustomer, ...customers];
+      setCustomers(updated);
+      customersRef.current = updated;
+      FirestoreStorage.saveCustomer(newCustomer).catch((err) => console.warn(err));
+      return { success: true, customer: newCustomer };
+    },
+    [customers]
+  );
+
+  const updateCustomer = useCallback(
+    (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>, reason?: string) => {
+      const existing = customers.find((c) => c.id === id);
+      if (!existing) return { success: false, error: 'العميل غير موجود' };
+      const updatedCust: Customer = {
+        ...existing,
+        ...data,
+        name: data.name !== undefined ? data.name.trim() : existing.name,
+        updatedAt: new Date().toISOString(),
+      };
+      const updated = customers.map((c) => (c.id === id ? updatedCust : c));
+      setCustomers(updated);
+      customersRef.current = updated;
+      FirestoreStorage.saveCustomer(updatedCust).catch((err) => console.warn(err));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'عميل',
+        entityId: id,
+        entityName: updatedCust.name,
+        reason: reason?.trim() || 'تعديل بيانات العميل',
+        userName: OWNER_EMAIL,
+        dataBefore: existing,
+        dataAfter: updatedCust,
+      }).catch((e) => console.warn(e));
+      return { success: true };
+    },
+    [customers]
+  );
+
+  const deleteCustomer = useCallback(
+    (id: string, reason?: string) => {
+      const existing = customers.find((c) => c.id === id);
+      if (!existing) return { success: false, error: 'العميل غير موجود' };
+      const updated = customers.filter((c) => c.id !== id);
+      setCustomers(updated);
+      customersRef.current = updated;
+      FirestoreStorage.deleteCustomer(id, existing.name).catch((err) => console.warn(err));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'عميل',
+        entityId: id,
+        entityName: existing.name,
+        reason: reason?.trim() || 'حذف العميل من النظام',
+        userName: OWNER_EMAIL,
+        dataBefore: existing,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
+      return { success: true };
+    },
+    [customers]
+  );
+
+  const saveCompanySettings = useCallback(
+    (settings: CompanySettings) => {
+      setCompanySettings(settings);
+      FirestoreStorage.saveCompanySettings(settings).catch((err) => console.warn(err));
+      showToast('تم حفظ إعدادات المنشأة وسندات الطباعة بنجاح', 'success');
+      return { success: true };
+    },
+    [showToast]
+  );
+
   // Branch operations
   const addBranch = useCallback(
     (name: string, city?: string, phone?: string, notes?: string) => {
@@ -558,7 +676,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const deleteBranch = useCallback(
-    (id: string) => {
+    (id: string, reason?: string) => {
       const target = branches.find((b) => b.id === id);
       if (!target) return { success: false, error: 'الفرع غير موجود' };
 
@@ -568,6 +686,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         FirestoreStorage.deleteBranch(id, target.name).catch((e) => console.warn(e));
       } catch {}
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'فرع',
+        entityId: id,
+        entityName: target.name,
+        reason: reason?.trim() || 'حذف الفرع من النظام',
+        userName: OWNER_EMAIL,
+        dataBefore: target,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, items, movements, updated, returns);
       return { success: true };
     },
@@ -575,26 +703,37 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const updateBranch = useCallback(
-    (id: string, name: string, city?: string, phone?: string, notes?: string) => {
+    (id: string, name: string, city?: string, phone?: string, notes?: string, reason?: string) => {
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الفرع' };
 
       const exists = branches.some((b) => b.id !== id && (b?.name || '').trim().toLowerCase() === cleanName.toLowerCase());
       if (exists) return { success: false, error: `الفرع "${cleanName}" مسجل مسبقاً` };
 
+      const target = branches.find((b) => b.id === id);
       const updatedBranch: Branch = {
         id,
         name: cleanName,
         city: city?.trim(),
         phone: phone?.trim(),
         notes: notes?.trim(),
-        createdAt: branches.find((b) => b.id === id)?.createdAt || new Date().toISOString(),
+        createdAt: target?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       const updated = branches.map((b) => (b.id === id ? updatedBranch : b));
       setBranches(updated);
       branchesRef.current = updated;
       FirestoreStorage.saveBranch(updatedBranch).catch((e) => console.warn(e));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'فرع',
+        entityId: id,
+        entityName: cleanName,
+        reason: reason?.trim() || 'تعديل بيانات الفرع',
+        userName: OWNER_EMAIL,
+        dataBefore: target || null,
+        dataAfter: updatedBranch,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, items, movements, updated, returns);
       return { success: true };
     },
@@ -837,7 +976,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const updateUnit = useCallback(
-    (id: string, name: string, symbol?: string, description?: string) => {
+    (id: string, name: string, symbol?: string, description?: string, reason?: string) => {
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الوحدة' };
 
@@ -846,11 +985,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
       if (duplicate) return { success: false, error: 'يوجد وحدة أخرى بهذا الاسم' };
 
-      const updatedUnit = { id, name: cleanName, symbol: symbol?.trim(), description: description?.trim(), createdAt: units.find(u => u.id === id)?.createdAt || new Date().toISOString() };
+      const target = units.find((u) => u.id === id);
+      const updatedUnit = { id, name: cleanName, symbol: symbol?.trim(), description: description?.trim(), createdAt: target?.createdAt || new Date().toISOString() };
       const updated = units.map((u) => (u.id === id ? updatedUnit : u));
       setUnits(updated);
       unitsRef.current = updated;
       FirestoreStorage.saveUnit(updatedUnit).catch((e) => console.warn(e));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'وحدة',
+        entityId: id,
+        entityName: cleanName,
+        reason: reason?.trim() || 'تعديل بيانات الوحدة',
+        userName: OWNER_EMAIL,
+        dataBefore: target || null,
+        dataAfter: updatedUnit,
+      }).catch((e) => console.warn(e));
       persistChanges(updated, categories, items, movements, branches, returns);
       showToast(`تم تعديل الوحدة "${cleanName}" بنجاح`, 'success');
       return { success: true };
@@ -859,7 +1009,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const deleteUnit = useCallback(
-    (id: string) => {
+    (id: string, reason?: string) => {
       const unitToDelete = units.find((u) => u.id === id);
       if (!unitToDelete) return { success: false, error: 'الوحدة غير موجودة' };
 
@@ -881,6 +1031,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         FirestoreStorage.deleteUnit(id, unitToDelete.name).catch((e) => console.warn(e));
       } catch {}
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'وحدة',
+        entityId: id,
+        entityName: unitToDelete.name,
+        reason: reason?.trim() || 'حذف الوحدة العامة',
+        userName: OWNER_EMAIL,
+        dataBefore: unitToDelete,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(updated, categories, items, movements, branches, returns);
       showToast(`تم حذف الوحدة "${unitToDelete.name}" بنجاح`, 'success');
       return { success: true };
@@ -948,7 +1108,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const updateCategory = useCallback(
-    (id: string, name: string, description?: string, color?: string) => {
+    (id: string, name: string, description?: string, color?: string, reason?: string) => {
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم القسم' };
 
@@ -957,17 +1117,28 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
       if (duplicate) return { success: false, error: 'يوجد قسم آخر بهذا الاسم' };
 
+      const target = categories.find((c) => c.id === id);
       const updatedCategory: Category = {
         id,
         name: cleanName,
         description: description?.trim(),
         color,
-        createdAt: categories.find((c) => c.id === id)?.createdAt || new Date().toISOString(),
+        createdAt: target?.createdAt || new Date().toISOString(),
       };
       const updated = categories.map((c) => (c.id === id ? updatedCategory : c));
       setCategories(updated);
       categoriesRef.current = updated;
       FirestoreStorage.saveCategory(updatedCategory).catch((e) => console.warn(e));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'قسم',
+        entityId: id,
+        entityName: cleanName,
+        reason: reason?.trim() || 'تعديل بيانات القسم',
+        userName: OWNER_EMAIL,
+        dataBefore: target || null,
+        dataAfter: updatedCategory,
+      }).catch((e) => console.warn(e));
       persistChanges(units, updated, items, movements, branches, returns);
       showToast(`تم تعديل القسم "${cleanName}" بنجاح`, 'success');
       return { success: true };
@@ -976,7 +1147,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const deleteCategory = useCallback(
-    (id: string) => {
+    (id: string, reason?: string) => {
       const cat = categories.find((c) => c.id === id);
       if (!cat) return { success: false, error: 'القسم غير موجود' };
 
@@ -993,6 +1164,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         FirestoreStorage.deleteCategory(id, cat.name).catch((e) => console.warn(e));
       } catch {}
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'قسم',
+        entityId: id,
+        entityName: cat.name,
+        reason: reason?.trim() || 'حذف القسم من النظام',
+        userName: OWNER_EMAIL,
+        dataBefore: cat,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(units, updated, items, movements, branches, returns);
       showToast(`تم حذف القسم "${cat.name}" بنجاح`, 'success');
       return { success: true };
@@ -1171,6 +1352,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       FirestoreStorage.saveItem(updatedItem).catch((err) => {
         console.warn('Auto-save update item to Firestore deferred:', err);
       });
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'صنف',
+        entityId: id,
+        entityName: updatedItem.name,
+        reason: cleanReason,
+        userName: OWNER_EMAIL,
+        dataBefore: existing,
+        dataAfter: updatedItem,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, updated, movements, branches, returns);
       showToast(`تم حفظ تعديلات الصنف "${updatedItem.name}" بنجاح`, 'success');
       return { success: true };
@@ -1193,6 +1384,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setItems(updated);
       itemsRef.current = updated;
       FirestoreStorage.saveItem(updatedItem).catch((e) => console.warn(e));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'صنف',
+        entityId: id,
+        entityName: item.name,
+        reason: `أرشفة الصنف: ${cleanReason}`,
+        userName: OWNER_EMAIL,
+        dataBefore: item,
+        dataAfter: updatedItem,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, updated, movements, branches, returns);
       showToast(`تم أرشفة الصنف "${item.name}" (السبب: ${cleanReason})`, 'info');
       return { success: true };
@@ -1232,6 +1433,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setItems(updated);
       itemsRef.current = updated;
       FirestoreStorage.saveItem(updatedItem).catch((e) => console.warn(e));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'صنف',
+        entityId: id,
+        entityName: item.name,
+        reason: cleanReason,
+        userName: OWNER_EMAIL,
+        dataBefore: item,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, updated, movements, branches, returns);
       showToast(`تم نقل الصنف "${item.name}" إلى سلة المحذوفات (السبب: ${cleanReason})`, 'info');
       return { success: true };
@@ -1280,6 +1491,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         FirestoreStorage.deleteItem(id, item.name).catch((e) => console.warn(e));
       } catch {}
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'صنف',
+        entityId: id,
+        entityName: item.name,
+        reason: cleanReason,
+        userName: OWNER_EMAIL,
+        dataBefore: item,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, updatedItems, movements, branches, returns);
       showToast(`تم الحذف النهائي للصنف "${item.name}"`, 'success');
       return { success: true };
@@ -1619,6 +1840,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       FirestoreStorage.saveMovement(updatedMovement).catch((err) => {
         console.warn('Auto-save update movement to Firestore deferred:', err);
       });
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'حركة مخزنية',
+        entityId: id,
+        entityName: `${item.name} (${updatedMovement.type === 'IN' ? 'وارد' : 'صادر'})`,
+        reason: data.notes?.trim() || 'تعديل كمية/بيانات الحركة المخزنية',
+        userName: OWNER_EMAIL,
+        dataBefore: existing,
+        dataAfter: updatedMovement,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, items, updatedMovements, branches, returns);
       showToast(`تم تعديل الحركة بنجاح`, 'success');
       return { success: true };
@@ -1627,7 +1858,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const deleteMovement = useCallback(
-    (id: string) => {
+    (id: string, reason?: string) => {
       const existing = movements.find((m) => m.id === id);
       if (!existing) return { success: false, error: 'الحركة غير موجودة' };
 
@@ -1652,6 +1883,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         FirestoreStorage.deleteMovement(id).catch((e) => console.warn(e));
       } catch {}
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'حركة مخزنية',
+        entityId: id,
+        entityName: `${item.name} - ${existing.referenceNumber || existing.id}`,
+        reason: reason?.trim() || existing.notes || 'حذف الحركة المخزنية وتعديل الرصيد',
+        userName: OWNER_EMAIL,
+        dataBefore: existing,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, items, updatedMovements, branches, returns);
       showToast(`تم حذف الحركة بنجاح مع تحديث الرصيد`, 'success');
       return { success: true };
@@ -1937,6 +2178,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       setReturns(updatedReturns);
       setMovements(updatedMovements);
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'مرتجع',
+        entityId: id,
+        entityName: `سند مرتجع #${target.returnNumber}`,
+        reason: cancellationReason?.trim() || 'إلغاء سند المرتجع وتطبيق حركات عكسية',
+        userName: OWNER_EMAIL,
+        dataBefore: target,
+        dataAfter: updatedRecord,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, items, updatedMovements, branches, updatedReturns);
 
       showToast(`تم إلغاء سند المرتجع #${target.returnNumber} بنجاح وتطبيق الحركة العكسية`, 'success');
@@ -1946,7 +2197,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   const deleteReturnRecord = useCallback(
-    (id: string) => {
+    (id: string, reason?: string) => {
       const target = returns.find((r) => r.id === id);
       if (!target) return { success: false, error: 'السند غير موجود' };
       if (target.status === 'APPROVED') {
@@ -1958,6 +2209,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         FirestoreStorage.deleteReturn(id).catch((e) => console.warn(e));
       } catch {}
+      FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'مرتجع',
+        entityId: id,
+        entityName: `مسودة مرتجع #${target.returnNumber}`,
+        reason: reason?.trim() || 'حذف مسودة سند المرتجع',
+        userName: OWNER_EMAIL,
+        dataBefore: target,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
       persistChanges(units, categories, items, movements, branches, updatedReturns);
       showToast('تم حذف مسودة المرتجع بنجاح', 'success');
       return { success: true };
@@ -2168,6 +2429,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     movements,
     branches,
     returns,
+    customers,
+    companySettings,
     isLoading,
     cloudSyncStatus,
     isOffline,
@@ -2189,6 +2452,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     updateBranch,
     deleteBranch,
     clearAllBranches,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+    saveCompanySettings,
     addMultiItemDispatch,
 
     addUnit,

@@ -42,7 +42,7 @@ export const UnitsView: React.FC = () => {
     }
 
     if (editingUnit) {
-      const res = updateUnit(editingUnit.id, name.trim(), symbol.trim(), description.trim());
+      const res = updateUnit(editingUnit.id, name.trim(), symbol.trim(), description.trim(), 'تعديل بيانات الوحدة');
       if (!res.success) {
         setErrorMsg(res.error || 'حدث خطأ أثناء التعديل');
         return;
@@ -60,7 +60,7 @@ export const UnitsView: React.FC = () => {
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
-    deleteUnit(deleteTarget.id);
+    deleteUnit(deleteTarget.id, `حذف الوحدة "${deleteTarget.name}"`);
     setDeleteTarget(null);
   };
 

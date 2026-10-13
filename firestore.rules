@@ -23,6 +23,12 @@ service cloud.firestore {
       allow write: if isOwner() && isValidId(settingId);
     }
 
+    // Customers
+    match /customers/{customerId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && isValidId(customerId);
+    }
+
     // App Data
     match /app_data/{docId} {
       allow read, write: if isOwner() && isValidId(docId);
@@ -64,7 +70,13 @@ service cloud.firestore {
       allow write: if isOwner() && isValidId(returnId);
     }
 
-    // Audit Logs - Immutable audit entries
+    // Audit Log - Immutable audit entries (read and create only for owner, no update or delete)
+    match /audit_log/{logId} {
+      allow read: if isOwner();
+      allow create: if isOwner() && isValidId(logId);
+      allow update, delete: if false;
+    }
+
     match /audit_logs/{logId} {
       allow read: if isOwner();
       allow create: if isOwner() && isValidId(logId);

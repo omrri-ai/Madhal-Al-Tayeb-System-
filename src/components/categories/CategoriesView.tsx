@@ -39,7 +39,7 @@ export const CategoriesView: React.FC = () => {
     }
 
     if (editingCategory) {
-      const res = updateCategory(editingCategory.id, name.trim(), description.trim());
+      const res = updateCategory(editingCategory.id, name.trim(), description.trim(), editingCategory.color, 'تعديل بيانات القسم');
       if (!res.success) {
         setErrorMsg(res.error || 'حدث خطأ أثناء التعديل');
         return;
@@ -57,7 +57,7 @@ export const CategoriesView: React.FC = () => {
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
-    deleteCategory(deleteTarget.id);
+    deleteCategory(deleteTarget.id, `حذف القسم "${deleteTarget.name}"`);
     setDeleteTarget(null);
   };
 

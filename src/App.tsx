@@ -20,7 +20,9 @@ import { ReturnsView } from './components/returns/ReturnsView';
 import { CategoriesView } from './components/categories/CategoriesView';
 import { UnitsView } from './components/units/UnitsView';
 import { BranchesView } from './components/branches/BranchesView';
+import { CustomersView } from './components/customers/CustomersView';
 import { ArchiveTrashView } from './components/archive/ArchiveTrashView';
+import { AuditLogView } from './components/audit/AuditLogView';
 import { ReportsView } from './components/reports/ReportsView';
 import { BackupSettingsView } from './components/settings/BackupSettingsView';
 import { LoginView } from './components/auth/LoginView';
@@ -216,7 +218,11 @@ const InventoryApp: React.FC = () => {
 
           {currentView === 'branches' && <BranchesView />}
 
+          {currentView === 'customers' && <CustomersView />}
+
           {currentView === 'archive' && <ArchiveTrashView />}
+
+          {currentView === 'audit_log' && <AuditLogView />}
 
           {currentView === 'reports' && <ReportsView />}
 

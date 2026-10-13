@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   setDoc,
   deleteDoc,
   onSnapshot,
@@ -11,18 +12,10 @@ import {
   limit,
 } from 'firebase/firestore';
 import { db, OWNER_EMAIL } from './firebase';
-import { Branch, Category, Item, ReturnRecord, StockMovement, Unit } from '../types/inventory';
+import { AuditLogEntry, Branch, Category, CompanySettings, Customer, Item, ReturnRecord, StockMovement, Unit } from '../types/inventory';
 import { StorageService, InventoryDatabaseData } from './storage';
 
-export interface AuditLogEntry {
-  id: string;
-  timestamp: string;
-  action: string;
-  entityType: string;
-  entityId: string;
-  details: string;
-  performedBy: string;
-}
+export type { AuditLogEntry };
 
 export interface CloudBackupRecord {
   id: string;
@@ -36,11 +29,16 @@ export interface CloudBackupRecord {
 }
 
 function cleanObject(obj: any): any {
-  if (obj === null || typeof obj !== 'object') {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (typeof obj !== 'object') {
     return obj;
   }
   if (Array.isArray(obj)) {
-    return obj.map(cleanObject);
+    return obj
+      .filter((item) => item !== undefined)
+      .map(cleanObject);
   }
   const cleaned: Record<string, any> = {};
   for (const key of Object.keys(obj)) {
@@ -56,13 +54,15 @@ export const FirestoreStorage = {
   // Load all collections strictly from Cloud Firestore
   async loadAll(): Promise<InventoryDatabaseData> {
     try {
-      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap] = await Promise.all([
+      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap, customersSnap, settingsSnap] = await Promise.all([
         getDocs(collection(db, 'units')),
         getDocs(collection(db, 'categories')),
         getDocs(collection(db, 'items')),
         getDocs(collection(db, 'movements')),
         getDocs(collection(db, 'branches')),
         getDocs(collection(db, 'returns')),
+        getDocs(collection(db, 'customers')),
+        getDoc(doc(db, 'system_settings', 'company')),
       ]);
 
       const isGenuineItem = (i: any): i is Item =>
@@ -92,6 +92,14 @@ export const FirestoreStorage = {
         .map((d) => d.data() as ReturnRecord)
         .filter((r) => r && r.id && r.type);
 
+      const cloudCustomers: Customer[] = customersSnap.docs
+        .map((d) => d.data() as Customer)
+        .filter((c) => c && c.id);
+
+      const cloudSettings: CompanySettings | undefined = settingsSnap.exists()
+        ? (settingsSnap.data() as CompanySettings)
+        : undefined;
+
       const cloudData: InventoryDatabaseData = {
         units: cloudUnits,
         categories: cloudCategories,
@@ -99,6 +107,8 @@ export const FirestoreStorage = {
         movements: cloudMovements,
         branches: cloudBranches,
         returns: cloudReturns,
+        customers: cloudCustomers,
+        settings: cloudSettings,
       };
 
       return cloudData;
@@ -249,6 +259,39 @@ export const FirestoreStorage = {
     }
   },
 
+  // Save Customer
+  async saveCustomer(customer: Customer): Promise<void> {
+    try {
+      await setDoc(doc(db, 'customers', customer.id), cleanObject(customer));
+      await this.recordAuditLog('SAVE_CUSTOMER', 'customer', customer.id, `حفظ العميل: ${customer.name}`);
+    } catch (err) {
+      console.error('Error saving customer to Firestore:', err);
+      throw err;
+    }
+  },
+
+  // Delete Customer
+  async deleteCustomer(customerId: string, customerName?: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'customers', customerId));
+      await this.recordAuditLog('DELETE_CUSTOMER', 'customer', customerId, `حذف العميل: ${customerName || customerId}`);
+    } catch (err) {
+      console.error('Error deleting customer from Firestore:', err);
+      throw err;
+    }
+  },
+
+  // Save Company Settings
+  async saveCompanySettings(settings: CompanySettings): Promise<void> {
+    try {
+      await setDoc(doc(db, 'system_settings', 'company'), cleanObject(settings));
+      await this.recordAuditLog('SAVE_SETTINGS', 'settings', 'company', 'تحديث إعدادات المنشأة والسندات');
+    } catch (err) {
+      console.error('Error saving company settings to Firestore:', err);
+      throw err;
+    }
+  },
+
   // Delete all movements from Cloud Firestore (zero stock operations)
   async deleteAllMovements(): Promise<number> {
     try {
@@ -295,6 +338,7 @@ export const FirestoreStorage = {
     onUnits?: (units: Unit[]) => void;
     onBranches?: (branches: Branch[]) => void;
     onReturns?: (returns: ReturnRecord[]) => void;
+    onCustomers?: (customers: Customer[]) => void;
     onError?: (error: any) => void;
   }): () => void {
     const unsubscribes: (() => void)[] = [];
@@ -362,6 +406,18 @@ export const FirestoreStorage = {
       unsubscribes.push(unsub);
     }
 
+    if (callbacks.onCustomers) {
+      const unsub = onSnapshot(
+        collection(db, 'customers'),
+        (snap) => {
+          const customers = snap.docs.map((d) => d.data() as Customer).filter((c) => c && c.id && c.name);
+          callbacks.onCustomers?.(customers);
+        },
+        (err) => callbacks.onError?.(err)
+      );
+      unsubscribes.push(unsub);
+    }
+
     if (callbacks.onReturns) {
       const unsub = onSnapshot(
         collection(db, 'returns'),
@@ -423,37 +479,96 @@ export const FirestoreStorage = {
     return { success: true, count: syncedCount };
   },
 
-  // Audit Log recording
+  // Audit Log recording (Collection: audit_log)
   async recordAuditLog(
-    action: string,
-    entityType: string,
-    entityId: string,
-    details: string,
+    entryOrAction: string | Partial<AuditLogEntry>,
+    entityType?: string,
+    entityId?: string,
+    detailsOrReason?: string,
     performedBy: string = OWNER_EMAIL
   ): Promise<void> {
     try {
-      const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
-      const logEntry: AuditLogEntry = {
-        id: logId,
-        timestamp: new Date().toISOString(),
-        action,
-        entityType,
-        entityId,
-        details,
-        performedBy,
-      };
-      await setDoc(doc(db, 'audit_logs', logId), cleanObject(logEntry));
+      const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      let logEntry: AuditLogEntry;
+
+      if (typeof entryOrAction === 'object') {
+        const op = entryOrAction.operationType || 'تعديل';
+        logEntry = {
+          id: logId,
+          operationType: op,
+          entityType: entryOrAction.entityType || 'عام',
+          entityId: entryOrAction.entityId || logId,
+          entityName: entryOrAction.entityName || '',
+          reason: entryOrAction.reason || '',
+          userName: entryOrAction.userName || OWNER_EMAIL,
+          timestamp: entryOrAction.timestamp || new Date().toISOString(),
+          dataBefore: entryOrAction.dataBefore !== undefined ? entryOrAction.dataBefore : null,
+          dataAfter: entryOrAction.dataAfter !== undefined ? entryOrAction.dataAfter : null,
+          action: entryOrAction.action || `${op}: ${entryOrAction.entityName || entryOrAction.entityType}`,
+          details: entryOrAction.details || entryOrAction.reason || '',
+          performedBy: entryOrAction.userName || OWNER_EMAIL,
+        };
+      } else {
+        const isDelete =
+          entryOrAction.toUpperCase().includes('DELETE') ||
+          entryOrAction.toUpperCase().includes('TRASH') ||
+          entryOrAction.includes('حذف');
+        logEntry = {
+          id: logId,
+          operationType: isDelete ? 'حذف' : 'تعديل',
+          entityType: entityType || 'عام',
+          entityId: entityId || logId,
+          entityName: detailsOrReason || entityId || '',
+          reason: detailsOrReason || '',
+          userName: performedBy,
+          timestamp: new Date().toISOString(),
+          dataBefore: null,
+          dataAfter: null,
+          action: entryOrAction,
+          details: detailsOrReason || '',
+          performedBy,
+        };
+      }
+
+      const cleaned = cleanObject(logEntry);
+      // Save directly to the requested collection audit_log
+      await setDoc(doc(db, 'audit_log', logId), cleaned);
     } catch (err) {
       console.warn('Could not write audit log:', err);
     }
   },
 
-  // Fetch recent audit logs
-  async getAuditLogs(max: number = 50): Promise<AuditLogEntry[]> {
+  // Fetch recent audit logs from collection audit_log (with fallback to audit_logs)
+  async getAuditLogs(max: number = 200): Promise<AuditLogEntry[]> {
     try {
-      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(max));
+      const q = query(collection(db, 'audit_log'), orderBy('timestamp', 'desc'), limit(max));
       const snap = await getDocs(q);
-      return snap.docs.map((d) => d.data() as AuditLogEntry);
+      const logs = snap.docs.map((d) => d.data() as AuditLogEntry);
+      if (logs.length === 0) {
+        try {
+          const qOld = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(max));
+          const snapOld = await getDocs(qOld);
+          return snapOld.docs.map((d) => {
+            const data = d.data() as any;
+            return {
+              id: data.id || d.id,
+              operationType: data.action?.includes('DELETE') ? 'حذف' : 'تعديل',
+              entityType: data.entityType || 'عام',
+              entityId: data.entityId || d.id,
+              entityName: data.details || '',
+              reason: data.details || '',
+              userName: data.performedBy || OWNER_EMAIL,
+              timestamp: data.timestamp || new Date().toISOString(),
+              dataBefore: null,
+              dataAfter: null,
+              ...data,
+            } as AuditLogEntry;
+          });
+        } catch {
+          return [];
+        }
+      }
+      return logs;
     } catch (err) {
       console.warn('Could not read audit logs:', err);
       return [];

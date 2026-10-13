@@ -13,8 +13,10 @@ import {
   Menu,
   X,
   Building2,
+  Users,
   KeyRound,
   Settings,
+  History,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 
@@ -24,9 +26,11 @@ export type NavView =
   | 'movements'
   | 'returns'
   | 'branches'
+  | 'customers'
   | 'categories'
   | 'units'
   | 'archive'
+  | 'audit_log'
   | 'reports'
   | 'settings';
 
@@ -47,7 +51,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   setMobileMenuOpen,
   onOpenChangePassword,
 }) => {
-  const { stats } = useInventory();
+  const { stats, customers } = useInventory();
 
   const navItems = [
     {
@@ -84,6 +88,13 @@ export const Navigation: React.FC<NavigationProps> = ({
       badge: null,
     },
     {
+      id: 'customers' as NavView,
+      label: 'إدارة العملاء',
+      icon: Users,
+      badge: customers.length > 0 ? customers.length : null,
+      badgeColor: 'bg-indigo-100 text-indigo-800',
+    },
+    {
       id: 'categories' as NavView,
       label: 'الأقسام',
       icon: FolderTree,
@@ -102,6 +113,12 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: Archive,
       badge: stats.archivedItemsCount + stats.deletedItemsCount > 0 ? stats.archivedItemsCount + stats.deletedItemsCount : null,
       badgeColor: 'bg-amber-100 text-amber-800',
+    },
+    {
+      id: 'audit_log' as NavView,
+      label: 'سجل التعديل والحذف',
+      icon: History,
+      badge: null,
     },
     {
       id: 'reports' as NavView,

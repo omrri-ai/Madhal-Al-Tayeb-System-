@@ -85,7 +85,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
 
   const handleConfirmDelete = () => {
     if (!deleteTarget) return;
-    deleteMovement(deleteTarget.id);
+    deleteMovement(deleteTarget.id, deleteTarget.notes || 'حذف الحركة المخزنية من سجل الحركات');
     setDeleteTarget(null);
   };
 

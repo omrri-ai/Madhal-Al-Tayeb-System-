@@ -16,10 +16,12 @@ import {
   LayoutGrid,
   List,
   RefreshCw,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { Item, ItemStockSummary } from '../../types/inventory';
 import { ItemDetailModal } from './ItemDetailModal';
+import { InventoryAuditView } from './InventoryAuditView';
 
 interface ItemsViewProps {
   onOpenAddItem: () => void;
@@ -42,6 +44,7 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK'>('ALL');
   const [viewLayout, setViewLayout] = useState<'table' | 'grid'>('table');
+  const [viewMode, setViewMode] = useState<'items' | 'audit'>('items');
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
 
@@ -71,8 +74,55 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Search & Filter Header Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+      {/* Top Main Section Switcher Tabs: الأصناف والمخزون / الجرد */}
+      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+          <button
+            onClick={() => setViewMode('items')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              viewMode === 'items'
+                ? 'bg-white text-emerald-800 shadow-2xs font-black'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Boxes className="w-4 h-4 text-emerald-600" />
+            <span>قائمة الأصناف والمخزون</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('audit')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              viewMode === 'audit'
+                ? 'bg-teal-700 text-white shadow-xs font-black'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            <span>الجرد</span>
+            <span className="px-1.5 py-0.2 rounded text-[10px] bg-teal-800 text-teal-100">
+              جديد
+            </span>
+          </button>
+        </div>
+
+        {viewMode === 'items' && (
+          <button
+            onClick={onOpenAddItem}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة صنف جديد</span>
+          </button>
+        )}
+      </div>
+
+      {/* Render Stock Taking / Audit View if active */}
+      {viewMode === 'audit' ? (
+        <InventoryAuditView onBackToItems={() => setViewMode('items')} />
+      ) : (
+        <>
+          {/* Search & Filter Header Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {/* Search Input */}
           <div className="relative flex-1">
@@ -539,6 +589,8 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
         onEdit={(item) => onEditItem(item)}
         onRecordMovement={(item, type) => onOpenMovementModal(item, type)}
       />
+        </>
+      )}
     </div>
   );
 };
