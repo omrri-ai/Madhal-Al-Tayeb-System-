@@ -8,6 +8,12 @@ import {
   Item,
   ItemStockSummary,
   MovementType,
+  ProductionOrder,
+  ProductionDispatchRecord,
+  ProductionReceiptRecord,
+  ProductionReturnRecord,
+  ProductionConsumptionRecord,
+  ProductionOrderFinishedGood,
   ReturnRecord,
   ReturnType,
   ReturnStatus,
@@ -34,6 +40,7 @@ interface InventoryContextType {
   movements: StockMovement[];
   branches: Branch[];
   returns: ReturnRecord[];
+  productionOrders: ProductionOrder[];
   isLoading: boolean;
 
   // Cloud Sync & Audit State
@@ -186,6 +193,55 @@ interface InventoryContextType {
   cancelReturn: (id: string, cancellationReason?: string) => { success: boolean; error?: string };
   deleteReturnRecord: (id: string, reason?: string) => { success: boolean; error?: string };
 
+  // Production Orders actions
+  createProductionOrder: (data: {
+    title: string;
+    targetItemId?: string | null;
+    targetUnitId?: string | null;
+    plannedQuantity?: number;
+    date: string;
+    notes?: string | null;
+  }) => Promise<{ success: boolean; order?: ProductionOrder; error?: string }>;
+  dispatchMaterialToProduction: (data: {
+    productionOrderId: string;
+    date: string;
+    items: { itemId: string; unitId: string; quantity: number; notes?: string }[];
+    notes?: string;
+  }) => Promise<{ success: boolean; voucher?: ProductionDispatchRecord; error?: string }>;
+  recordProductionConsumption: (data: {
+    productionOrderId: string;
+    date: string;
+    items: { itemId: string; unitId: string; quantity: number; scrapQuantity?: number; scrapReason?: string; notes?: string }[];
+    completedGoodsQuantity?: number;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  receiveFinishedGoodsFromProduction: (data: {
+    productionOrderId: string;
+    date: string;
+    quantity: number;
+    unitId: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; voucher?: ProductionReceiptRecord; error?: string }>;
+  returnMaterialFromProduction: (data: {
+    productionOrderId: string;
+    date: string;
+    items: { itemId: string; unitId: string; quantity: number; notes?: string }[];
+    notes?: string;
+  }) => Promise<{ success: boolean; voucher?: ProductionReturnRecord; error?: string }>;
+  cancelProductionOrder: (orderId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+  deleteProductionOrder: (orderId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Simplified Factory Movements
+  generateFactoryReferenceNumber: (type: 'MFG_OUT' | 'MFG_IN') => string;
+  addFactoryMovement: (data: {
+    itemId: string;
+    type: 'MFG_OUT' | 'MFG_IN';
+    unitId: string;
+    quantity: number;
+    notes?: string;
+    date?: string;
+  }) => Promise<{ success: boolean; movement?: StockMovement; error?: string }>;
+
   // Helpers & Calculations
   getItemStock: (itemId: string) => number; // in base units
   getItemStockSummary: (itemId: string) => ItemStockSummary | null;
@@ -235,6 +291,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [branches, setBranches] = useState<Branch[]>([]);
   const [returns, setReturns] = useState<ReturnRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>({
     name: 'نظام مخزون مدهال الطيب',
     commercialRegister: '1010000000',
@@ -260,10 +317,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const branchesRef = React.useRef(branches);
   const returnsRef = React.useRef(returns);
   const customersRef = React.useRef(customers);
+  const productionOrdersRef = React.useRef(productionOrders);
 
   useEffect(() => {
     customersRef.current = customers;
   }, [customers]);
+
+  useEffect(() => {
+    productionOrdersRef.current = productionOrders;
+  }, [productionOrders]);
 
   useEffect(() => {
     unitsRef.current = units;
@@ -331,6 +393,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setBranches(currentBranches);
       setReturns(loaded.returns || []);
       setCustomers(loaded.customers || []);
+      setProductionOrders(loaded.productionOrders || []);
+      productionOrdersRef.current = loaded.productionOrders || [];
       if (loaded.settings) {
         setCompanySettings(loaded.settings);
       }
@@ -354,6 +418,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (localData.branches) setBranches(localData.branches);
           if (localData.returns) setReturns(localData.returns);
           if (localData.customers) setCustomers(localData.customers);
+          if (localData.productionOrders) {
+            setProductionOrders(localData.productionOrders);
+            productionOrdersRef.current = localData.productionOrders;
+          }
           if (localData.settings) setCompanySettings(localData.settings);
         }
       } catch (localErr) {
@@ -371,38 +439,42 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Instantaneous multi-device synchronization (PC & Mobile stay perfectly in sync in real time)
     const unsubscribe = FirestoreStorage.subscribeToAllCollections({
-      onItems: (cloudItems) => {
+      onItems: (cloudItems: Item[]) => {
         setItems(cloudItems);
         itemsRef.current = cloudItems;
       },
-      onMovements: (cloudMovements) => {
+      onMovements: (cloudMovements: StockMovement[]) => {
         setMovements(cloudMovements);
         movementsRef.current = cloudMovements;
       },
-      onCategories: (cloudCategories) => {
+      onCategories: (cloudCategories: Category[]) => {
         setCategories(cloudCategories);
         categoriesRef.current = cloudCategories;
       },
-      onUnits: (cloudUnits) => {
+      onUnits: (cloudUnits: Unit[]) => {
         if (cloudUnits.length > 0) {
           const sorted = sortUnitsWithHabbaFirst(cloudUnits);
           setUnits(sorted);
           unitsRef.current = sorted;
         }
       },
-      onBranches: (cloudBranches) => {
+      onBranches: (cloudBranches: Branch[]) => {
         setBranches(cloudBranches);
         branchesRef.current = cloudBranches;
       },
-      onReturns: (cloudReturns) => {
+      onReturns: (cloudReturns: ReturnRecord[]) => {
         setReturns(cloudReturns);
         returnsRef.current = cloudReturns;
       },
-      onCustomers: (cloudCustomers) => {
+      onCustomers: (cloudCustomers: Customer[]) => {
         setCustomers(cloudCustomers);
         customersRef.current = cloudCustomers;
       },
-    });
+      onProductionOrders: (cloudOrders: ProductionOrder[]) => {
+        setProductionOrders(cloudOrders);
+        productionOrdersRef.current = cloudOrders;
+      },
+    } as any);
 
     return () => {
       unsubscribe();
@@ -820,9 +892,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             ? Number(m.baseQuantity)
             : (Number(m.quantity) || 0) * factor;
 
-        if (m.type === 'IN') {
+        if (
+          m.type === 'IN' ||
+          m.type === 'PRODUCTION_RECEIPT' ||
+          m.type === 'PRODUCTION_RETURN' ||
+          m.type === 'MFG_IN' ||
+          (m.type as string) === 'وارد من المصنع'
+        ) {
           stock += baseQty;
-        } else if (m.type === 'OUT') {
+        } else if (
+          m.type === 'OUT' ||
+          m.type === 'PRODUCTION_DISPATCH' ||
+          m.type === 'MFG_OUT' ||
+          (m.type as string) === 'خروج للمصنع'
+        ) {
           stock -= baseQty;
         }
       }
@@ -863,8 +946,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             ? Number(m.baseQuantity)
             : (Number(m.quantity) || 0) * factor;
 
-        if (m.type === 'IN') totalIn += baseQty;
-        if (m.type === 'OUT') totalOut += baseQty;
+        if (
+          m.type === 'IN' ||
+          m.type === 'PRODUCTION_RECEIPT' ||
+          m.type === 'PRODUCTION_RETURN' ||
+          m.type === 'MFG_IN' ||
+          (m.type as string) === 'وارد من المصنع'
+        ) {
+          totalIn += baseQty;
+        }
+        if (
+          m.type === 'OUT' ||
+          m.type === 'PRODUCTION_DISPATCH' ||
+          m.type === 'MFG_OUT' ||
+          (m.type as string) === 'خروج للمصنع'
+        ) {
+          totalOut += baseQty;
+        }
       }
 
       // Format equivalents in all configured units
@@ -957,10 +1055,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           ? Number(m.baseQuantity)
           : (Number(m.quantity) || 0) * factor;
 
-      if (m.type === 'IN') {
+      if (
+        m.type === 'IN' ||
+        m.type === 'PRODUCTION_RECEIPT' ||
+        m.type === 'PRODUCTION_RETURN' ||
+        m.type === 'MFG_IN' ||
+        (m.type as string) === 'وارد من المصنع'
+      ) {
         todayInMovementsCount++;
         todayInQuantityBase += baseQty;
-      } else if (m.type === 'OUT') {
+      } else if (
+        m.type === 'OUT' ||
+        m.type === 'PRODUCTION_DISPATCH' ||
+        m.type === 'MFG_OUT' ||
+        (m.type as string) === 'خروج للمصنع'
+      ) {
         todayOutMovementsCount++;
         todayOutQuantityBase += baseQty;
       }
@@ -1001,8 +1110,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       draftReturnsCount: returns.filter((r) => r.status === 'DRAFT').length,
       inReturnsCount: returns.filter((r) => r.type === 'RETURN_IN' && r.status === 'APPROVED').length,
       outReturnsCount: returns.filter((r) => r.type === 'RETURN_OUT' && r.status === 'APPROVED').length,
+      // Production stats
+      totalProductionOrdersCount: productionOrders.length,
+      openProductionOrdersCount: productionOrders.filter((p) => p.status === 'OPEN').length,
+      pendingReceiptProductionOrdersCount: productionOrders.filter((p) => p.status === 'PENDING_RECEIPT').length,
+      completedProductionOrdersCount: productionOrders.filter((p) => p.status === 'COMPLETED').length,
     };
-  }, [items, categories, movements, branches, returns, getItemStock]);
+  }, [items, categories, movements, branches, returns, productionOrders, getItemStock]);
 
   // UNIT CRUD
   const addUnit = useCallback(
@@ -2337,6 +2451,887 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [showToast]
   );
 
+  // ==========================================
+  // PRODUCTION MANAGEMENT ACTIONS (إدارة الإنتاج)
+  // ==========================================
+
+  const createProductionOrder = useCallback(
+    async (data: {
+      title: string;
+      targetItemId?: string | null;
+      targetUnitId?: string | null;
+      plannedQuantity?: number;
+      date: string;
+      notes?: string | null;
+    }) => {
+      const cleanTitle = data.title.trim();
+      if (!cleanTitle) {
+        return { success: false, error: 'يرجى إدخال اسم أو وصف أمر الإنتاج' };
+      }
+
+      const orderYear = new Date(data.date || new Date()).getFullYear();
+      const orderCount = productionOrders.length + 1;
+      const orderNumber = `PRD-${orderYear}-${orderCount.toString().padStart(4, '0')}`;
+      const orderId = 'prod_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const nowIso = new Date().toISOString();
+
+      let finishedGood: ProductionOrder['finishedGood'] = null;
+      if (data.targetItemId) {
+        const item = items.find((i) => i.id === data.targetItemId);
+        if (item) {
+          const unitId = data.targetUnitId || item.baseUnitId;
+          const planned = Number(data.plannedQuantity) || 0;
+          finishedGood = {
+            itemId: item.id,
+            unitId,
+            plannedQuantity: planned,
+            completedQuantity: 0,
+            completedBaseQuantity: 0,
+            receivedQuantity: 0,
+            receivedBaseQuantity: 0,
+            pendingReceiptQuantity: 0,
+            pendingReceiptBaseQuantity: 0,
+          };
+        }
+      }
+
+      const newOrder: ProductionOrder = {
+        id: orderId,
+        orderNumber,
+        title: cleanTitle,
+        targetItemId: data.targetItemId || null,
+        targetUnitId: data.targetUnitId || null,
+        plannedQuantity: data.plannedQuantity || 0,
+        status: 'OPEN',
+        date: data.date || nowIso,
+        notes: data.notes?.trim() || null,
+        materials: [],
+        finishedGood,
+        dispatches: [],
+        consumptions: [],
+        receipts: [],
+        returns: [],
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdByName: OWNER_EMAIL,
+      };
+
+      const updated = [newOrder, ...productionOrders];
+      setProductionOrders(updated);
+      productionOrdersRef.current = updated;
+
+      try {
+        await FirestoreStorage.saveProductionOrder(newOrder);
+        showToast(`تم إنشاء أمر الإنتاج (${orderNumber}) بنجاح`, 'success');
+        return { success: true, order: newOrder };
+      } catch (err: any) {
+        showToast('تعذر حفظ أمر الإنتاج في السحابة', 'error');
+        return { success: false, error: err?.message || 'تعذر الحفظ' };
+      }
+    },
+    [productionOrders, items, showToast]
+  );
+
+  const dispatchMaterialToProduction = useCallback(
+    async (data: {
+      productionOrderId: string;
+      date: string;
+      items: { itemId: string; unitId: string; quantity: number; notes?: string }[];
+      notes?: string;
+    }) => {
+      const order = productionOrders.find((p) => p.id === data.productionOrderId);
+      if (!order) {
+        return { success: false, error: 'أمر الإنتاج المحدد غير موجود' };
+      }
+      if (order.status === 'CANCELLED') {
+        return { success: false, error: 'لا يمكن الصرف لأمر إنتاج ملغي' };
+      }
+      if (order.status === 'COMPLETED') {
+        return { success: false, error: 'أمر الإنتاج مكتمل بالفعل' };
+      }
+      if (!data.items || data.items.length === 0) {
+        return { success: false, error: 'يرجى تحديد مادة واحدة على الأقل للصرف' };
+      }
+
+      // Check stock and prepare movement entries
+      const dispatchEntries: {
+        item: Item;
+        unitId: string;
+        quantity: number;
+        factor: number;
+        baseQuantity: number;
+        notes?: string | null;
+      }[] = [];
+
+      for (const entry of data.items) {
+        const item = items.find((i) => i.id === entry.itemId && !i.isDeleted);
+        if (!item) {
+          return { success: false, error: 'أحد الأصناف المحددة غير موجود أو محذوف' };
+        }
+        if (!entry.quantity || entry.quantity <= 0) {
+          return { success: false, error: `الكمية المدخلة للصنف "${item.name}" غير صالحة` };
+        }
+
+        let factor = 1;
+        if (entry.unitId !== item.baseUnitId) {
+          const conv = item.conversions.find((c) => c.unitId === entry.unitId);
+          if (!conv) {
+            const u = units.find((un) => un.id === entry.unitId);
+            return {
+              success: false,
+              error: `الوحدة (${u?.name || 'المختارة'}) ليس لها معامل تحويل معتمد للصنف "${item.name}"`,
+            };
+          }
+          factor = conv.factorToBase;
+        }
+
+        const baseQuantity = Math.round(entry.quantity * factor * 1000) / 1000;
+        const currentStock = getItemStock(item.id);
+        const baseUnitName = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+        const movementUnitName = units.find((u) => u.id === entry.unitId)?.name || 'وحدة';
+
+        // Negative stock prevention guard
+        if (currentStock < baseQuantity || currentStock <= 0) {
+          const errMsg = `عفواً، لا يمكن إتمام الصرف للإنتاج: الكمية المطلوبة للصنف "${item.name}" (${entry.quantity} ${movementUnitName} = ${baseQuantity} ${baseUnitName}) تتجاوز رصيد المستودع الحالي (${currentStock} ${baseUnitName}). يمنع النظام تماماً الرصيد السالب!`;
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
+
+        dispatchEntries.push({
+          item,
+          unitId: entry.unitId,
+          quantity: entry.quantity,
+          factor,
+          baseQuantity,
+          notes: entry.notes?.trim() || null,
+        });
+      }
+
+      // Prepare fixed ID & Voucher
+      const dispatchId = 'pdisp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const voucherYear = new Date(data.date || new Date()).getFullYear();
+      const voucherIndex = (order.dispatches?.length || 0) + 1;
+      const voucherNumber = `PRD-DSP-${voucherYear}-${voucherIndex.toString().padStart(4, '0')}`;
+      const nowIso = new Date().toISOString();
+
+      // Create movements
+      const newMovements: StockMovement[] = dispatchEntries.map((e, idx) => ({
+        id: `mov_${dispatchId}_${idx}`,
+        itemId: e.item.id,
+        type: 'PRODUCTION_DISPATCH',
+        unitId: e.unitId,
+        quantity: e.quantity,
+        factorApplied: e.factor,
+        baseQuantity: e.baseQuantity,
+        date: data.date || nowIso,
+        referenceNumber: voucherNumber,
+        notes: `صرف لأمر الإنتاج (${order.orderNumber}): ${e.notes || data.notes || ''}`.trim(),
+        destinationType: 'PRODUCTION',
+        destinationName: `أمر إنتاج: ${order.orderNumber}`,
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        status: 'APPROVED',
+      }));
+
+      // Update materials custody in order
+      const updatedMaterials = [...(order.materials || [])];
+      for (const e of dispatchEntries) {
+        const matIndex = updatedMaterials.findIndex((m) => m.itemId === e.item.id);
+        if (matIndex >= 0) {
+          const existing = updatedMaterials[matIndex];
+          const newDisp = existing.dispatchedQuantity + e.quantity;
+          const newDispBase = existing.dispatchedBaseQuantity + e.baseQuantity;
+          const newCustody = existing.currentCustodyBaseQuantity + e.baseQuantity;
+          updatedMaterials[matIndex] = {
+            ...existing,
+            dispatchedQuantity: newDisp,
+            dispatchedBaseQuantity: newDispBase,
+            currentCustodyBaseQuantity: Math.round(newCustody * 1000) / 1000,
+          };
+        } else {
+          updatedMaterials.push({
+            itemId: e.item.id,
+            unitId: e.unitId,
+            dispatchedQuantity: e.quantity,
+            dispatchedBaseQuantity: e.baseQuantity,
+            consumedBaseQuantity: 0,
+            scrapBaseQuantity: 0,
+            scrapReason: null,
+            returnedBaseQuantity: 0,
+            currentCustodyBaseQuantity: e.baseQuantity,
+          });
+        }
+      }
+
+      const dispatchRecord: ProductionDispatchRecord = {
+        id: dispatchId,
+        voucherNumber,
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        date: data.date || nowIso,
+        items: dispatchEntries.map((e) => ({
+          itemId: e.item.id,
+          unitId: e.unitId,
+          quantity: e.quantity,
+          factorApplied: e.factor,
+          baseQuantity: e.baseQuantity,
+          notes: e.notes || null,
+        })),
+        movementIds: newMovements.map((m) => m.id),
+        notes: data.notes?.trim() || null,
+        createdByName: OWNER_EMAIL,
+        createdAt: nowIso,
+      };
+
+      const updatedOrder: ProductionOrder = {
+        ...order,
+        materials: updatedMaterials,
+        dispatches: [dispatchRecord, ...(order.dispatches || [])],
+        updatedAt: nowIso,
+      };
+
+      // Atomic commit to Firestore (batch of movement writes + order doc write)
+      try {
+        await FirestoreStorage.executeProductionDispatch(updatedOrder, newMovements);
+      } catch (err: any) {
+        showToast('فشل حفظ سند الصرف للإنتاج في قاعدة البيانات السحابية', 'error');
+        return { success: false, error: err?.message || 'فشل الحفظ في السحابة' };
+      }
+
+      // Update state locally
+      const updatedMovements = [...newMovements, ...movements];
+      setMovements(updatedMovements);
+      movementsRef.current = updatedMovements;
+
+      const updatedOrders = productionOrders.map((p) => (p.id === order.id ? updatedOrder : p));
+      setProductionOrders(updatedOrders);
+      productionOrdersRef.current = updatedOrders;
+
+      showToast(`تم صرف ${dispatchEntries.length} مواد بنجاح لأمر الإنتاج (${order.orderNumber}) - سند رقم ${voucherNumber}`, 'success');
+      return { success: true, voucher: dispatchRecord };
+    },
+    [productionOrders, items, units, movements, getItemStock, showToast]
+  );
+
+  const recordProductionConsumption = useCallback(
+    async (data: {
+      productionOrderId: string;
+      date: string;
+      items: { itemId: string; unitId: string; quantity: number; scrapQuantity?: number; scrapReason?: string; notes?: string }[];
+      completedGoodsQuantity?: number;
+      notes?: string;
+    }) => {
+      const order = productionOrders.find((p) => p.id === data.productionOrderId);
+      if (!order) {
+        return { success: false, error: 'أمر الإنتاج المحدد غير موجود' };
+      }
+      if (order.status === 'CANCELLED') {
+        return { success: false, error: 'لا يمكن تسجيل استهلاك لأمر إنتاج ملغي' };
+      }
+
+      const updatedMaterials = [...(order.materials || [])];
+      const consumptionEntries: ProductionConsumptionRecord['items'] = [];
+
+      for (const entry of data.items) {
+        const item = items.find((i) => i.id === entry.itemId);
+        if (!item) continue;
+
+        let factor = 1;
+        if (entry.unitId !== item.baseUnitId) {
+          const conv = item.conversions.find((c) => c.unitId === entry.unitId);
+          factor = conv?.factorToBase || 1;
+        }
+
+        const consumedBase = Math.round((Number(entry.quantity) || 0) * factor * 1000) / 1000;
+        const scrapBase = Math.round((Number(entry.scrapQuantity) || 0) * factor * 1000) / 1000;
+        const totalBaseRequired = consumedBase + scrapBase;
+
+        if (totalBaseRequired <= 0) continue;
+
+        const matIndex = updatedMaterials.findIndex((m) => m.itemId === entry.itemId);
+        if (matIndex < 0) {
+          return {
+            success: false,
+            error: `الصنف "${item.name}" لم يُصرف له أي كميات في هذا الأمر، لا يمكن تسجيل استهلاك له.`,
+          };
+        }
+
+        const currentCustody = updatedMaterials[matIndex].currentCustodyBaseQuantity;
+        const baseUnitName = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+
+        // Custody check
+        if (totalBaseRequired > currentCustody) {
+          const errMsg = `عفواً، كمية الاستهلاك المطلوبة للصنف "${item.name}" (${totalBaseRequired} ${baseUnitName}) تتجاوز العهدة الحالية بأمر الإنتاج (${currentCustody} ${baseUnitName})!`;
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
+
+        updatedMaterials[matIndex] = {
+          ...updatedMaterials[matIndex],
+          consumedBaseQuantity: Math.round((updatedMaterials[matIndex].consumedBaseQuantity + consumedBase) * 1000) / 1000,
+          scrapBaseQuantity: Math.round((updatedMaterials[matIndex].scrapBaseQuantity + scrapBase) * 1000) / 1000,
+          scrapReason: entry.scrapReason?.trim() || updatedMaterials[matIndex].scrapReason,
+          currentCustodyBaseQuantity: Math.round((currentCustody - totalBaseRequired) * 1000) / 1000,
+        };
+
+        consumptionEntries.push({
+          itemId: entry.itemId,
+          unitId: entry.unitId,
+          quantity: entry.quantity,
+          factorApplied: factor,
+          baseQuantity: consumedBase,
+          scrapQuantity: entry.scrapQuantity || 0,
+          scrapBaseQuantity: scrapBase,
+          scrapReason: entry.scrapReason?.trim() || null,
+          notes: entry.notes?.trim() || null,
+        });
+      }
+
+      // If completed goods are recorded
+      let updatedFinishedGood = order.finishedGood ? { ...order.finishedGood } : null;
+      const completedQty = Number(data.completedGoodsQuantity) || 0;
+      if (completedQty > 0 && updatedFinishedGood) {
+        const item = items.find((i) => i.id === updatedFinishedGood!.itemId);
+        let factor = 1;
+        if (item && updatedFinishedGood.unitId !== item.baseUnitId) {
+          const conv = item.conversions.find((c) => c.unitId === updatedFinishedGood!.unitId);
+          factor = conv?.factorToBase || 1;
+        }
+        const completedBase = Math.round(completedQty * factor * 1000) / 1000;
+        updatedFinishedGood.completedQuantity += completedQty;
+        updatedFinishedGood.completedBaseQuantity += completedBase;
+        updatedFinishedGood.pendingReceiptQuantity += completedQty;
+        updatedFinishedGood.pendingReceiptBaseQuantity += completedBase;
+      }
+
+      const nowIso = new Date().toISOString();
+      const consumptionRecord: ProductionConsumptionRecord = {
+        id: 'pcons_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        date: data.date || nowIso,
+        items: consumptionEntries,
+        completedGoodsQuantity: completedQty,
+        notes: data.notes?.trim() || null,
+        createdByName: OWNER_EMAIL,
+        createdAt: nowIso,
+      };
+
+      const newStatus =
+        updatedFinishedGood && updatedFinishedGood.pendingReceiptQuantity > 0
+          ? 'PENDING_RECEIPT'
+          : order.status;
+
+      const updatedOrder: ProductionOrder = {
+        ...order,
+        status: newStatus,
+        materials: updatedMaterials,
+        finishedGood: updatedFinishedGood,
+        consumptions: [consumptionRecord, ...(order.consumptions || [])],
+        updatedAt: nowIso,
+      };
+
+      try {
+        await FirestoreStorage.saveProductionOrder(updatedOrder);
+      } catch (err: any) {
+        showToast('تعذر حفظ تسجيل الاستهلاك والإنتاج في السحابة', 'error');
+        return { success: false, error: err?.message || 'تعذر الحفظ' };
+      }
+
+      const updatedOrders = productionOrders.map((p) => (p.id === order.id ? updatedOrder : p));
+      setProductionOrders(updatedOrders);
+      productionOrdersRef.current = updatedOrders;
+
+      showToast(`تم تسجيل استهلاك المواد والإنتاج لأمر الإنتاج (${order.orderNumber}) بنجاح`, 'success');
+      return { success: true };
+    },
+    [productionOrders, items, units, showToast]
+  );
+
+  const receiveFinishedGoodsFromProduction = useCallback(
+    async (data: {
+      productionOrderId: string;
+      date: string;
+      quantity: number;
+      unitId: string;
+      notes?: string;
+    }) => {
+      const order = productionOrders.find((p) => p.id === data.productionOrderId);
+      if (!order) {
+        return { success: false, error: 'أمر الإنتاج غير موجود' };
+      }
+      if (!order.finishedGood) {
+        return { success: false, error: 'أمر الإنتاج لا يحتوي على صنف منتج محدد' };
+      }
+      if (data.quantity <= 0) {
+        return { success: false, error: 'الكمية المستلمة يجب أن تكون أكبر من الصفر' };
+      }
+
+      const pending = order.finishedGood.pendingReceiptQuantity;
+      if (data.quantity > pending) {
+        const errMsg = `عفواً، لا يمكن استلام (${data.quantity})؛ الكمية المصنوعة المتاحة بانتظار الاستلام هي (${pending}) فقط!`;
+        showToast(errMsg, 'error');
+        return { success: false, error: errMsg };
+      }
+
+      const item = items.find((i) => i.id === order.finishedGood!.itemId && !i.isDeleted);
+      if (!item) {
+        return { success: false, error: 'الصنف المنتج غير موجود في المخزون أو تم حذفه' };
+      }
+
+      let factor = 1;
+      if (data.unitId !== item.baseUnitId) {
+        const conv = item.conversions.find((c) => c.unitId === data.unitId);
+        if (!conv) {
+          const u = units.find((un) => un.id === data.unitId);
+          return {
+            success: false,
+            error: `الوحدة (${u?.name || 'المختارة'}) ليس لها معامل تحويل معتمد للصنف "${item.name}"`,
+          };
+        }
+        factor = conv.factorToBase;
+      }
+
+      const baseQuantity = Math.round(data.quantity * factor * 1000) / 1000;
+      const receiptId = 'prec_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const voucherYear = new Date(data.date || new Date()).getFullYear();
+      const voucherIndex = (order.receipts?.length || 0) + 1;
+      const voucherNumber = `PRD-REC-${voucherYear}-${voucherIndex.toString().padStart(4, '0')}`;
+      const nowIso = new Date().toISOString();
+
+      // Create stock movement
+      const newMovement: StockMovement = {
+        id: `mov_${receiptId}`,
+        itemId: item.id,
+        type: 'PRODUCTION_RECEIPT',
+        unitId: data.unitId,
+        quantity: data.quantity,
+        factorApplied: factor,
+        baseQuantity,
+        date: data.date || nowIso,
+        referenceNumber: voucherNumber,
+        notes: `استلام منتج جاهز من أمر الإنتاج (${order.orderNumber}): ${data.notes || ''}`.trim(),
+        destinationType: 'PRODUCTION',
+        destinationName: `أمر إنتاج: ${order.orderNumber}`,
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        status: 'APPROVED',
+      };
+
+      const updatedFinishedGood: ProductionOrderFinishedGood = {
+        ...order.finishedGood,
+        receivedQuantity: order.finishedGood.receivedQuantity + data.quantity,
+        receivedBaseQuantity: order.finishedGood.receivedBaseQuantity + baseQuantity,
+        pendingReceiptQuantity: Math.max(0, order.finishedGood.pendingReceiptQuantity - data.quantity),
+        pendingReceiptBaseQuantity: Math.max(0, order.finishedGood.pendingReceiptBaseQuantity - baseQuantity),
+      };
+
+      const receiptRecord: ProductionReceiptRecord = {
+        id: receiptId,
+        voucherNumber,
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        date: data.date || nowIso,
+        itemId: item.id,
+        unitId: data.unitId,
+        quantity: data.quantity,
+        factorApplied: factor,
+        baseQuantity,
+        movementId: newMovement.id,
+        notes: data.notes?.trim() || null,
+        createdByName: OWNER_EMAIL,
+        createdAt: nowIso,
+      };
+
+      // Check if order is fully completed (no pending receipts and custody is 0)
+      const remainingCustodyTotal = (order.materials || []).reduce((acc, m) => acc + m.currentCustodyBaseQuantity, 0);
+      const isCompleted = updatedFinishedGood.pendingReceiptQuantity === 0 && remainingCustodyTotal <= 0.001;
+
+      const updatedOrder: ProductionOrder = {
+        ...order,
+        status: isCompleted ? 'COMPLETED' : order.status,
+        finishedGood: updatedFinishedGood,
+        receipts: [receiptRecord, ...(order.receipts || [])],
+        updatedAt: nowIso,
+      };
+
+      // Atomic commit
+      try {
+        await FirestoreStorage.executeProductionReceipt(updatedOrder, newMovement);
+      } catch (err: any) {
+        showToast('فشل حفظ استلام المنتج الجاهز في السحابة', 'error');
+        return { success: false, error: err?.message || 'فشل الحفظ' };
+      }
+
+      // Update state locally
+      const updatedMovements = [newMovement, ...movements];
+      setMovements(updatedMovements);
+      movementsRef.current = updatedMovements;
+
+      const updatedOrders = productionOrders.map((p) => (p.id === order.id ? updatedOrder : p));
+      setProductionOrders(updatedOrders);
+      productionOrdersRef.current = updatedOrders;
+
+      showToast(`تم استلام ${data.quantity} من المنتج الجاهز (${item.name}) وإضافته للمخزون - سند رقم ${voucherNumber}`, 'success');
+      return { success: true, voucher: receiptRecord };
+    },
+    [productionOrders, items, units, movements, showToast]
+  );
+
+  const returnMaterialFromProduction = useCallback(
+    async (data: {
+      productionOrderId: string;
+      date: string;
+      items: { itemId: string; unitId: string; quantity: number; notes?: string }[];
+      notes?: string;
+    }) => {
+      const order = productionOrders.find((p) => p.id === data.productionOrderId);
+      if (!order) {
+        return { success: false, error: 'أمر الإنتاج المحدد غير موجود' };
+      }
+      if (!data.items || data.items.length === 0) {
+        return { success: false, error: 'يرجى تحديد المواد المراد إرجاعها للمستودع' };
+      }
+
+      const returnEntries: {
+        item: Item;
+        unitId: string;
+        quantity: number;
+        factor: number;
+        baseQuantity: number;
+        notes?: string | null;
+      }[] = [];
+
+      const updatedMaterials = [...(order.materials || [])];
+
+      for (const entry of data.items) {
+        const item = items.find((i) => i.id === entry.itemId);
+        if (!item) continue;
+        if (!entry.quantity || entry.quantity <= 0) continue;
+
+        let factor = 1;
+        if (entry.unitId !== item.baseUnitId) {
+          const conv = item.conversions.find((c) => c.unitId === entry.unitId);
+          factor = conv?.factorToBase || 1;
+        }
+
+        const returnBase = Math.round(entry.quantity * factor * 1000) / 1000;
+        const matIndex = updatedMaterials.findIndex((m) => m.itemId === entry.itemId);
+        if (matIndex < 0) {
+          return { success: false, error: `الصنف "${item.name}" ليس له عهدة بأمر الإنتاج` };
+        }
+
+        const currentCustody = updatedMaterials[matIndex].currentCustodyBaseQuantity;
+        const baseUnitName = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+
+        if (returnBase > currentCustody) {
+          const errMsg = `عفواً، لا يمكن إرجاع (${returnBase} ${baseUnitName}) للصنف "${item.name}"؛ العهدة المتبقية الحالية هي (${currentCustody} ${baseUnitName}) فقط!`;
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
+
+        updatedMaterials[matIndex] = {
+          ...updatedMaterials[matIndex],
+          returnedBaseQuantity: Math.round((updatedMaterials[matIndex].returnedBaseQuantity + returnBase) * 1000) / 1000,
+          currentCustodyBaseQuantity: Math.round((currentCustody - returnBase) * 1000) / 1000,
+        };
+
+        returnEntries.push({
+          item,
+          unitId: entry.unitId,
+          quantity: entry.quantity,
+          factor,
+          baseQuantity: returnBase,
+          notes: entry.notes?.trim() || null,
+        });
+      }
+
+      if (returnEntries.length === 0) {
+        return { success: false, error: 'لم يتم تحديد كميات صالحة للإرجاع' };
+      }
+
+      const returnId = 'pret_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const voucherYear = new Date(data.date || new Date()).getFullYear();
+      const voucherIndex = (order.returns?.length || 0) + 1;
+      const voucherNumber = `PRD-RET-${voucherYear}-${voucherIndex.toString().padStart(4, '0')}`;
+      const nowIso = new Date().toISOString();
+
+      const newMovements: StockMovement[] = returnEntries.map((e, idx) => ({
+        id: `mov_${returnId}_${idx}`,
+        itemId: e.item.id,
+        type: 'PRODUCTION_RETURN',
+        unitId: e.unitId,
+        quantity: e.quantity,
+        factorApplied: e.factor,
+        baseQuantity: e.baseQuantity,
+        date: data.date || nowIso,
+        referenceNumber: voucherNumber,
+        notes: `مرتجع مواد من أمر الإنتاج (${order.orderNumber}) للمستودع: ${e.notes || data.notes || ''}`.trim(),
+        destinationType: 'PRODUCTION',
+        destinationName: `أمر إنتاج: ${order.orderNumber}`,
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        status: 'APPROVED',
+      }));
+
+      const returnRecord: ProductionReturnRecord = {
+        id: returnId,
+        voucherNumber,
+        productionOrderId: order.id,
+        productionOrderNumber: order.orderNumber,
+        date: data.date || nowIso,
+        items: returnEntries.map((e) => ({
+          itemId: e.item.id,
+          unitId: e.unitId,
+          quantity: e.quantity,
+          factorApplied: e.factor,
+          baseQuantity: e.baseQuantity,
+          notes: e.notes || null,
+        })),
+        movementIds: newMovements.map((m) => m.id),
+        notes: data.notes?.trim() || null,
+        createdByName: OWNER_EMAIL,
+        createdAt: nowIso,
+      };
+
+      const updatedOrder: ProductionOrder = {
+        ...order,
+        materials: updatedMaterials,
+        returns: [returnRecord, ...(order.returns || [])],
+        updatedAt: nowIso,
+      };
+
+      // Atomic commit
+      try {
+        await FirestoreStorage.executeProductionReturn(updatedOrder, newMovements);
+      } catch (err: any) {
+        showToast('فشل حفظ سند المرتجع في السحابة', 'error');
+        return { success: false, error: err?.message || 'فشل الحفظ' };
+      }
+
+      // Update state locally
+      const updatedMovements = [...newMovements, ...movements];
+      setMovements(updatedMovements);
+      movementsRef.current = updatedMovements;
+
+      const updatedOrders = productionOrders.map((p) => (p.id === order.id ? updatedOrder : p));
+      setProductionOrders(updatedOrders);
+      productionOrdersRef.current = updatedOrders;
+
+      showToast(`تم إرجاع ${returnEntries.length} مواد للمستودع وزيادة رصيدها بنجاح - سند رقم ${voucherNumber}`, 'success');
+      return { success: true, voucher: returnRecord };
+    },
+    [productionOrders, items, units, movements, showToast]
+  );
+
+  const cancelProductionOrder = useCallback(
+    async (orderId: string, reason: string) => {
+      const order = productionOrders.find((p) => p.id === orderId);
+      if (!order) return { success: false, error: 'أمر الإنتاج غير موجود' };
+
+      const cleanReason = reason.trim();
+      if (!cleanReason) {
+        return { success: false, error: 'يرجى كتابة سبب الإلغاء للمتابعة' };
+      }
+
+      // Check if order has custody: if materials are currently in custody, they must be returned or reversed
+      const remainingCustody = (order.materials || []).filter((m) => m.currentCustodyBaseQuantity > 0.001);
+      if (remainingCustody.length > 0) {
+        return {
+          success: false,
+          error: `لا يمكن إلغاء أمر الإنتاج لوجود عهدة مواد متبقية لم تُرجع للمستودع (${remainingCustody.length} أصناف). يرجى عمل "مرتجع من الإنتاج" أولاً لحفظ رصيد المخزون.`,
+        };
+      }
+
+      const nowIso = new Date().toISOString();
+      const updatedOrder: ProductionOrder = {
+        ...order,
+        status: 'CANCELLED',
+        notes: (order.notes ? order.notes + ' | ' : '') + `سبب الإلغاء: ${cleanReason}`,
+        updatedAt: nowIso,
+      };
+
+      try {
+        await FirestoreStorage.saveProductionOrder(updatedOrder);
+        await FirestoreStorage.recordAuditLog(
+          'CANCEL_PRODUCTION_ORDER',
+          'production_order',
+          orderId,
+          `إلغاء أمر الإنتاج ${order.orderNumber}: ${cleanReason}`
+        );
+      } catch (err: any) {
+        showToast('تعذر حفظ إلغاء أمر الإنتاج في السحابة', 'error');
+        return { success: false, error: err?.message || 'تعذر الحفظ' };
+      }
+
+      const updatedOrders = productionOrders.map((p) => (p.id === orderId ? updatedOrder : p));
+      setProductionOrders(updatedOrders);
+      productionOrdersRef.current = updatedOrders;
+
+      showToast(`تم إلغاء أمر الإنتاج (${order.orderNumber}) بنجاح`, 'info');
+      return { success: true };
+    },
+    [productionOrders, showToast]
+  );
+
+  const deleteProductionOrder = useCallback(
+    async (orderId: string, reason: string) => {
+      const order = productionOrders.find((p) => p.id === orderId);
+      if (!order) return { success: false, error: 'أمر الإنتاج غير موجود' };
+
+      const cleanReason = reason.trim();
+      if (!cleanReason) {
+        return { success: false, error: 'يرجى كتابة سبب الحذف للمتابعة' };
+      }
+
+      if ((order.dispatches && order.dispatches.length > 0) || (order.receipts && order.receipts.length > 0)) {
+        return {
+          success: false,
+          error: `لا يمكن حذف أمر الإنتاج (${order.orderNumber}) لاحتوائه على حركات مخزنية معتمدة. يمكنك إلغاء الأمر بدلاً من حذفه لضمان سلامة السجلات.`,
+        };
+      }
+
+      try {
+        await FirestoreStorage.deleteProductionOrder(orderId, order.orderNumber);
+      } catch (err: any) {
+        showToast('تعذر حذف أمر الإنتاج من السحابة', 'error');
+        return { success: false, error: err?.message || 'تعذر الحذف' };
+      }
+
+      const updatedOrders = productionOrders.filter((p) => p.id !== orderId);
+      setProductionOrders(updatedOrders);
+      productionOrdersRef.current = updatedOrders;
+
+      showToast(`تم حذف أمر الإنتاج (${order.orderNumber}) بنجاح`, 'info');
+      return { success: true };
+    },
+    [productionOrders, showToast]
+  );
+
+  const generateFactoryReferenceNumber = useCallback(
+    (type: 'MFG_OUT' | 'MFG_IN'): string => {
+      const year = new Date().getFullYear();
+      const prefix = type === 'MFG_OUT' ? `MFG-OUT-${year}-` : `MFG-IN-${year}-`;
+      const currentList = movementsRef.current && movementsRef.current.length > 0 ? movementsRef.current : movements;
+      const matchingRefs = currentList
+        .map((m) => m.referenceNumber || '')
+        .filter((ref) => ref.startsWith(prefix));
+
+      let maxSeq = 0;
+      for (const ref of matchingRefs) {
+        const seqStr = ref.replace(prefix, '');
+        const seqNum = parseInt(seqStr, 10);
+        if (!isNaN(seqNum) && seqNum > maxSeq) {
+          maxSeq = seqNum;
+        }
+      }
+      const nextSeq = (maxSeq + 1).toString().padStart(4, '0');
+      return `${prefix}${nextSeq}`;
+    },
+    [movements]
+  );
+
+  const addFactoryMovement = useCallback(
+    async (data: {
+      itemId: string;
+      type: 'MFG_OUT' | 'MFG_IN';
+      unitId: string;
+      quantity: number;
+      notes?: string;
+      date?: string;
+    }): Promise<{ success: boolean; movement?: StockMovement; error?: string }> => {
+      const item = items.find((i) => i.id === data.itemId && !i.isDeleted);
+      if (!item) {
+        const err = 'الصنف المحدد غير موجود أو محذوف من المخزون';
+        showToast(err, 'error');
+        return { success: false, error: err };
+      }
+
+      const numQty = Number(data.quantity);
+      if (!numQty || numQty <= 0 || isNaN(numQty)) {
+        const err = 'يرجى إدخال كمية صحيحة أكبر من الصفر';
+        showToast(err, 'error');
+        return { success: false, error: err };
+      }
+
+      let factor = 1;
+      if (data.unitId !== item.baseUnitId) {
+        const conv = item.conversions.find((c) => c.unitId === data.unitId);
+        if (!conv) {
+          const selectedUnit = units.find((u) => u.id === data.unitId);
+          const err = `لم يتم تحديد معامل تحويل معتمد للوحدة (${selectedUnit?.name || 'المختارة'}) لهذا الصنف. يرجى تعديل الصنف وإضافة معامل التحويل أولاً.`;
+          showToast(err, 'error');
+          return { success: false, error: err };
+        }
+        factor = conv.factorToBase;
+      }
+
+      const baseQuantity = Math.round(numQty * factor * 1000) / 1000;
+      const currentStock = getItemStock(data.itemId);
+      const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+      const movementUnit = units.find((u) => u.id === data.unitId)?.name || 'وحدة';
+
+      if (data.type === 'MFG_OUT') {
+        if (currentStock < baseQuantity || currentStock <= 0) {
+          const err = `عفواً، لا يمكن إتمام عملية الخروج للمصنع: الكمية المطلوبة (${numQty} ${movementUnit} = ${baseQuantity} ${baseUnit}) تتجاوز الرصيد المتوفر حالياً (${currentStock} ${baseUnit}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
+          showToast(err, 'error');
+          return { success: false, error: err };
+        }
+      }
+
+      const refNumber = generateFactoryReferenceNumber(data.type);
+      const nowIso = new Date().toISOString();
+      const movementId = `mfg_${data.type === 'MFG_OUT' ? 'out' : 'in'}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      const newMovement: StockMovement = {
+        id: movementId,
+        itemId: data.itemId,
+        type: data.type,
+        unitId: data.unitId,
+        quantity: numQty,
+        factorApplied: factor,
+        baseQuantity,
+        date: data.date ? (data.date.includes('T') ? data.date : `${data.date}T${new Date().toTimeString().split(' ')[0]}`) : nowIso,
+        referenceNumber: refNumber,
+        notes: data.notes?.trim() || '',
+        destinationType: 'PRODUCTION',
+        destinationName: 'المصنع',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      try {
+        await FirestoreStorage.recordFactoryMovementTransaction(newMovement, {
+          maxAllowedStock: currentStock,
+        });
+
+        const updatedMovements = [newMovement, ...movementsRef.current];
+        setMovements(updatedMovements);
+        movementsRef.current = updatedMovements;
+
+        showToast(
+          data.type === 'MFG_OUT'
+            ? `تم تسجيل خروج المواد للمصنع بنجاح بالسند رقم (${refNumber})`
+            : `تم استلام البضاعة من المصنع بنجاح بالسند رقم (${refNumber})`,
+          'success'
+        );
+
+        return { success: true, movement: newMovement };
+      } catch (err: any) {
+        const errorMsg = err?.message || 'حدث خطأ أثناء تنفيذ المعاملة وحفظ الحركة في قاعدة البيانات';
+        showToast(errorMsg, 'error');
+        return { success: false, error: errorMsg };
+      }
+    },
+    [items, units, getItemStock, generateFactoryReferenceNumber, showToast]
+  );
+
   const clearDatabase = useCallback(async () => {
     await StorageService.clearAll();
     setUnits([]);
@@ -2345,6 +3340,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setMovements([]);
     setBranches([]);
     setReturns([]);
+    setProductionOrders([]);
     showToast('تم مسح قاعدة البيانات بالكامل', 'info');
   }, [showToast]);
 
@@ -2569,6 +3565,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     approveReturn,
     cancelReturn,
     deleteReturnRecord,
+
+    // Production Orders
+    productionOrders,
+    createProductionOrder,
+    dispatchMaterialToProduction,
+    recordProductionConsumption,
+    receiveFinishedGoodsFromProduction,
+    returnMaterialFromProduction,
+    cancelProductionOrder,
+    deleteProductionOrder,
+
+    // Factory movements
+    generateFactoryReferenceNumber,
+    addFactoryMovement,
 
     getItemStock,
     getItemStockSummary,

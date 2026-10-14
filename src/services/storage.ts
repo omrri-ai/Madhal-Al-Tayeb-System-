@@ -1,7 +1,7 @@
-import { Branch, Category, CompanySettings, Customer, Item, ReturnRecord, StockMovement, Unit } from '../types/inventory';
+import { Branch, Category, CompanySettings, Customer, Item, ProductionOrder, ReturnRecord, StockMovement, Unit } from '../types/inventory';
 
 const DB_NAME = 'MakhzouniInventoryDB';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const STORAGE_KEYS = {
   UNITS: 'makhzouni_units_v1',
@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   MOVEMENTS: 'makhzouni_movements_v1',
   BRANCHES: 'makhzouni_branches_v1',
   RETURNS: 'makhzouni_returns_v1',
+  PRODUCTION_ORDERS: 'makhzouni_production_orders_v1',
   EMERGENCY_BACKUP: 'makhzouni_emergency_backup_v1',
   PENDING_SYNC_QUEUE: 'makhzouni_pending_sync_queue_v1',
 };
@@ -85,6 +86,7 @@ export interface InventoryDatabaseData {
   branches?: Branch[];
   returns?: ReturnRecord[];
   customers?: Customer[];
+  productionOrders?: ProductionOrder[];
   settings?: CompanySettings;
 }
 
@@ -127,6 +129,7 @@ export const StorageService = {
     const localMovements = loadLocal<StockMovement[]>(STORAGE_KEYS.MOVEMENTS, []);
     const localBranches = loadLocal<Branch[]>(STORAGE_KEYS.BRANCHES, []);
     const localReturns = loadLocal<ReturnRecord[]>(STORAGE_KEYS.RETURNS, []);
+    const localProductionOrders = loadLocal<ProductionOrder[]>(STORAGE_KEYS.PRODUCTION_ORDERS, []);
 
     // Clean up local items key if polluted
     if (rawLocalItems.length !== localItems.length) {
@@ -140,6 +143,7 @@ export const StorageService = {
       movements: localMovements,
       branches: localBranches,
       returns: localReturns,
+      productionOrders: localProductionOrders,
     };
   },
 
@@ -155,6 +159,9 @@ export const StorageService = {
     }
     if (data.returns) {
       saveLocal(STORAGE_KEYS.RETURNS, data.returns);
+    }
+    if (data.productionOrders) {
+      saveLocal(STORAGE_KEYS.PRODUCTION_ORDERS, data.productionOrders);
     }
 
     // Always maintain an emergency recovery copy whenever items exist

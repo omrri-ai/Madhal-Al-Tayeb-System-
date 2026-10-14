@@ -15,10 +15,13 @@ import {
   MapPin,
   Phone,
   User,
+  Search,
+  ChevronDown,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { ShippingCarrier, StockMovement } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
+import { ItemPickerBottomSheet } from '../common/ItemPickerBottomSheet';
 
 interface OutgoingDispatchModalProps {
   isOpen: boolean;
@@ -77,6 +80,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
   // Multi-item rows
   const [rows, setRows] = useState<DispatchRowItem[]>([]);
   const [formError, setFormError] = useState<string>('');
+  const [pickingRowId, setPickingRowId] = useState<string | null>(null);
 
   // Created voucher for instant print/download modal
   const [createdVoucherNo, setCreatedVoucherNo] = useState<string | null>(null);
@@ -843,19 +847,44 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
           {/* Items Table Section */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Package className="w-4 h-4 text-slate-600" />
                 <span>2. أصناف سند الصرف المخزني:</span>
               </h4>
-              <button
-                type="button"
-                onClick={handleAddRow}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
-              >
-                <Plus className="w-4 h-4 text-emerald-400" />
-                <span>إضافة صنف آخر</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newRowId = 'row_' + Date.now();
+                    const defaultItem = activeItems[0];
+                    setRows((prev) => [
+                      ...prev,
+                      {
+                        id: newRowId,
+                        itemId: defaultItem ? defaultItem.id : '',
+                        unitId: defaultItem ? defaultItem.baseUnitId : '',
+                        quantity: '1',
+                        notes: '',
+                      },
+                    ]);
+                    setPickingRowId(newRowId);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                  title="فتح نافذة البحث السريع لإضافة صنف جديد"
+                >
+                  <Search className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>بحث وإضافة صنف</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddRow}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4 text-emerald-400" />
+                  <span>إضافة بند صنف</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -884,18 +913,47 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                       <div className="sm:col-span-5">
-                        <label className="block text-slate-600 font-medium mb-1">الصنف:</label>
-                        <select
-                          value={row.itemId}
-                          onChange={(e) => handleItemChange(row.id, e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium focus:border-emerald-500"
+                        <label className="block text-slate-600 font-medium text-xs mb-1">
+                          الصنف <span className="text-rose-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setPickingRowId(row.id)}
+                          className="w-full text-right p-2.5 sm:p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-emerald-500 rounded-xl transition-all flex items-center justify-between gap-2.5 group cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-200"
                         >
-                          {activeItems.map((i) => (
-                            <option key={i.id} value={i.id}>
-                              {i.name} (رمز: {i.code})
-                            </option>
-                          ))}
-                        </select>
+                          {val?.item ? (
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                                {val.item.name}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span dir="ltr" className="text-[11px] text-slate-500 font-mono inline-block">
+                                  {val.item.code}
+                                </span>
+                                <span className="text-slate-300">•</span>
+                                <span
+                                  className={`text-[11px] font-semibold ${
+                                    (val.currentStock || 0) > 0 ? 'text-emerald-700' : 'text-rose-600 font-bold'
+                                  }`}
+                                >
+                                  الرصيد: {val.currentStock} {val.baseUnit?.name || 'وحدة'}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
+                              <Package className="w-4 h-4 text-slate-400" />
+                              <span>اضغط للبحث واختيار الصنف...</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 group-hover:bg-emerald-100 transition-colors flex items-center gap-1">
+                              <Search className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{val?.item ? 'تغيير' : 'اختيار'}</span>
+                            </span>
+                            <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                          </div>
+                        </button>
                       </div>
 
                       <div className="sm:col-span-3">
@@ -1007,6 +1065,20 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Quick Search Item Bottom Sheet */}
+      <ItemPickerBottomSheet
+        isOpen={Boolean(pickingRowId)}
+        onClose={() => setPickingRowId(null)}
+        selectedItemId={rows.find((r) => r.id === pickingRowId)?.itemId || ''}
+        onSelectItem={(itemId) => {
+          if (pickingRowId) {
+            handleItemChange(pickingRowId, itemId);
+            setPickingRowId(null);
+          }
+        }}
+        movementType="OUT"
+      />
     </div>
   );
 };

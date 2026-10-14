@@ -7,12 +7,24 @@ import {
   deleteDoc,
   onSnapshot,
   writeBatch,
+  runTransaction,
   query,
   orderBy,
   limit,
 } from 'firebase/firestore';
 import { db, OWNER_EMAIL } from './firebase';
-import { AuditLogEntry, Branch, Category, CompanySettings, Customer, Item, ReturnRecord, StockMovement, Unit } from '../types/inventory';
+import {
+  AuditLogEntry,
+  Branch,
+  Category,
+  CompanySettings,
+  Customer,
+  Item,
+  ProductionOrder,
+  ReturnRecord,
+  StockMovement,
+  Unit,
+} from '../types/inventory';
 import { StorageService, InventoryDatabaseData } from './storage';
 
 export type { AuditLogEntry };
@@ -63,7 +75,7 @@ export const FirestoreStorage = {
         }
       };
 
-      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap, customersSnap] = await Promise.all([
+      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap, customersSnap, prodOrdersSnap] = await Promise.all([
         fetchColl('units'),
         fetchColl('categories'),
         fetchColl('items'),
@@ -71,6 +83,7 @@ export const FirestoreStorage = {
         fetchColl('branches'),
         fetchColl('returns'),
         fetchColl('customers'),
+        fetchColl('production_orders'),
       ]);
 
       let cloudSettings: CompanySettings | undefined = undefined;
@@ -114,6 +127,10 @@ export const FirestoreStorage = {
         .map((d) => d.data() as Customer)
         .filter((c) => c && c.id);
 
+      const cloudProductionOrders: ProductionOrder[] = (prodOrdersSnap?.docs || [])
+        .map((d) => d.data() as ProductionOrder)
+        .filter((p) => p && p.id && p.orderNumber);
+
       // If all collections returned null (e.g. completely offline with no local Firestore cache)
       const hasAnyFirestoreData =
         unitsSnap !== null ||
@@ -122,7 +139,8 @@ export const FirestoreStorage = {
         movementsSnap !== null ||
         branchesSnap !== null ||
         returnsSnap !== null ||
-        customersSnap !== null;
+        customersSnap !== null ||
+        prodOrdersSnap !== null;
 
       if (!hasAnyFirestoreData) {
         console.warn('Firestore is completely offline or unreachable. Loading from StorageService local cache.');
@@ -138,6 +156,7 @@ export const FirestoreStorage = {
         branches: cloudBranches,
         returns: cloudReturns,
         customers: cloudCustomers,
+        productionOrders: cloudProductionOrders,
         settings: cloudSettings,
       };
 
@@ -334,6 +353,143 @@ export const FirestoreStorage = {
     }
   },
 
+  // Save Production Order
+  async saveProductionOrder(order: ProductionOrder): Promise<void> {
+    try {
+      await setDoc(doc(db, 'production_orders', order.id), cleanObject(order));
+      await this.recordAuditLog('SAVE_PRODUCTION_ORDER', 'production_order', order.id, `حفظ أمر إنتاج: ${order.orderNumber} (${order.title})`);
+    } catch (err) {
+      console.error('Error saving production order to Firestore:', err);
+      throw err;
+    }
+  },
+
+  // Delete Production Order
+  async deleteProductionOrder(orderId: string, orderNumber?: string): Promise<void> {
+    try {
+      await deleteDoc(doc(db, 'production_orders', orderId));
+      await this.recordAuditLog('DELETE_PRODUCTION_ORDER', 'production_order', orderId, `حذف أمر إنتاج: ${orderNumber || orderId}`);
+    } catch (err) {
+      console.error('Error deleting production order from Firestore:', err);
+      throw err;
+    }
+  },
+
+  // Atomic Production Dispatch: Writes movements and updates order in single atomic transaction/batch
+  async executeProductionDispatch(order: ProductionOrder, newMovements: StockMovement[]): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'production_orders', order.id), cleanObject(order));
+      for (const m of newMovements) {
+        batch.set(doc(db, 'movements', m.id), cleanObject(m));
+      }
+      await batch.commit();
+      await this.recordAuditLog(
+        'PRODUCTION_DISPATCH',
+        'production_order',
+        order.id,
+        `صرف مواد لأمر الإنتاج (${order.orderNumber}): عدد الأصناف ${newMovements.length}`
+      );
+    } catch (err) {
+      console.error('Error in executeProductionDispatch:', err);
+      throw err;
+    }
+  },
+
+  // Atomic Production Receipt: Writes receipt movement and updates order
+  async executeProductionReceipt(order: ProductionOrder, newMovement: StockMovement): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'production_orders', order.id), cleanObject(order));
+      batch.set(doc(db, 'movements', newMovement.id), cleanObject(newMovement));
+      await batch.commit();
+      await this.recordAuditLog(
+        'PRODUCTION_RECEIPT',
+        'production_order',
+        order.id,
+        `استلام منتج جاهز من أمر الإنتاج (${order.orderNumber}): كمية ${newMovement.quantity}`
+      );
+    } catch (err) {
+      console.error('Error in executeProductionReceipt:', err);
+      throw err;
+    }
+  },
+
+  // Atomic Production Return: Writes return movements and updates order
+  async executeProductionReturn(order: ProductionOrder, newMovements: StockMovement[]): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'production_orders', order.id), cleanObject(order));
+      for (const m of newMovements) {
+        batch.set(doc(db, 'movements', m.id), cleanObject(m));
+      }
+      await batch.commit();
+      await this.recordAuditLog(
+        'PRODUCTION_RETURN',
+        'production_order',
+        order.id,
+        `إرجاع مواد فائضة من أمر الإنتاج (${order.orderNumber}) للمستودع: ${newMovements.length} صنف`
+      );
+    } catch (err) {
+      console.error('Error in executeProductionReturn:', err);
+      throw err;
+    }
+  },
+
+  // Atomic Factory Movement Transaction using Firestore runTransaction()
+  async recordFactoryMovementTransaction(
+    movement: StockMovement,
+    options?: { maxAllowedStock?: number }
+  ): Promise<void> {
+    const movementRef = doc(db, 'movements', movement.id);
+    const itemRef = doc(db, 'items', movement.itemId);
+
+    await runTransaction(db, async (transaction) => {
+      // 1. Check if movement already exists to prevent duplicate submission
+      const existingSnap = await transaction.get(movementRef);
+      if (existingSnap.exists()) {
+        throw new Error('تم تسجيل هذه الحركة مسبقاً بنفس المعرّف لمنع التكرار.');
+      }
+
+      // 2. Read item from Firestore to ensure it exists and is not deleted
+      const itemSnap = await transaction.get(itemRef);
+      if (!itemSnap.exists()) {
+        throw new Error('الصنف المحدد غير موجود في قاعدة بيانات المخزون.');
+      }
+      const itemData = itemSnap.data() as Item;
+      if (itemData.isDeleted) {
+        throw new Error('لا يمكن تسجيل حركة لمصنع على صنف محذوف.');
+      }
+
+      // 3. For OUT movements, verify stock balance
+      const isOut =
+        movement.type === 'MFG_OUT' ||
+        movement.type === 'OUT' ||
+        (movement.type as string) === 'خروج للمصنع';
+      if (isOut && options?.maxAllowedStock !== undefined) {
+        if (movement.baseQuantity > options.maxAllowedStock) {
+          throw new Error(
+            `عفواً، الكمية المطلوبة للخروج (${movement.baseQuantity}) تتجاوز الرصيد المتوفر حالياً (${options.maxAllowedStock}). يمنع النظام تماماً الأرصدة السالبة!`
+          );
+        }
+      }
+
+      // 4. Commit movement atomically
+      transaction.set(movementRef, cleanObject(movement));
+    });
+
+    const isOut =
+      movement.type === 'MFG_OUT' ||
+      movement.type === 'OUT' ||
+      (movement.type as string) === 'خروج للمصنع';
+    await this.recordAuditLog(
+      isOut ? 'FACTORY_OUT' : 'FACTORY_IN',
+      'movement',
+      movement.id,
+      `حركة مصنع (${isOut ? 'خروج للمصنع' : 'وارد من المصنع'}): سند ${movement.referenceNumber || movement.id} - كمية ${movement.quantity}`
+    );
+  },
+
   // Delete all movements from Cloud Firestore (zero stock operations)
   async deleteAllMovements(): Promise<number> {
     try {
@@ -472,6 +628,18 @@ export const FirestoreStorage = {
       unsubscribes.push(unsub);
     }
 
+    if ((callbacks as any).onProductionOrders) {
+      const unsub = onSnapshot(
+        collection(db, 'production_orders'),
+        (snap) => {
+          const orders = snap.docs.map((d) => d.data() as ProductionOrder).filter((p) => p && p.id && p.orderNumber);
+          (callbacks as any).onProductionOrders?.(orders);
+        },
+        (err) => callbacks.onError?.(err)
+      );
+      unsubscribes.push(unsub);
+    }
+
     return () => {
       unsubscribes.forEach((fn) => fn());
     };
@@ -488,6 +656,7 @@ export const FirestoreStorage = {
     (data.movements || []).forEach((m) => m.id && allOperations.push({ col: 'movements', id: m.id, data: m }));
     (data.branches || []).forEach((b) => b.id && allOperations.push({ col: 'branches', id: b.id, data: b }));
     (data.returns || []).forEach((r) => r.id && allOperations.push({ col: 'returns', id: r.id, data: r }));
+    (data.productionOrders || []).forEach((p) => p.id && allOperations.push({ col: 'production_orders', id: p.id, data: p }));
 
     const CHUNK_SIZE = 100;
     for (let i = 0; i < allOperations.length; i += CHUNK_SIZE) {

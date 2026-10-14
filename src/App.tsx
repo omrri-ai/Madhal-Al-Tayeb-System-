@@ -22,6 +22,7 @@ import { UnitsView } from './components/units/UnitsView';
 import { BranchesView } from './components/branches/BranchesView';
 import { CustomersView } from './components/customers/CustomersView';
 import { ArchiveTrashView } from './components/archive/ArchiveTrashView';
+import { ProductionView } from './components/production/ProductionView';
 import { AuditLogView } from './components/audit/AuditLogView';
 import { ReportsView, ReportsFilterState } from './components/reports/ReportsView';
 import { BackupSettingsView } from './components/settings/BackupSettingsView';
@@ -249,6 +250,10 @@ const InventoryApp: React.FC = () => {
               initialMovementId={navParams.movementId}
               returnToReports={cameFromReports ? handleReturnToReports : undefined}
             />
+          )}
+
+          {currentView === 'production' && (
+            <ProductionView onOpenAddItem={handleOpenAddItem} />
           )}
 
           {currentView === 'returns' && <ReturnsView />}

@@ -116,9 +116,9 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       setCategoryId(editingItem.categoryId || '');
       setBaseUnitId(editingItem.baseUnitId || '');
       setConversions(editingItem.conversions || []);
-      setMinStockAlert(editingItem.minStockAlert?.toString() || '0');
-      setCostPrice(editingItem.costPrice !== undefined ? editingItem.costPrice.toString() : '');
-      setSalePrice(editingItem.salePrice !== undefined ? editingItem.salePrice.toString() : '');
+      setMinStockAlert(editingItem.minStockAlert != null ? String(editingItem.minStockAlert) : '0');
+      setCostPrice(editingItem.costPrice != null ? String(editingItem.costPrice) : '');
+      setSalePrice(editingItem.salePrice != null ? String(editingItem.salePrice) : '');
       setNotes(editingItem.notes || '');
       setEditReason('');
       setErrorMsg('');

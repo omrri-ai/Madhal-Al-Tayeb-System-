@@ -17,6 +17,7 @@ import {
   KeyRound,
   Settings,
   History,
+  Factory,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 
@@ -24,6 +25,7 @@ export type NavView =
   | 'dashboard'
   | 'items'
   | 'movements'
+  | 'production'
   | 'returns'
   | 'branches'
   | 'customers'
@@ -73,6 +75,15 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: ArrowLeftRight,
       badge: stats.todayInMovementsCount + stats.todayOutMovementsCount > 0 ? `${stats.todayInMovementsCount + stats.todayOutMovementsCount} اليوم` : null,
       badgeColor: 'bg-blue-100 text-blue-800',
+    },
+    {
+      id: 'production' as NavView,
+      label: 'الإنتاج والتصنيع',
+      icon: Factory,
+      badge: stats.openProductionOrdersCount + stats.pendingReceiptProductionOrdersCount > 0
+        ? `${stats.openProductionOrdersCount + stats.pendingReceiptProductionOrdersCount}`
+        : null,
+      badgeColor: 'bg-indigo-100 text-indigo-800',
     },
     {
       id: 'returns' as NavView,

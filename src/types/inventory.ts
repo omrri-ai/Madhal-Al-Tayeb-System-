@@ -1,4 +1,14 @@
-export type MovementType = 'IN' | 'OUT' | 'ADJUSTMENT';
+export type MovementType =
+  | 'IN'
+  | 'OUT'
+  | 'ADJUSTMENT'
+  | 'PRODUCTION_DISPATCH' // صرف للإنتاج (سابق)
+  | 'PRODUCTION_RECEIPT'  // استلام منتج جاهز من الإنتاج (سابق)
+  | 'PRODUCTION_RETURN'   // مرتجع مواد من الإنتاج للمستودع (سابق)
+  | 'MFG_OUT'             // خروج للمصنع
+  | 'MFG_IN'              // وارد من المصنع
+  | 'خروج للمصنع'
+  | 'وارد من المصنع';
 
 export interface Unit {
   id: string;
@@ -95,13 +105,17 @@ export interface StockMovement {
   notes?: string;
   
   // Destination / Source Snapshot metadata
-  destinationType?: 'DIRECT' | 'BRANCH' | 'CUSTOMER' | 'DAMAGED' | 'TRANSFER' | 'OTHER';
+  destinationType?: 'DIRECT' | 'BRANCH' | 'CUSTOMER' | 'DAMAGED' | 'TRANSFER' | 'PRODUCTION' | 'FACTORY' | 'OTHER';
   destinationId?: string;
   destinationName?: string;
   destinationContactName?: string;
   destinationPhone?: string;
   destinationAddress?: string;
   destinationTaxId?: string;
+  
+  // Production Order Link
+  productionOrderId?: string;
+  productionOrderNumber?: string;
   
   // Legacy / Direct fields
   branchId?: string;
@@ -171,6 +185,11 @@ export interface InventoryStats {
   draftReturnsCount: number;
   inReturnsCount: number;
   outReturnsCount: number;
+  // Production stats
+  totalProductionOrdersCount: number;
+  openProductionOrdersCount: number;
+  pendingReceiptProductionOrdersCount: number;
+  completedProductionOrdersCount: number;
 }
 
 export type ReturnType = 'RETURN_IN' | 'RETURN_OUT';
@@ -239,4 +258,148 @@ export interface AuditLogEntry {
   details?: string;
   performedBy?: string;
 }
+
+// ==========================================
+// PRODUCTION MANAGEMENT TYPES (نظام إدارة الإنتاج والتصنيع)
+// ==========================================
+
+export type ProductionOrderStatus = 'OPEN' | 'PENDING_RECEIPT' | 'COMPLETED' | 'CANCELLED';
+
+export interface ProductionOrderMaterialEntry {
+  itemId: string;
+  unitId: string;
+  dispatchedQuantity: number;      // الكمية المصروفة بالوحدة المختارة
+  dispatchedBaseQuantity: number;  // الكمية المصروفة بالوحدة الأساسية
+  consumedBaseQuantity: number;    // الكمية المستهلكة بالوحدة الأساسية
+  scrapBaseQuantity: number;       // الكمية التالفة/الهالكة بالوحدة الأساسية (ضمن المستهلك)
+  scrapReason?: string | null;     // سبب الهالك
+  returnedBaseQuantity: number;    // الكمية المرتجعة للمستودع بالوحدة الأساسية
+  currentCustodyBaseQuantity: number; // العهدة المتبقية = المصروف - المستهلك - المرتجع
+}
+
+export interface ProductionOrderFinishedGood {
+  itemId: string;                  // معرّف الصنف المنتج الجاهز
+  unitId: string;                  // الوحدة المختارة للإنتاج
+  plannedQuantity: number;         // الكمية المستهدفة
+  completedQuantity: number;       // الكمية المصنوعة المكتملة
+  completedBaseQuantity: number;   // بالوحدة الأساسية
+  receivedQuantity: number;        // الكمية المستلمة في المخزون
+  receivedBaseQuantity: number;    // بالوحدة الأساسية
+  pendingReceiptQuantity: number;  // بانتظار الاستلام = completed - received
+  pendingReceiptBaseQuantity: number;
+}
+
+export interface ProductionDispatchItemEntry {
+  itemId: string;
+  unitId: string;
+  quantity: number;
+  factorApplied: number;
+  baseQuantity: number;
+  notes?: string | null;
+}
+
+export interface ProductionDispatchRecord {
+  id: string;                      // معرّف فريد للعملية
+  voucherNumber: string;           // رقم السند: PRD-DSP-2026-XXXX
+  productionOrderId: string;
+  productionOrderNumber: string;
+  date: string;
+  items: ProductionDispatchItemEntry[];
+  movementIds: string[];           // المعرفات المرتبطة في movements
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface ProductionConsumptionItemEntry {
+  itemId: string;
+  unitId: string;
+  quantity: number;
+  factorApplied: number;
+  baseQuantity: number;
+  scrapQuantity?: number;
+  scrapBaseQuantity?: number;
+  scrapReason?: string | null;
+  notes?: string | null;
+}
+
+export interface ProductionConsumptionRecord {
+  id: string;                      // معرّف فريد للعملية
+  productionOrderId: string;
+  productionOrderNumber: string;
+  date: string;
+  items: ProductionConsumptionItemEntry[];
+  completedGoodsQuantity?: number; // إن كان تسجيل الاستهلاك مترافقاً مع إنتاج مكتمل
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface ProductionReceiptRecord {
+  id: string;                      // معرّف فريد للعملية
+  voucherNumber: string;           // رقم السند: PRD-REC-2026-XXXX
+  productionOrderId: string;
+  productionOrderNumber: string;
+  date: string;
+  itemId: string;
+  unitId: string;
+  quantity: number;
+  factorApplied: number;
+  baseQuantity: number;
+  movementId: string;              // الحركة المسجلة في movements
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface ProductionReturnItemEntry {
+  itemId: string;
+  unitId: string;
+  quantity: number;
+  factorApplied: number;
+  baseQuantity: number;
+  notes?: string | null;
+}
+
+export interface ProductionReturnRecord {
+  id: string;                      // معرّف فريد للعملية
+  voucherNumber: string;           // رقم السند: PRD-RET-2026-XXXX
+  productionOrderId: string;
+  productionOrderNumber: string;
+  date: string;
+  items: ProductionReturnItemEntry[];
+  movementIds: string[];           // الحركات المسجلة في movements
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface ProductionOrder {
+  id: string;                      // معرّف الوثيقة في production_orders
+  orderNumber: string;             // PRD-2026-0001
+  title: string;                   // وصف أو اسم عملية الإنتاج
+  targetItemId?: string | null;    // الصنف الجاهز المستهدف
+  targetUnitId?: string | null;    // وحدة الصنف الجاهز
+  plannedQuantity?: number;        // الكمية المخطط إنتاجها
+  status: ProductionOrderStatus;
+  date: string;                    // تاريخ أمر الإنتاج
+  notes?: string | null;
+
+  // المواد الخام وعهدة الإنتاج
+  materials: ProductionOrderMaterialEntry[];
+
+  // المنتج التام بانتظار الاستلام والمستلم
+  finishedGood?: ProductionOrderFinishedGood | null;
+
+  // سجلات العمليات المرتبطة بالأمر
+  dispatches: ProductionDispatchRecord[];
+  consumptions: ProductionConsumptionRecord[];
+  receipts: ProductionReceiptRecord[];
+  returns: ProductionReturnRecord[];
+
+  createdAt: string;
+  updatedAt: string;
+  createdByName?: string | null;
+}
+
 
