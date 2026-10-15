@@ -67,7 +67,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<StockMovement | null>(null);
 
   const filteredMovements = useMemo(() => {
-    return movements.filter((m) => {
+    const list = movements.filter((m) => {
       const item = items.find((i) => i.id === m.itemId);
       const query = searchQuery.toLowerCase().trim();
       const destinationStr = `${m.destinationName || ''} ${m.branchName || ''} ${m.customerName || ''} ${m.destinationContactName || ''} ${m.supplierName || ''} ${m.shippingCompany || ''} ${m.customShippingCompany || ''}`.toLowerCase();
@@ -88,12 +88,19 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
         (!endDate || m.date <= `${endDate}T23:59:59`)
       );
     });
+
+    // Sort descending by date & creation time (newest first)
+    return list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.date || 0).getTime();
+      const timeB = new Date(b.createdAt || b.date || 0).getTime();
+      return timeB - timeA;
+    });
   }, [movements, items, branches, searchQuery, typeFilter, branchFilter, itemFilter, startDate, endDate]);
 
   const groupedMovements = useMemo(() => {
     const groups: Record<string, StockMovement[]> = {};
     filteredMovements.forEach((m) => {
-      const key = m.referenceNumber || m.batchId || `no-ref-${m.id}`;
+      const key = m.referenceNumber || m.batchId || `ref-${m.id}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(m);
     });
@@ -114,12 +121,13 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
 
   const handleExportCSV = () => {
     if (filteredMovements.length === 0) return;
-    const headers = ['التاريخ', 'نوع الحركة', 'رمز الصنف', 'اسم الصنف', 'الكمية', 'الوحدة', 'المعادل بالوحدة الأساسية', 'رقم المرجع', 'الملاحظات'];
+    const headers = ['التاريخ', 'نوع الحركة', 'رمز الصنف', 'اسم الصنف', 'الكمية', 'الوحدة', 'المعادل بالوحدة الأساسية', 'رقم المرجع', 'الوجهة / الجهة', 'الملاحظات'];
     const rows = filteredMovements.map((m) => {
       const item = items.find((i) => i.id === m.itemId);
       const unit = units.find((u) => u.id === m.unitId);
       const baseUnit = units.find((u) => u.id === item?.baseUnitId);
-      return [new Date(m.date).toLocaleString('ar-SA'), m.type === 'IN' ? 'دخول / وارد' : 'خروج / صادر', item?.code || '', item?.name || '', m.quantity, unit?.name || '', `${m.baseQuantity} ${baseUnit?.name || ''}`, m.referenceNumber || '', m.notes || ''];
+      const dest = m.destinationName || m.branchName || m.customerName || m.supplierName || '-';
+      return [new Date(m.date).toLocaleString('ar-SA'), m.type === 'IN' ? 'دخول / وارد' : 'خروج / صادر', item?.code || '', item?.name || '', m.quantity, unit?.name || '', `${m.baseQuantity} ${baseUnit?.name || ''}`, m.referenceNumber || 'توريد مخزني', dest, m.notes || ''];
     });
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.map((val) => `"${val}"`).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -163,7 +171,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
 
       {/* Movements Table */}
       {groupedMovements.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">لا توجد حركات</div>
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">لا توجد حركات مطابقة للبحث</div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <table className="w-full text-right text-sm">
@@ -171,7 +179,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
               <tr>
                 <th className="py-3.5 px-4 w-10"></th>
                 <th className="py-3.5 px-4">رقم السند / المرجع</th>
-                <th className="py-3.5 px-4">التاريخ</th>
+                <th className="py-3.5 px-4">التاريخ والوقت</th>
                 <th className="py-3.5 px-4">عدد الأصناف</th>
                 <th className="py-3.5 px-4">الجهة / الوجهة</th>
                 <th className="py-3.5 px-4 text-center">إجراءات</th>
@@ -179,35 +187,72 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {groupedMovements.map((movementsGroup) => {
-                const refKey = movementsGroup[0].referenceNumber || movementsGroup[0].batchId || `no-ref-${movementsGroup[0].id}`;
+                const first = movementsGroup[0];
+                const refKey = first.referenceNumber || first.batchId || `ref-${first.id}`;
                 const isExpanded = expandedVouchers[refKey];
+                const displayRef = first.referenceNumber || (first.type === 'IN' ? 'توريد مخزني' : 'صرف مخزني');
+                const destinationDisplay = first.destinationName || first.branchName || first.customerName || first.supplierName || 'مستودع مدهال الطيب الرئيسي';
+
                 return (
                   <React.Fragment key={refKey}>
-                    <tr className="hover:bg-slate-50">
+                    <tr 
+                      className="hover:bg-slate-50 cursor-pointer transition-colors"
+                      onClick={() => toggleExpand(refKey)}
+                    >
                       <td className="py-3.5 px-4">
-                        <button onClick={() => toggleExpand(refKey)} className="p-1 cursor-pointer">
+                        <button type="button" className="p-1 cursor-pointer text-slate-500 font-bold">
                           {isExpanded ? '▼' : '▶'}
                         </button>
                       </td>
-                      <td className="py-3.5 px-4 font-bold font-mono text-slate-900">{refKey}</td>
-                      <td className="py-3.5 px-4 text-xs text-slate-600">{new Date(movementsGroup[0].date).toLocaleDateString('ar-SA')}</td>
-                      <td className="py-3.5 px-4 text-xs font-bold">{movementsGroup.length}</td>
-                      <td className="py-3.5 px-4 text-xs">{movementsGroup[0].destinationName || movementsGroup[0].branchName || '-'}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <button onClick={() => setVoucherMovement(movementsGroup[0])} className="p-1.5 text-slate-500 hover:text-emerald-700">
+                      <td className="py-3.5 px-4 font-bold font-mono text-slate-900">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${first.type === 'IN' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {displayRef}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-xs text-slate-600">
+                        {new Date(first.createdAt || first.date).toLocaleString('ar-SA')}
+                      </td>
+                      <td className="py-3.5 px-4 text-xs font-bold font-mono">
+                        {movementsGroup.length} صنف
+                      </td>
+                      <td className="py-3.5 px-4 text-xs font-medium text-slate-700">
+                        {destinationDisplay}
+                      </td>
+                      <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={() => setVoucherMovement(first)} 
+                          className="p-1.5 text-slate-500 hover:text-emerald-700 cursor-pointer"
+                          title="عرض وطباعة السند"
+                        >
                           <Printer className="w-4 h-4 text-emerald-600" />
                         </button>
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={6} className="p-4 bg-slate-50">
-                          {movementsGroup.map(m => (
-                            <div key={m.id} className="flex justify-between border-b p-2 bg-white rounded shadow-sm mb-1">
-                              <span>{items.find(i => i.id === m.itemId)?.name}</span>
-                              <span className="font-mono">{m.quantity} {units.find(u => u.id === m.unitId)?.name}</span>
-                            </div>
-                          ))}
+                        <td colSpan={6} className="p-4 bg-slate-50/80">
+                          <div className="space-y-1.5">
+                            <div className="text-xs font-bold text-slate-500 mb-2">تفاصيل الأصناف في هذا السند:</div>
+                            {movementsGroup.map(m => {
+                              const itm = items.find(i => i.id === m.itemId);
+                              const unt = units.find(u => u.id === m.unitId);
+                              return (
+                                <div key={m.id} className="flex items-center justify-between border border-slate-200/80 p-2.5 bg-white rounded-xl shadow-2xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.type === 'IN' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                      {m.type === 'IN' ? 'وارد' : 'صادر'}
+                                    </span>
+                                    <span className="font-bold text-slate-900 text-xs">{itm?.name || 'صنف غير معروف'}</span>
+                                    <span className="text-[11px] font-mono text-slate-400">({itm?.code || '-'})</span>
+                                  </div>
+                                  <div className="font-mono text-xs font-bold text-slate-800">
+                                    {m.quantity} {unt?.name || 'وحدة'}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </td>
                       </tr>
                     )}

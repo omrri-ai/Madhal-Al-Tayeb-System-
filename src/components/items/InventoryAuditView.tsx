@@ -22,6 +22,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Item, StockMovement, ItemStockSummary } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 
@@ -53,7 +54,9 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
     getItemStock,
     getItemStockSummary,
     getAllItemsSummary,
+    adjustItemStock,
   } = useInventory();
+  const { isAdmin } = useAuth();
 
   // Filters
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
@@ -64,6 +67,42 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
   // Selected item modal for audit inspection
   const [inspectedItem, setInspectedItem] = useState<Item | null>(null);
   const [activeItemTab, setActiveItemTab] = useState<'out' | 'remaining' | 'all'>('out');
+
+  // Stock Adjustment Modal state
+  const [adjustingItem, setAdjustingItem] = useState<Item | null>(null);
+  const [newStockInput, setNewStockInput] = useState<string>('');
+  const [adjustmentReason, setAdjustmentReason] = useState<string>('');
+  const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
+
+  const handleSaveAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustingItem) return;
+    const num = Number(newStockInput);
+    if (isNaN(num) || num < 0) {
+      alert('يرجى إدخال رصيد فعلي صحيح أكبر من أو يساوي الصفر');
+      return;
+    }
+    if (!adjustmentReason.trim()) {
+      alert('يرجى إدخال سبب التسوية / ملاحظات الجرد');
+      return;
+    }
+
+    setIsSubmittingAdjustment(true);
+    playNotificationSound('bell');
+    const res = adjustItemStock({
+      itemId: adjustingItem.id,
+      newStock: num,
+      reason: adjustmentReason,
+      unitId: adjustingItem.baseUnitId,
+    });
+    setIsSubmittingAdjustment(false);
+
+    if (res.success) {
+      setAdjustingItem(null);
+      setNewStockInput('');
+      setAdjustmentReason('');
+    }
+  };
 
   // Print Preview Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -557,16 +596,34 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
 
                       {/* Action Button */}
                       <td className="p-3.5 text-center whitespace-nowrap">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setInspectedItem(s.item);
-                          }}
-                          className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-[11px]"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>فحص الجرد</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectedItem(s.item);
+                            }}
+                            className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-[11px]"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>فحص الجرد</span>
+                          </button>
+
+                          {isAdmin && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAdjustingItem(s.item);
+                                setNewStockInput(s.currentStock.toString());
+                                setAdjustmentReason('');
+                              }}
+                              className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-800 font-bold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 text-[11px] border border-orange-200"
+                              title="تسوية جردية لتصحيح الرصيد"
+                            >
+                              <Scale className="w-3.5 h-3.5 text-orange-600" />
+                              <span>تسوية جردية</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1030,6 +1087,109 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* STOCK ADJUSTMENT MODAL */}
+      {adjustingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">تسوية جردية للصنف</h3>
+                  <p className="text-xs text-slate-500">{adjustingItem.name} ({adjustingItem.code})</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAdjustingItem(null)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAdjustment} className="space-y-4">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-bold">الرصيد المسجل حالياً:</span>
+                <span className="font-mono font-black text-base text-slate-900">
+                  {getItemStock(adjustingItem.id)} {units.find((u) => u.id === adjustingItem.baseUnitId)?.name || 'وحدة'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  الرصيد الفعلي الجديد بعد الجرد (إلزامي):
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={newStockInput}
+                  onChange={(e) => setNewStockInput(e.target.value)}
+                  placeholder="أدخل الكمية الفعلية الصحيحة..."
+                  required
+                  autoFocus
+                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl text-sm font-mono font-bold text-slate-900 outline-hidden transition-colors"
+                />
+              </div>
+
+              {/* Difference preview */}
+              {newStockInput !== '' && !isNaN(Number(newStockInput)) && (
+                (() => {
+                  const curr = getItemStock(adjustingItem.id);
+                  const diff = Number(newStockInput) - curr;
+                  return (
+                    <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between border ${
+                      diff > 0
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : diff < 0
+                        ? 'bg-rose-50 text-rose-800 border-rose-200'
+                        : 'bg-slate-50 text-slate-700 border-slate-200'
+                    }`}>
+                      <span>مقدار الفرق (الفائض / العجز):</span>
+                      <span className="font-mono text-sm">
+                        {diff > 0 ? `+${diff}` : diff} {units.find((u) => u.id === adjustingItem.baseUnitId)?.name || 'وحدة'}
+                      </span>
+                    </div>
+                  );
+                })()
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  سبب التسوية / ملاحظات الجرد (إلزامي):
+                </label>
+                <textarea
+                  value={adjustmentReason}
+                  onChange={(e) => setAdjustmentReason(e.target.value)}
+                  placeholder="مثال: تصحيح خطأ إدخال، تلف جزء من البضاعة، عجز جرد فعلي..."
+                  required
+                  rows={3}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl text-xs text-slate-900 outline-hidden transition-colors resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmittingAdjustment}
+                  className="flex-1 py-3 px-4 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold text-sm shadow-md shadow-orange-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Scale className="w-4 h-4" />
+                  <span>حفظ واعتماد التسوية</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdjustingItem(null)}
+                  className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors cursor-pointer"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

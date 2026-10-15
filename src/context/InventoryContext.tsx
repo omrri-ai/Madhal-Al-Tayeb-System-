@@ -31,6 +31,7 @@ import {
   CloudBackupRecord,
 } from '../services/firestoreStorage';
 import { OWNER_EMAIL } from '../services/firebase';
+import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
   // State
@@ -165,6 +166,12 @@ interface InventoryContextType {
     notes?: string;
   }) => { success: boolean; error?: string };
   deleteMovement: (id: string, reason?: string) => { success: boolean; error?: string };
+  adjustItemStock: (data: {
+    itemId: string;
+    newStock: number;
+    reason: string;
+    unitId?: string;
+  }) => { success: boolean; error?: string };
 
   // Returns actions
   addReturn: (returnData: {
@@ -294,9 +301,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>({
     name: 'نظام مخزون مدهال الطيب',
-    commercialRegister: '1010000000',
-    taxId: '300000000000003',
-    phone: '0500000000',
+    commercialRegister: '',
+    taxId: '',
+    phone: '',
     address: 'المملكة العربية السعودية',
     managerName: 'إدارة المخزون',
   });
@@ -346,9 +353,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     returnsRef.current = returns;
   }, [returns]);
 
+  const { role, isOwner } = useAuth();
+
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
   }, []);
+
+  // Strict role security guard: blocks any write operation when user is in View-Only mode
+  const ensureAdmin = useCallback(
+    (actionName: string): boolean => {
+      if (role !== 'ADMIN' && !isOwner) {
+        const errorMsg = `عفواً، لا تملك الصلاحية لتنفيذ (${actionName}). حساب مسؤول المصنع مخصص للمشاهدة فقط؛ يرجى التبديل لوضع المدير للمتابعة.`;
+        showToast(errorMsg, 'error');
+        return false;
+      }
+      return true;
+    },
+    [role, isOwner, showToast]
+  );
 
   const clearToast = useCallback(() => {
     setToast(null);
@@ -667,6 +689,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // CUSTOMERS ACTIONS
   const addCustomer = useCallback(
     (data: Omit<Customer, 'id' | 'createdAt'>) => {
+      if (!ensureAdmin('إضافة عميل')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const now = new Date().toISOString();
       const newCustomer: Customer = {
         id: 'cust_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
@@ -684,11 +709,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       FirestoreStorage.saveCustomer(newCustomer).catch((err) => console.warn(err));
       return { success: true, customer: newCustomer };
     },
-    [customers]
+    [customers, ensureAdmin]
   );
 
   const updateCustomer = useCallback(
     (id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>, reason?: string) => {
+      if (!ensureAdmin('تعديل عميل')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const existing = customers.find((c) => c.id === id);
       if (!existing) return { success: false, error: 'العميل غير موجود' };
       const updatedCust: Customer = {
@@ -713,11 +741,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }).catch((e) => console.warn(e));
       return { success: true };
     },
-    [customers]
+    [customers, ensureAdmin]
   );
 
   const deleteCustomer = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف عميل')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const existing = customers.find((c) => c.id === id);
       if (!existing) return { success: false, error: 'العميل غير موجود' };
       const updated = customers.filter((c) => c.id !== id);
@@ -736,17 +767,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }).catch((e) => console.warn(e));
       return { success: true };
     },
-    [customers]
+    [customers, ensureAdmin]
   );
 
   const saveCompanySettings = useCallback(
     (settings: CompanySettings) => {
+      if (!ensureAdmin('تعديل إعدادات المنشأة')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       setCompanySettings(settings);
       FirestoreStorage.saveCompanySettings(settings).catch((err) => console.warn(err));
       showToast('تم حفظ إعدادات المنشأة وسندات الطباعة بنجاح', 'success');
       return { success: true };
     },
-    [showToast]
+    [showToast, ensureAdmin]
   );
 
   // Branch operations
@@ -759,6 +793,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       branchManagerName?: string,
       branchManagerPhone?: string
     ) => {
+      if (!ensureAdmin('إضافة فرع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = name.trim();
       if (!cleanName) {
         return { success: false, error: 'يرجى إدخال اسم الفرع' };
@@ -789,11 +826,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تمت إضافة الفرع "${cleanName}" بنجاح`, 'success');
       return { success: true, branch: newBranch };
     },
-    [branches, units, categories, items, movements, returns, persistChanges, showToast]
+    [branches, units, categories, items, movements, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const deleteBranch = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف فرع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const target = branches.find((b) => b.id === id);
       if (!target) return { success: false, error: 'الفرع غير موجود' };
 
@@ -816,7 +856,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       persistChanges(units, categories, items, movements, updated, returns);
       return { success: true };
     },
-    [branches, units, categories, items, movements, returns, persistChanges]
+    [branches, units, categories, items, movements, returns, persistChanges, ensureAdmin]
   );
 
   const updateBranch = useCallback(
@@ -830,6 +870,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       branchManagerPhone?: string,
       reason?: string
     ) => {
+      if (!ensureAdmin('تعديل فرع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الفرع' };
 
@@ -866,10 +909,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       persistChanges(units, categories, items, movements, updated, returns);
       return { success: true };
     },
-    [branches, units, categories, items, movements, returns, persistChanges]
+    [branches, units, categories, items, movements, returns, persistChanges, ensureAdmin]
   );
 
   const clearAllBranches = useCallback(() => {
+    if (!ensureAdmin('تصفير الفروع')) {
+      return;
+    }
     for (const b of branches) {
       try {
         FirestoreStorage.deleteBranch(b.id, b.name).catch((e) => console.warn(e));
@@ -878,7 +924,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setBranches([]);
     persistChanges(units, categories, items, movements, [], returns);
     showToast('تم تصفير وحذف جميع الفروع بنجاح', 'info');
-  }, [branches, units, categories, items, movements, returns, persistChanges, showToast]);
+  }, [branches, units, categories, items, movements, returns, persistChanges, showToast, ensureAdmin]);
 
   // Calculate current stock in base units with foolproof numerical safety
   const getItemStock = useCallback(
@@ -907,6 +953,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           (m.type as string) === 'خروج للمصنع'
         ) {
           stock -= baseQty;
+        } else if (m.type === 'ADJUSTMENT') {
+          stock += baseQty;
         }
       }
       const rawStock = Math.round(stock * 1000) / 1000;
@@ -954,14 +1002,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           (m.type as string) === 'وارد من المصنع'
         ) {
           totalIn += baseQty;
-        }
-        if (
+        } else if (
           m.type === 'OUT' ||
           m.type === 'PRODUCTION_DISPATCH' ||
           m.type === 'MFG_OUT' ||
           (m.type as string) === 'خروج للمصنع'
         ) {
           totalOut += baseQty;
+        } else if (m.type === 'ADJUSTMENT') {
+          if (baseQty > 0) totalIn += baseQty;
+          else totalOut += Math.abs(baseQty);
         }
       }
 
@@ -1121,6 +1171,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // UNIT CRUD
   const addUnit = useCallback(
     (name: string, symbol?: string, description?: string) => {
+      if (!ensureAdmin('إضافة وحدة')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الوحدة' };
 
@@ -1143,11 +1196,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تمت إضافة الوحدة "${cleanName}" بنجاح`, 'success');
       return { success: true, unit: newUnit };
     },
-    [units, categories, items, movements, branches, returns, persistChanges, showToast]
+    [units, categories, items, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const updateUnit = useCallback(
     (id: string, name: string, symbol?: string, description?: string, reason?: string) => {
+      if (!ensureAdmin('تعديل وحدة')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الوحدة' };
 
@@ -1176,11 +1232,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم تعديل الوحدة "${cleanName}" بنجاح`, 'success');
       return { success: true };
     },
-    [units, categories, items, movements, branches, returns, persistChanges, showToast]
+    [units, categories, items, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const deleteUnit = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف وحدة')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const unitToDelete = units.find((u) => u.id === id);
       if (!unitToDelete) return { success: false, error: 'الوحدة غير موجودة' };
 
@@ -1216,7 +1275,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم حذف الوحدة "${unitToDelete.name}" بنجاح`, 'success');
       return { success: true };
     },
-    [units, items, categories, movements, branches, returns, persistChanges, showToast]
+    [units, items, categories, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   // Common units quick seed helper
@@ -1250,6 +1309,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // CATEGORY CRUD
   const addCategory = useCallback(
     (name: string, description?: string, color?: string) => {
+      if (!ensureAdmin('إضافة قسم')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم القسم' };
 
@@ -1275,11 +1337,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم إنشاء القسم "${cleanName}" بنجاح`, 'success');
       return { success: true, category: newCategory };
     },
-    [categories, units, items, movements, branches, returns, persistChanges, showToast]
+    [categories, units, items, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const updateCategory = useCallback(
     (id: string, name: string, description?: string, color?: string, reason?: string) => {
+      if (!ensureAdmin('تعديل قسم')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم القسم' };
 
@@ -1314,11 +1379,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم تعديل القسم "${cleanName}" بنجاح`, 'success');
       return { success: true };
     },
-    [categories, units, items, movements, branches, returns, persistChanges, showToast]
+    [categories, units, items, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const deleteCategory = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف قسم')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cat = categories.find((c) => c.id === id);
       if (!cat) return { success: false, error: 'القسم غير موجود' };
 
@@ -1349,12 +1417,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم حذف القسم "${cat.name}" بنجاح`, 'success');
       return { success: true };
     },
-    [categories, items, units, movements, branches, returns, persistChanges, showToast]
+    [categories, items, units, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   // ITEM CRUD
   const addItem = useCallback(
     (itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'isArchived' | 'isDeleted'>) => {
+      if (!ensureAdmin('إضافة صنف جديد')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanName = itemData.name.trim();
       if (!cleanName) return { success: false, error: 'يرجى إدخال اسم الصنف' };
       if (!itemData.categoryId) return { success: false, error: 'يرجى تحديد قسم الصنف' };
@@ -1436,6 +1507,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const updateItem = useCallback(
     (id: string, itemData: Partial<Omit<Item, 'id' | 'createdAt' | 'updatedAt'>>, reason?: string) => {
+      if (!ensureAdmin('تعديل الصنف')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const existing = items.find((i) => i.id === id);
       if (!existing) return { success: false, error: 'الصنف غير موجود' };
 
@@ -1542,6 +1616,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const archiveItem = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('أرشفة الصنف')) return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
       const item = items.find((i) => i.id === id);
       if (!item) return { success: false, error: 'الصنف غير موجود' };
 
@@ -1574,6 +1649,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const restoreItem = useCallback(
     (id: string) => {
+      if (!ensureAdmin('استعادة الصنف من الأرشيف')) return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
       const item = items.find((i) => i.id === id);
       if (!item) return { success: false, error: 'الصنف غير موجود' };
 
@@ -1591,6 +1667,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const softDeleteItem = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف الصنف')) return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
       const item = items.find((i) => i.id === id);
       if (!item) return { success: false, error: 'الصنف غير موجود' };
 
@@ -1623,6 +1700,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const restoreFromTrash = useCallback(
     (id: string) => {
+      if (!ensureAdmin('استعادة الصنف من سلة المحذوفات')) return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
       const item = items.find((i) => i.id === id);
       if (!item) return { success: false, error: 'الصنف غير موجود' };
 
@@ -1640,6 +1718,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const permanentDeleteItem = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('الحذف النهائي للصنف')) return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
       const item = items.find((i) => i.id === id);
       if (!item) return { success: false, error: 'الصنف غير موجود' };
 
@@ -1699,6 +1778,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       shippingTrackingNumber?: string;
       batchId?: string;
     }) => {
+      if (!ensureAdmin('تسجيل حركة مخزنية')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const item = items.find((i) => i.id === data.itemId && !i.isDeleted);
       if (!item) return { success: false, error: 'الصنف المحدد غير موجود أو محذوف' };
 
@@ -1802,6 +1884,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         notes?: string;
       }[];
     }) => {
+      if (!ensureAdmin('صرف شحنة وتصدير')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       if (!dispatchData.items || dispatchData.items.length === 0) {
         return { success: false, error: 'يرجى إضافة صنف واحد على الأقل في أمر التصدير' };
       }
@@ -1966,6 +2051,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         notes?: string;
       }
     ) => {
+      if (!ensureAdmin('تعديل حركة مخزنية')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const existing = movements.find((m) => m.id === id);
       if (!existing) return { success: false, error: 'الحركة غير موجودة' };
 
@@ -2059,6 +2147,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteMovement = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف حركة مخزنية')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const existing = movements.find((m) => m.id === id);
       if (!existing) return { success: false, error: 'الحركة غير موجودة' };
 
@@ -2100,6 +2191,92 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [movements, items, units, categories, branches, returns, getItemStock, persistChanges, showToast]
   );
 
+  const adjustItemStock = useCallback(
+    (data: {
+      itemId: string;
+      newStock: number;
+      reason: string;
+      unitId?: string;
+    }): { success: boolean; error?: string } => {
+      if (!ensureAdmin('تسوية جردية للمخزون')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+      const item = items.find((i) => i.id === data.itemId && !i.isDeleted);
+      if (!item) return { success: false, error: 'الصنف غير موجود' };
+
+      const cleanReason = data.reason?.trim();
+      if (!cleanReason) {
+        return { success: false, error: 'يرجى إدخال سبب التسوية / ملاحظات الجرد (إلزامي)' };
+      }
+
+      if (data.newStock === undefined || data.newStock === null || isNaN(Number(data.newStock))) {
+        return { success: false, error: 'يرجى إدخال الرصيد الفعلي الجديد بشكل صحيح' };
+      }
+
+      const targetUnitId = data.unitId || item.baseUnitId;
+      let factor = 1;
+      if (targetUnitId !== item.baseUnitId) {
+        const conv = item.conversions.find((c) => c.unitId === targetUnitId);
+        if (!conv) {
+          return { success: false, error: 'معامل التحويل غير مدعوم لهذه الوحدة' };
+        }
+        factor = conv.factorToBase;
+      }
+
+      const newStockInBase = Math.round(Number(data.newStock) * factor * 1000) / 1000;
+      if (newStockInBase < 0) {
+        return { success: false, error: 'لا يمكن أن يكون الرصيد الفعلي سالباً' };
+      }
+
+      const currentStockBase = getItemStock(item.id);
+      const diffBase = Math.round((newStockInBase - currentStockBase) * 1000) / 1000;
+
+      if (diffBase === 0) {
+        return { success: false, error: 'الرصيد الجديد مطابق تماماً للرصيد المسجل حالياً (لا توجد فروقات للتسوية)' };
+      }
+
+      const nowIso = new Date().toISOString();
+      const refNo = `ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const adjustmentMovement: StockMovement = {
+        id: 'mov_adj_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        itemId: item.id,
+        type: 'ADJUSTMENT',
+        unitId: targetUnitId,
+        quantity: Math.abs(Number(data.newStock) - (targetUnitId === item.baseUnitId ? currentStockBase : currentStockBase / factor)),
+        factorApplied: factor,
+        baseQuantity: diffBase,
+        date: nowIso,
+        referenceNumber: refNo,
+        notes: `تسوية جردية: الرصيد المسجل السابق (${currentStockBase}) -> الرصيد الفعلي الجديد (${newStockInBase}). السبب: ${cleanReason}`,
+        destinationType: 'DIRECT',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      const updatedMovements = [adjustmentMovement, ...movements];
+      setMovements(updatedMovements);
+      movementsRef.current = updatedMovements;
+
+      FirestoreStorage.saveMovement(adjustmentMovement).catch((e) => console.warn(e));
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'تسوية مخزنية',
+        entityId: adjustmentMovement.id,
+        entityName: `${item.name} (تسوية جردية)`,
+        reason: cleanReason,
+        userName: OWNER_EMAIL,
+        dataBefore: { currentStock: currentStockBase },
+        dataAfter: { newStock: newStockInBase, difference: diffBase },
+      }).catch((e) => console.warn(e));
+
+      persistChanges(units, categories, items, updatedMovements, branches, returns);
+      showToast(`تم تنفيذ التسوية الجردية للصنف "${item.name}" بنجاح (الفرق: ${diffBase > 0 ? '+' : ''}${diffBase})`, 'success');
+      return { success: true };
+    },
+    [items, movements, units, categories, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
+  );
+
   // RETURNS ACTIONS
   const addReturn = useCallback(
     (returnData: {
@@ -2124,6 +2301,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         originalMovementId?: string;
       }[];
     }) => {
+      if (!ensureAdmin('تسجيل مرتجع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const calculatedItems: ReturnItemEntry[] = [];
       const linkedMovementIds: string[] = [];
       const newMovements: StockMovement[] = [];
@@ -2246,6 +2426,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const approveReturn = useCallback(
     (id: string) => {
+      if (!ensureAdmin('اعتماد سند المرتجع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const target = returns.find((r) => r.id === id);
       if (!target) return { success: false, error: 'سند المرتجع غير موجود' };
       if (target.status === 'APPROVED') return { success: false, error: 'السند معتمد مسبقاً' };
@@ -2313,11 +2496,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم اعتماد سند المرتجع #${target.returnNumber} وتحديث المخزون بنجاح`, 'success');
       return { success: true };
     },
-    [returns, items, units, movements, branches, getItemStock, persistChanges, showToast]
+    [returns, items, units, movements, branches, getItemStock, persistChanges, showToast, ensureAdmin]
   );
 
   const cancelReturn = useCallback(
     (id: string, cancellationReason?: string) => {
+      if (!ensureAdmin('إلغاء سند المرتجع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const target = returns.find((r) => r.id === id);
       if (!target) return { success: false, error: 'سند المرتجع غير موجود' };
       if (target.status === 'CANCELLED') return { success: false, error: 'السند ملغي مسبقاً' };
@@ -2398,6 +2584,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteReturnRecord = useCallback(
     (id: string, reason?: string) => {
+      if (!ensureAdmin('حذف مسودة مرتجع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const target = returns.find((r) => r.id === id);
       if (!target) return { success: false, error: 'السند غير موجود' };
       if (target.status === 'APPROVED') {
@@ -2423,7 +2612,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast('تم حذف مسودة المرتجع بنجاح', 'success');
       return { success: true };
     },
-    [returns, units, categories, items, movements, branches, persistChanges, showToast]
+    [returns, units, categories, items, movements, branches, persistChanges, showToast, ensureAdmin]
   );
 
   // BACKUP & IMPORT
@@ -2433,6 +2622,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const importDataJSON = useCallback(
     async (jsonStr: string) => {
+      if (!ensureAdmin('استيراد قاعدة بيانات')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       try {
         const imported = await StorageService.importDatabaseJSON(jsonStr);
         setUnits(imported.units);
@@ -2448,7 +2640,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, error: err.message };
       }
     },
-    [showToast]
+    [showToast, ensureAdmin]
   );
 
   // ==========================================
@@ -2464,6 +2656,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       date: string;
       notes?: string | null;
     }) => {
+      if (!ensureAdmin('إنشاء أمر إنتاج')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const cleanTitle = data.title.trim();
       if (!cleanTitle) {
         return { success: false, error: 'يرجى إدخال اسم أو وصف أمر الإنتاج' };
@@ -3182,6 +3377,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteProductionOrder = useCallback(
     async (orderId: string, reason: string) => {
+      if (!ensureAdmin('حذف أمر الإنتاج')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const order = productionOrders.find((p) => p.id === orderId);
       if (!order) return { success: false, error: 'أمر الإنتاج غير موجود' };
 
@@ -3246,6 +3444,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       notes?: string;
       date?: string;
     }): Promise<{ success: boolean; movement?: StockMovement; error?: string }> => {
+      if (!ensureAdmin(data.type === 'MFG_OUT' ? 'خروج للمصنع' : 'وارد من المصنع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
       const item = items.find((i) => i.id === data.itemId && !i.isDeleted);
       if (!item) {
         const err = 'الصنف المحدد غير موجود أو محذوف من المخزون';
@@ -3560,6 +3761,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     addMovement,
     updateMovement,
     deleteMovement,
+    adjustItemStock,
 
     addReturn,
     approveReturn,

@@ -30,6 +30,7 @@ import {
   Minus,
   RefreshCw,
   Sparkles,
+  Factory,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { StockMovement, Item } from '../../types/inventory';
@@ -62,7 +63,8 @@ export type ReportTab =
   | 'categories'
   | 'stagnant'
   | 'turnover'
-  | 'alerts';
+  | 'alerts'
+  | 'production';
 
 export interface ReportsFilterState {
   period: ExtendedPeriod;
@@ -695,6 +697,25 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     })).sort((a, b) => b.outQty + b.inQty - (a.outQty + a.inQty));
   }, [categories, items, currentMovements, getItemStock]);
 
+  // Production & Manufacturing Movements Report
+  const productionReportMovements = useMemo(() => {
+    return currentMovements.filter((m) => {
+      if (!m) return false;
+      const item = items.find((i) => i.id === m.itemId);
+      return (
+        m.type === 'MFG_OUT' ||
+        m.type === 'MFG_IN' ||
+        (m.type as string) === 'خروج للمصنع' ||
+        (m.type as string) === 'وارد من المصنع' ||
+        (m.referenceNumber &&
+          (m.referenceNumber.startsWith('MFG-OUT-') || m.referenceNumber.startsWith('MFG-IN-'))) ||
+        (m.destinationType as string) === 'PRODUCTION' ||
+        (m.destinationType as string) === 'FACTORY' ||
+        (m.type === 'IN' && (item?.isProductionItem || (m.destinationType as string) === 'PRODUCTION'))
+      );
+    });
+  }, [currentMovements, items]);
+
   // Period Label mapping
   const periodLabel = useMemo(() => {
     switch (period) {
@@ -1097,6 +1118,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           { id: 'dashboard', label: 'لوحة المؤشرات العامة', icon: Activity },
           { id: 'movements', label: 'حركة الأصناف (الأكثر والأقل)', icon: TrendingUp },
           { id: 'returns', label: 'تقرير المرتجعات (وارد وصادر)', icon: RotateCcw },
+          { id: 'production', label: 'حركات الإنتاج والتصنيع', icon: Factory },
           { id: 'stagnant', label: 'الأصناف الراكدة', icon: Clock },
           { id: 'branches', label: 'تحليل الفروع والمواقع', icon: Building2 },
           { id: 'categories', label: 'تحليل الأقسام والتصنيفات', icon: Layers },
@@ -2423,6 +2445,104 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TAB: PRODUCTION MOVEMENTS REPORT */}
+      {activeTab === 'production' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Factory className="w-4 h-4 text-indigo-600" />
+                <span>تقرير حركات الإنتاج والتصنيع (الوارد والصادر)</span>
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                موضحًا ما دخل وما خرج للمصنع والإنتاج مع التاريخ والصنف والكمية اعتمادًا على الحركات الفعلية
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-indigo-800 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+              {productionReportMovements.length} حركة
+            </span>
+          </div>
+
+          {productionReportMovements.length === 0 ? (
+            <div className="p-12 text-center text-xs text-slate-500 font-bold">
+              لا توجد حركات إنتاج أو تصنيع مسجلة خلال هذه الفترة.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">رقم السند / المرجع</th>
+                    <th className="py-3 px-4">التاريخ والوقت</th>
+                    <th className="py-3 px-4">نوع الحركة</th>
+                    <th className="py-3 px-4">الصنف</th>
+                    <th className="py-3 px-4 text-center">الكمية والوحدة</th>
+                    <th className="py-3 px-4 text-center">المعادل بالأساسية</th>
+                    <th className="py-3 px-4">الملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-800">
+                  {productionReportMovements.map((m) => {
+                    const item = items.find((i) => i.id === m.itemId);
+                    const unit = units.find((u) => u.id === m.unitId);
+                    const baseUnit = units.find((u) => u.id === item?.baseUnitId);
+                    const isOut =
+                      m.type === 'MFG_OUT' ||
+                      m.type === 'OUT' ||
+                      m.type === 'PRODUCTION_DISPATCH' ||
+                      (m.type as string) === 'خروج للمصنع' ||
+                      (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
+
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-50/80">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                          <button
+                            onClick={() => setVoucherMovement(m)}
+                            className="hover:underline text-indigo-700"
+                          >
+                            {m.referenceNumber || m.id}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 whitespace-nowrap font-medium">
+                          {new Date(m.date).toLocaleString('ar-SA')}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black ${
+                              isOut
+                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}
+                          >
+                            {isOut ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownLeft className="w-3.5 h-3.5" />}
+                            <span>{isOut ? 'خروج للمصنع' : 'وارد من المصنع / الإنتاج'}</span>
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900">{item?.name || 'صنف غير معروف'}</div>
+                          <div className="text-[10px] font-mono text-slate-400">{item?.code || '-'}</div>
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap font-mono font-black">
+                          <span className={isOut ? 'text-rose-700' : 'text-emerald-700'}>
+                            {isOut ? '-' : '+'}{m.quantity} {unit?.name || 'وحدة'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap font-mono font-bold text-slate-700">
+                          {m.baseQuantity} {baseUnit?.name || 'وحدة'}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 truncate max-w-xs">
+                          {m.notes || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

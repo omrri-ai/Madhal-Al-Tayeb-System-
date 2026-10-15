@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   X,
   ArrowUpRight,
@@ -13,6 +13,8 @@ import {
   FileText,
   Loader2,
   Printer,
+  ChevronDown,
+  Package,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { Item, StockMovement } from '../../types/inventory';
@@ -41,16 +43,32 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
   const [quantity, setQuantity] = useState<number | ''>('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  
+  // Combobox dropdown search & open state
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Active items (not deleted)
   const activeItems = useMemo(() => {
     return items.filter((i) => !i.isDeleted && !i.isArchived);
   }, [items]);
 
-  // Filtered items for picker
+  // Filtered items for combobox search
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return activeItems;
     const q = searchQuery.toLowerCase().trim();
@@ -96,14 +114,13 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
     return list;
   }, [selectedItem, units]);
 
-  // When item changes, default to base unit
-  const handleItemSelect = (itemId: string) => {
-    setSelectedItemId(itemId);
+  // When item changes, default to base unit & close dropdown
+  const handleItemSelect = (item: Item) => {
+    setSelectedItemId(item.id);
+    setSelectedUnitId(item.baseUnitId);
+    setSearchQuery('');
+    setIsDropdownOpen(false);
     setFormError(null);
-    const itm = items.find((i) => i.id === itemId);
-    if (itm) {
-      setSelectedUnitId(itm.baseUnitId);
-    }
   };
 
   // Base unit of selected item
@@ -226,9 +243,10 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-white/80 transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-white/80 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -252,41 +270,100 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
             </span>
           </div>
 
-          {/* Item Selection */}
-          <div className="space-y-1.5">
+          {/* Custom Searchable Dropdown / Combobox for Item Selection */}
+          <div className="space-y-1.5 relative" ref={dropdownRef}>
             <label className="block text-xs font-bold text-slate-700">
               اختر الصنف <span className="text-rose-500">*</span>
             </label>
 
-            {/* Quick Search */}
-            <div className="relative mb-2">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="ابحث بالاسم أو الرمز..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pr-9 pl-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-slate-50/50"
-              />
-            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full flex items-center justify-between px-3.5 py-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-right transition cursor-pointer"
+              >
+                {selectedItem ? (
+                  <div className="flex items-center justify-between w-full min-w-0">
+                    <div className="truncate">
+                      <span className="font-bold text-slate-900 text-xs sm:text-sm block truncate">
+                        {selectedItem.name}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {selectedItem.code} • الرصيد: {currentStock} {baseUnitObj?.name || 'وحدة'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-400 text-xs">
+                    <Package className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>ابحث أو اختر الصنف من القائمة...</span>
+                  </div>
+                )}
+                <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 mr-2" />
+              </button>
 
-            <select
-              value={selectedItemId}
-              onChange={(e) => handleItemSelect(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white"
-              required
-            >
-              <option value="">-- اضغط لاختيار الصنف من القائمة --</option>
-              {filteredItems.map((item) => {
-                const stock = getItemStock(item.id);
-                const bUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
-                return (
-                  <option key={item.id} value={item.id}>
-                    {item.name} ({item.code}) — الرصيد: {stock} {bUnit}
-                  </option>
-                );
-              })}
-            </select>
+              {/* Dropdown Menu */}
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-72">
+                  {/* Search Input inside dropdown */}
+                  <div className="p-2.5 border-b border-slate-800 bg-slate-950">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        autoFocus
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="ابحث بالاسم، رمز SKU، أو الباركود..."
+                        className="w-full pr-9 pl-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 outline-hidden font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Options List */}
+                  <div className="overflow-y-auto p-1.5 space-y-1">
+                    {filteredItems.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        لا توجد أصناف مطابقة للبحث
+                      </div>
+                    ) : (
+                      filteredItems.map((item) => {
+                        const stock = getItemStock(item.id);
+                        const bUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+                        const isSelected = item.id === selectedItemId;
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleItemSelect(item)}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-right transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-emerald-600/20 border border-emerald-500/40 text-white'
+                                : 'hover:bg-slate-800 text-slate-200'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold text-xs truncate">{item.name}</div>
+                              <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                {item.code}
+                              </div>
+                            </div>
+                            <div className="text-left shrink-0 mr-2">
+                              <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-lg ${
+                                stock > 0 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60' : 'bg-rose-950 text-rose-300 border border-rose-800/60'
+                              }`}>
+                                {stock} {bUnit}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Selected Item Stock Card */}
@@ -320,7 +397,6 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
 
           {/* Unit & Quantity Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Unit */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
                 الوحدة المستخدمة <span className="text-rose-500">*</span>
@@ -328,8 +404,7 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
               <select
                 value={selectedUnitId}
                 onChange={(e) => setSelectedUnitId(e.target.value)}
-                disabled={!selectedItem}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white"
                 required
               >
                 {availableUnits.map((u) => (
@@ -340,10 +415,9 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
               </select>
             </div>
 
-            {/* Quantity */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                الكمية <span className="text-rose-500">*</span>
+                الكمية ({currentUnitInfo.name}) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -351,36 +425,31 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
                 min="0.001"
                 placeholder="أدخل الكمية..."
                 value={quantity}
-                onChange={(e) => setQuantity(e.target.value === '' ? '' : Number(e.target.value))}
-                disabled={!selectedItem || (isOut && isOutOfStock)}
-                className={`w-full px-3 py-2.5 rounded-xl border text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white ${
-                  isExceedingStock ? 'border-rose-400 ring-1 ring-rose-400 bg-rose-50/30' : 'border-slate-200'
-                }`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuantity(val === '' ? '' : parseFloat(val));
+                  setFormError(null);
+                }}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white"
                 required
               />
             </div>
           </div>
 
-          {/* Base Equivalent & Stock Preview */}
+          {/* Real-time Calculation Summary */}
           {selectedItem && numQty > 0 && (
-            <div
-              className={`p-3.5 rounded-2xl border text-xs space-y-1.5 ${
-                isExceedingStock
-                  ? 'bg-rose-50 border-rose-300 text-rose-900'
-                  : 'bg-blue-50/60 border-blue-200 text-blue-900'
-              }`}
-            >
-              <div className="flex justify-between items-center">
-                <span>المعادل بالوحدة الأساسية:</span>
-                <span className="font-mono font-bold">
+            <div className="p-3.5 bg-slate-900 text-white rounded-2xl text-xs space-y-1.5">
+              <div className="flex items-center justify-between text-slate-300">
+                <span>المعادل بالوحدة الأساسية ({baseUnitObj?.name || 'وحدة'}):</span>
+                <span className="font-mono font-bold text-emerald-400">
                   {baseQty} {baseUnitObj?.name || 'وحدة'}
                 </span>
               </div>
-              <div className="flex justify-between items-center border-t border-slate-200/60 pt-1.5">
+              <div className="flex items-center justify-between text-slate-300 pt-1 border-t border-slate-800">
                 <span>الرصيد المتوقع بعد العملية:</span>
                 <span
                   className={`font-mono font-bold ${
-                    remainingStockAfterOperation < 0 ? 'text-rose-700' : 'text-slate-800'
+                    remainingStockAfterOperation < 0 ? 'text-rose-400' : 'text-white'
                   }`}
                 >
                   {remainingStockAfterOperation} {baseUnitObj?.name || 'وحدة'}
@@ -388,7 +457,7 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
               </div>
 
               {isExceedingStock && (
-                <div className="pt-1 text-rose-700 font-bold flex items-center gap-1">
+                <div className="pt-1 text-rose-400 font-bold flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>الكمية تتجاوز الرصيد المتوفر! يمنع النظام الحركات السالبة.</span>
                 </div>
@@ -429,14 +498,14 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !selectedItemId || !numQty || (isOut && (isOutOfStock || isExceedingStock))}
-              className={`px-5 py-2.5 rounded-xl text-white text-xs font-black transition flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`px-5 py-2.5 rounded-xl text-white text-xs font-black transition flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
                 isOut ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
               }`}
             >

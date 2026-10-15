@@ -15,6 +15,7 @@ interface ItemPickerBottomSheetProps {
   onSelectItem: (itemId: string) => void;
   movementType?: MovementType;
   items?: Item[];
+  allowZeroStockSelection?: boolean;
 }
 
 export const ItemPickerBottomSheet: React.FC<ItemPickerBottomSheetProps> = ({
@@ -24,6 +25,7 @@ export const ItemPickerBottomSheet: React.FC<ItemPickerBottomSheetProps> = ({
   onSelectItem,
   movementType = 'IN',
   items: customItems,
+  allowZeroStockSelection = true,
 }) => {
   const { items: allItems, units, getItemStock } = useInventory();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -183,7 +185,7 @@ export const ItemPickerBottomSheet: React.FC<ItemPickerBottomSheetProps> = ({
               const bUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
               const isSelected = item.id === selectedItemId;
               const isOutOfStock = stock <= 0;
-              const isDisabled = movementType === 'OUT' && isOutOfStock;
+              const isDisabled = !allowZeroStockSelection && movementType === 'OUT' && isOutOfStock;
 
               return (
                 <button

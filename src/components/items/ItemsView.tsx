@@ -19,6 +19,7 @@ import {
   ClipboardCheck,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Item, ItemStockSummary } from '../../types/inventory';
 import { ItemDetailModal } from './ItemDetailModal';
 import { InventoryAuditView } from './InventoryAuditView';
@@ -53,6 +54,7 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
   returnToReports,
 }) => {
   const { getAllItemsSummary, categories, units, recoverOrphanedLocalData, showToast } = useInventory();
+  const { isAdmin } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategoryId || 'ALL');
@@ -121,7 +123,7 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
           </button>
         </div>
 
-        {viewMode === 'items' && (
+        {viewMode === 'items' && isAdmin && (
           <button
             onClick={onOpenAddItem}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
@@ -207,13 +209,15 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
               </button>
             </div>
 
-            <button
-              onClick={onOpenAddItem}
-              className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-xs transition-colors cursor-pointer shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة صنف</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={onOpenAddItem}
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-xs transition-colors cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة صنف</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -301,13 +305,15 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
           </p>
           {itemsSummaries.length === 0 ? (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                onClick={onOpenAddItem}
-                className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>إضافة الصنف الأول الآن</span>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={onOpenAddItem}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة الصنف الأول الآن</span>
+                </button>
+              )}
 
               <button
                 onClick={async () => {
@@ -350,7 +356,7 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
                   <th className="py-3.5 px-4">التحويلات المخصصة</th>
                   <th className="py-3.5 px-4">الرصيد الفعلي</th>
                   <th className="py-3.5 px-4">الحالة</th>
-                  <th className="py-3.5 px-4 text-center">إجراءات سريعة</th>
+                  <th className="py-3.5 px-4 text-center">{isAdmin ? 'إجراءات سريعة' : 'عرض وتفاصيل'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -439,59 +445,72 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
                       {/* Quick Actions */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* In movement */}
-                          <button
-                            onClick={() => onOpenMovementModal(s.item, 'IN')}
-                            title="تسجيل وارد"
-                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <ArrowDownLeft className="w-4 h-4" />
-                          </button>
+                          {isAdmin ? (
+                            <>
+                              {/* In movement */}
+                              <button
+                                onClick={() => onOpenMovementModal(s.item, 'IN')}
+                                title="تسجيل وارد"
+                                className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <ArrowDownLeft className="w-4 h-4" />
+                              </button>
 
-                          {/* Out movement */}
-                          <button
-                            onClick={() => onOpenMovementModal(s.item, 'OUT')}
-                            title="تسجيل صادر"
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <ArrowUpRight className="w-4 h-4" />
-                          </button>
+                              {/* Out movement */}
+                              <button
+                                onClick={() => onOpenMovementModal(s.item, 'OUT')}
+                                title="تسجيل صادر"
+                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <ArrowUpRight className="w-4 h-4" />
+                              </button>
 
-                          {/* Details */}
-                          <button
-                            onClick={() => setDetailItem(s.item)}
-                            title="تفاصيل الصنف"
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                              {/* Details */}
+                              <button
+                                onClick={() => setDetailItem(s.item)}
+                                title="تفاصيل الصنف"
+                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => onEditItem(s.item)}
-                            title="تعديل الصنف"
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
+                              {/* Edit */}
+                              <button
+                                onClick={() => onEditItem(s.item)}
+                                title="تعديل الصنف"
+                                className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
 
-                          {/* Archive */}
-                          <button
-                            onClick={() => onRequestArchive(s.item)}
-                            title="أرشفة الصنف"
-                            className="p-1.5 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Archive className="w-4 h-4" />
-                          </button>
+                              {/* Archive */}
+                              <button
+                                onClick={() => onRequestArchive(s.item)}
+                                title="أرشفة الصنف"
+                                className="p-1.5 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Archive className="w-4 h-4" />
+                              </button>
 
-                          {/* Soft Delete */}
-                          <button
-                            onClick={() => onRequestDelete(s.item)}
-                            title="نقل إلى سلة المحذوفات"
-                            className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                              {/* Soft Delete */}
+                              <button
+                                onClick={() => onRequestDelete(s.item)}
+                                title="نقل إلى سلة المحذوفات"
+                                className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setDetailItem(s.item)}
+                              title="عرض تفاصيل الصنف والرصيد"
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-4 h-4 text-teal-600" />
+                              <span>تفاصيل الصنف</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -576,53 +595,65 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
 
               {/* Action Buttons */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => onOpenMovementModal(s.item, 'IN')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <ArrowDownLeft className="w-3.5 h-3.5" />
-                    <span>وارد</span>
-                  </button>
-                  <button
-                    onClick={() => onOpenMovementModal(s.item, 'OUT')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                    <span>صادر</span>
-                  </button>
-                </div>
+                {isAdmin ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => onOpenMovementModal(s.item, 'IN')}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <ArrowDownLeft className="w-3.5 h-3.5" />
+                        <span>وارد</span>
+                      </button>
+                      <button
+                        onClick={() => onOpenMovementModal(s.item, 'OUT')}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                        <span>صادر</span>
+                      </button>
+                    </div>
 
-                <div className="flex items-center gap-1 text-slate-400">
+                    <div className="flex items-center gap-1 text-slate-400">
+                      <button
+                        onClick={() => setDetailItem(s.item)}
+                        className="p-1.5 hover:text-slate-800 rounded-lg hover:bg-slate-100 cursor-pointer"
+                        title="تفاصيل"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onEditItem(s.item)}
+                        className="p-1.5 hover:text-slate-800 rounded-lg hover:bg-slate-100 cursor-pointer"
+                        title="تعديل"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onRequestArchive(s.item)}
+                        className="p-1.5 hover:text-amber-700 rounded-lg hover:bg-amber-50 cursor-pointer"
+                        title="أرشفة"
+                      >
+                        <Archive className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onRequestDelete(s.item)}
+                        className="p-1.5 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
                   <button
                     onClick={() => setDetailItem(s.item)}
-                    className="p-1.5 hover:text-slate-800 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    title="تفاصيل"
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
-                    <Eye className="w-4 h-4" />
+                    <Eye className="w-4 h-4 text-teal-600" />
+                    <span>عرض بطاقة وتفاصيل الصنف</span>
                   </button>
-                  <button
-                    onClick={() => onEditItem(s.item)}
-                    className="p-1.5 hover:text-slate-800 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    title="تعديل"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => onRequestArchive(s.item)}
-                    className="p-1.5 hover:text-amber-700 rounded-lg hover:bg-amber-50 cursor-pointer"
-                    title="أرشفة"
-                  >
-                    <Archive className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => onRequestDelete(s.item)}
-                    className="p-1.5 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                    title="حذف"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                )}
               </div>
             </div>
           ))}

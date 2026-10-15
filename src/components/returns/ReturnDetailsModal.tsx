@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { ReturnRecord } from '../../types/inventory';
 import { X, Printer, CheckCircle, Ban, ArrowDownLeft, ArrowUpRight, Building2, User, Phone, FileText, Calendar, ShieldCheck } from 'lucide-react';
 
@@ -16,6 +17,7 @@ interface ReturnDetailsModalProps {
 
 export const ReturnDetailsModal: React.FC<ReturnDetailsModalProps> = ({ returnRecord, isOpen, onClose }) => {
   const { items, units, approveReturn, cancelReturn, showToast } = useInventory();
+  const { isAdmin } = useAuth();
   const [cancelReasonInput, setCancelReasonInput] = useState('');
   const [showCancelPrompt, setShowCancelPrompt] = useState(false);
 
@@ -267,19 +269,19 @@ export const ReturnDetailsModal: React.FC<ReturnDetailsModalProps> = ({ returnRe
             تم الإنشاء بواسطة: <strong>{returnRecord.createdByName || 'مدير النظام'}</strong>
           </div>
           <div className="flex items-center gap-3">
-            {returnRecord.status === 'DRAFT' && (
+            {isAdmin && returnRecord.status === 'DRAFT' && (
               <button
                 onClick={handleApprove}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 <CheckCircle className="w-4 h-4" />
                 اعتماد المرتجع الآن
               </button>
             )}
-            {returnRecord.status === 'APPROVED' && !showCancelPrompt && (
+            {isAdmin && returnRecord.status === 'APPROVED' && !showCancelPrompt && (
               <button
                 onClick={() => setShowCancelPrompt(true)}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/20"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer"
               >
                 <Ban className="w-4 h-4" />
                 إلغاء المرتجع
@@ -287,7 +289,7 @@ export const ReturnDetailsModal: React.FC<ReturnDetailsModalProps> = ({ returnRe
             )}
             <button
               onClick={onClose}
-              className="px-5 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition"
+              className="px-5 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
             >
               إغلاق
             </button>

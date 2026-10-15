@@ -62,6 +62,17 @@ function cleanObject(obj: any): any {
   return cleaned;
 }
 
+export function verifyAdminWritePermission(action: string): void {
+  try {
+    const role = sessionStorage.getItem('makhzouni_active_role_session_v1');
+    if (role && role !== 'ADMIN') {
+      throw new Error(`رفض أمني: غير مصرح بتنفيذ (${action}). حساب مسؤول المصنع مخصص للمشاهدة فقط.`);
+    }
+  } catch (err: any) {
+    if (err?.message?.includes('رفض أمني')) throw err;
+  }
+}
+
 export const FirestoreStorage = {
   // Load all collections safely from Cloud Firestore with local cache resilience
   async loadAll(): Promise<InventoryDatabaseData> {
@@ -185,6 +196,7 @@ export const FirestoreStorage = {
 
   // Save single item
   async saveItem(item: Item): Promise<void> {
+    verifyAdminWritePermission(`حفظ الصنف ${item.name}`);
     try {
       await setDoc(doc(db, 'items', item.id), cleanObject(item));
       await this.recordAuditLog('SAVE_ITEM', 'item', item.id, `حفظ الصنف: ${item.name} (${item.code})`);
@@ -196,6 +208,7 @@ export const FirestoreStorage = {
 
   // Delete single item (permanent)
   async deleteItem(itemId: string, itemName?: string): Promise<void> {
+    verifyAdminWritePermission(`حذف الصنف ${itemName || itemId}`);
     try {
       await deleteDoc(doc(db, 'items', itemId));
       await this.recordAuditLog('DELETE_ITEM', 'item', itemId, `حذف نهائي للصنف: ${itemName || itemId}`);
@@ -207,6 +220,7 @@ export const FirestoreStorage = {
 
   // Save Category
   async saveCategory(category: Category): Promise<void> {
+    verifyAdminWritePermission(`حفظ القسم ${category.name}`);
     try {
       await setDoc(doc(db, 'categories', category.id), cleanObject(category));
       await this.recordAuditLog('SAVE_CATEGORY', 'category', category.id, `حفظ القسم: ${category.name}`);
@@ -218,6 +232,7 @@ export const FirestoreStorage = {
 
   // Delete Category
   async deleteCategory(categoryId: string, categoryName?: string): Promise<void> {
+    verifyAdminWritePermission(`حذف القسم ${categoryName || categoryId}`);
     try {
       await deleteDoc(doc(db, 'categories', categoryId));
       await this.recordAuditLog('DELETE_CATEGORY', 'category', categoryId, `حذف القسم: ${categoryName || categoryId}`);
@@ -229,6 +244,7 @@ export const FirestoreStorage = {
 
   // Save Unit
   async saveUnit(unit: Unit): Promise<void> {
+    verifyAdminWritePermission(`حفظ الوحدة ${unit.name}`);
     try {
       await setDoc(doc(db, 'units', unit.id), cleanObject(unit));
       await this.recordAuditLog('SAVE_UNIT', 'unit', unit.id, `حفظ الوحدة: ${unit.name}`);
@@ -240,6 +256,7 @@ export const FirestoreStorage = {
 
   // Delete Unit
   async deleteUnit(unitId: string, unitName?: string): Promise<void> {
+    verifyAdminWritePermission(`حذف الوحدة ${unitName || unitId}`);
     try {
       await deleteDoc(doc(db, 'units', unitId));
       await this.recordAuditLog('DELETE_UNIT', 'unit', unitId, `حذف الوحدة: ${unitName || unitId}`);
@@ -251,6 +268,7 @@ export const FirestoreStorage = {
 
   // Save Stock Movement
   async saveMovement(movement: StockMovement): Promise<void> {
+    verifyAdminWritePermission(`تسجيل حركة مخزنية (${movement.type})`);
     try {
       await setDoc(doc(db, 'movements', movement.id), cleanObject(movement));
       await this.recordAuditLog(
@@ -267,6 +285,7 @@ export const FirestoreStorage = {
 
   // Delete Movement
   async deleteMovement(movementId: string): Promise<void> {
+    verifyAdminWritePermission(`حذف الحركة المخزنية ${movementId}`);
     try {
       await deleteDoc(doc(db, 'movements', movementId));
       await this.recordAuditLog('DELETE_MOVEMENT', 'movement', movementId, `حذف حركة مخزنية: ${movementId}`);
@@ -278,6 +297,7 @@ export const FirestoreStorage = {
 
   // Save Branch
   async saveBranch(branch: Branch): Promise<void> {
+    verifyAdminWritePermission(`حفظ الفرع ${branch.name}`);
     try {
       await setDoc(doc(db, 'branches', branch.id), cleanObject(branch));
       await this.recordAuditLog('SAVE_BRANCH', 'branch', branch.id, `حفظ الفرع: ${branch.name}`);
@@ -289,6 +309,7 @@ export const FirestoreStorage = {
 
   // Delete Branch
   async deleteBranch(branchId: string, branchName?: string): Promise<void> {
+    verifyAdminWritePermission(`حذف الفرع ${branchName || branchId}`);
     try {
       await deleteDoc(doc(db, 'branches', branchId));
       await this.recordAuditLog('DELETE_BRANCH', 'branch', branchId, `حذف الفرع: ${branchName || branchId}`);
@@ -300,6 +321,7 @@ export const FirestoreStorage = {
 
   // Save Return Record
   async saveReturn(ret: ReturnRecord): Promise<void> {
+    verifyAdminWritePermission(`حفظ سجل المرتجع ${ret.returnNumber}`);
     try {
       await setDoc(doc(db, 'returns', ret.id), cleanObject(ret));
       await this.recordAuditLog('SAVE_RETURN', 'return', ret.id, `حفظ سجل المرتجع: ${ret.returnNumber} (${ret.type})`);
@@ -311,6 +333,7 @@ export const FirestoreStorage = {
 
   // Delete Return Record
   async deleteReturn(returnId: string): Promise<void> {
+    verifyAdminWritePermission(`حذف سجل المرتجع ${returnId}`);
     try {
       await deleteDoc(doc(db, 'returns', returnId));
       await this.recordAuditLog('DELETE_RETURN', 'return', returnId, `حذف سجل المرتجع: ${returnId}`);
@@ -322,6 +345,7 @@ export const FirestoreStorage = {
 
   // Save Customer
   async saveCustomer(customer: Customer): Promise<void> {
+    verifyAdminWritePermission(`حفظ العميل ${customer.name}`);
     try {
       await setDoc(doc(db, 'customers', customer.id), cleanObject(customer));
       await this.recordAuditLog('SAVE_CUSTOMER', 'customer', customer.id, `حفظ العميل: ${customer.name}`);
@@ -333,6 +357,7 @@ export const FirestoreStorage = {
 
   // Delete Customer
   async deleteCustomer(customerId: string, customerName?: string): Promise<void> {
+    verifyAdminWritePermission(`حذف العميل ${customerName || customerId}`);
     try {
       await deleteDoc(doc(db, 'customers', customerId));
       await this.recordAuditLog('DELETE_CUSTOMER', 'customer', customerId, `حذف العميل: ${customerName || customerId}`);
@@ -344,6 +369,7 @@ export const FirestoreStorage = {
 
   // Save Company Settings
   async saveCompanySettings(settings: CompanySettings): Promise<void> {
+    verifyAdminWritePermission('تحديث إعدادات المنشأة والسندات');
     try {
       await setDoc(doc(db, 'system_settings', 'company'), cleanObject(settings));
       await this.recordAuditLog('SAVE_SETTINGS', 'settings', 'company', 'تحديث إعدادات المنشأة والسندات');
@@ -355,6 +381,7 @@ export const FirestoreStorage = {
 
   // Save Production Order
   async saveProductionOrder(order: ProductionOrder): Promise<void> {
+    verifyAdminWritePermission(`حفظ أمر الإنتاج ${order.orderNumber}`);
     try {
       await setDoc(doc(db, 'production_orders', order.id), cleanObject(order));
       await this.recordAuditLog('SAVE_PRODUCTION_ORDER', 'production_order', order.id, `حفظ أمر إنتاج: ${order.orderNumber} (${order.title})`);
@@ -366,6 +393,7 @@ export const FirestoreStorage = {
 
   // Delete Production Order
   async deleteProductionOrder(orderId: string, orderNumber?: string): Promise<void> {
+    verifyAdminWritePermission(`حذف أمر الإنتاج ${orderNumber || orderId}`);
     try {
       await deleteDoc(doc(db, 'production_orders', orderId));
       await this.recordAuditLog('DELETE_PRODUCTION_ORDER', 'production_order', orderId, `حذف أمر إنتاج: ${orderNumber || orderId}`);
@@ -377,6 +405,7 @@ export const FirestoreStorage = {
 
   // Atomic Production Dispatch: Writes movements and updates order in single atomic transaction/batch
   async executeProductionDispatch(order: ProductionOrder, newMovements: StockMovement[]): Promise<void> {
+    verifyAdminWritePermission(`صرف مواد لأمر الإنتاج ${order.orderNumber}`);
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'production_orders', order.id), cleanObject(order));
@@ -398,6 +427,7 @@ export const FirestoreStorage = {
 
   // Atomic Production Receipt: Writes receipt movement and updates order
   async executeProductionReceipt(order: ProductionOrder, newMovement: StockMovement): Promise<void> {
+    verifyAdminWritePermission(`استلام منتج جاهز من أمر الإنتاج ${order.orderNumber}`);
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'production_orders', order.id), cleanObject(order));
@@ -417,6 +447,7 @@ export const FirestoreStorage = {
 
   // Atomic Production Return: Writes return movements and updates order
   async executeProductionReturn(order: ProductionOrder, newMovements: StockMovement[]): Promise<void> {
+    verifyAdminWritePermission(`إرجاع مواد من أمر الإنتاج ${order.orderNumber}`);
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'production_orders', order.id), cleanObject(order));
@@ -441,6 +472,7 @@ export const FirestoreStorage = {
     movement: StockMovement,
     options?: { maxAllowedStock?: number }
   ): Promise<void> {
+    verifyAdminWritePermission(`تسجيل حركة مصنع (${movement.type})`);
     const movementRef = doc(db, 'movements', movement.id);
     const itemRef = doc(db, 'items', movement.itemId);
 
@@ -492,6 +524,7 @@ export const FirestoreStorage = {
 
   // Delete all movements from Cloud Firestore (zero stock operations)
   async deleteAllMovements(): Promise<number> {
+    verifyAdminWritePermission('حذف وتصفير جميع الحركات المخزنية');
     try {
       const snap = await getDocs(collection(db, 'movements'));
       const batch = writeBatch(db);
@@ -511,6 +544,7 @@ export const FirestoreStorage = {
 
   // Delete all returns from Cloud Firestore (zero returns operations)
   async deleteAllReturns(): Promise<number> {
+    verifyAdminWritePermission('حذف وتصفير جميع سجلات المرتجعات');
     try {
       const snap = await getDocs(collection(db, 'returns'));
       const batch = writeBatch(db);
@@ -647,6 +681,7 @@ export const FirestoreStorage = {
 
   // Sync entire database safely to Firestore using fast atomic batches
   async syncAllToFirestore(data: InventoryDatabaseData): Promise<{ success: boolean; count: number }> {
+    verifyAdminWritePermission('مزامنة وتثبيت البيانات في السحابة');
     let syncedCount = 0;
     const allOperations: { col: string; id: string; data: any }[] = [];
 
@@ -788,6 +823,7 @@ export const FirestoreStorage = {
 
   // Create Cloud Backup snapshot
   async createCloudBackup(name: string, data: InventoryDatabaseData): Promise<CloudBackupRecord> {
+    verifyAdminWritePermission(`إنشاء نسخة احتياطية سحابية (${name})`);
     const backupId = 'backup_' + Date.now();
     const record: CloudBackupRecord = {
       id: backupId,

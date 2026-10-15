@@ -12,6 +12,7 @@ import {
   History,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Item } from '../../types/inventory';
 
 interface ItemDetailModalProps {
@@ -30,6 +31,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onRecordMovement,
 }) => {
   const { getItemStockSummary, movements, units, categories } = useInventory();
+  const { isAdmin } = useAuth();
 
   if (!isOpen || !item) return null;
 
@@ -62,16 +64,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                onClose();
-                onEdit(item);
-              }}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              title="تعديل الصنف"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEdit(item);
+                }}
+                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                title="تعديل الصنف"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"

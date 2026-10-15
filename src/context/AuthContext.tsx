@@ -16,11 +16,24 @@ export interface AppUser {
 
 export const DEFAULT_MASTER_KEY = 'Medhal@2026#Key';
 
+export type UserRole = 'ADMIN' | 'FACTORY_VIEWER' | null;
+
 interface AuthContextType {
   user: AppUser | User | null;
+  role: UserRole;
   isOwner: boolean;
+  isAdmin: boolean;
+  isFactoryViewer: boolean;
   isLoading: boolean;
   authError: string | null;
+
+  // New specific role authentication flows
+  loginAsManager: (password: string) => Promise<{ success: boolean; error?: string }>;
+  loginAsFactorySupervisor: (digitCode: string) => Promise<{ success: boolean; error?: string }>;
+  logoutManager: () => void;
+  logoutCompletely: () => Promise<void>;
+
+  // Legacy / compatibility methods
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginAsVerifiedOwner: () => Promise<{ success: boolean }>;
@@ -33,13 +46,14 @@ interface AuthContextType {
   resetOwnerPasscodeToDefault: () => Promise<void>;
 }
 
-const OWNER_SESSION_KEY = 'makhzouni_owner_session_v1';
 const OWNER_PASSCODE_KEY = 'makhzouni_owner_passcode_v1';
+const ACTIVE_ROLE_SESSION_KEY = 'makhzouni_active_role_session_v1';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | User | null>(null);
+  const [role, setRole] = useState<UserRole>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const isPopupActiveRef = useRef<boolean>(false);
@@ -48,25 +62,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize and check persistent session
   useEffect(() => {
-    // 1. Check local owner session first
     try {
-      const savedSession = localStorage.getItem(OWNER_SESSION_KEY);
-      if (savedSession) {
-        const parsed = JSON.parse(savedSession);
-        if (parsed?.email?.trim().toLowerCase() === OWNER_EMAIL.trim().toLowerCase()) {
-          setUser({
-            email: OWNER_EMAIL,
-            displayName: 'مالك النظام (مدهال الطيب)',
-            uid: 'owner_' + OWNER_EMAIL,
-          });
-          setIsLoading(false);
-        }
+      // Clean up any legacy long-lived localStorage admin sessions to fulfill requirement:
+      // "ألا يحتفظ بتسجيل دخول المدير بعد الخروج أو إغلاق الجلسة"
+      localStorage.removeItem('makhzouni_owner_session_v1');
+
+      // Check current tab/browser session only (sessionStorage)
+      const sessionRole = sessionStorage.getItem(ACTIVE_ROLE_SESSION_KEY) as UserRole;
+      if (sessionRole === 'ADMIN') {
+        setUser({
+          email: OWNER_EMAIL,
+          displayName: 'المدير العام (مدهال الطيب)',
+          uid: 'owner_' + OWNER_EMAIL,
+        });
+        setRole('ADMIN');
+      } else if (sessionRole === 'FACTORY_VIEWER') {
+        setUser({
+          email: 'factory_supervisor@medhal.local',
+          displayName: 'مسؤول المصنع (وضع المشاهدة)',
+          uid: 'factory_supervisor',
+        });
+        setRole('FACTORY_VIEWER');
+      } else {
+        setUser(null);
+        setRole(null);
       }
     } catch {
-      // Ignore JSON parse errors
+      setUser(null);
+      setRole(null);
     }
 
-    // 2. Sync owner passcode from Cloud Firestore if available
+    // Sync owner passcode from Cloud Firestore if available
     getDoc(doc(db, 'backups', 'owner_security_key'))
       .then((snap) => {
         if (snap.exists()) {
@@ -78,9 +104,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        setIsLoading(false);
+      });
 
-    // 3. Listen to Firebase Auth state
+    // Firebase Auth listener (if Google Auth was used)
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const email = currentUser.email?.trim().toLowerCase();
@@ -88,58 +117,150 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (email === expected) {
           setUser(currentUser);
-          setAuthError(null);
+          setRole('ADMIN');
           try {
-            localStorage.setItem(
-              OWNER_SESSION_KEY,
-              JSON.stringify({ email: OWNER_EMAIL, timestamp: new Date().toISOString() })
-            );
+            sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
           } catch {}
+          setAuthError(null);
         } else {
-          // Immediately reject unauthorized accounts
           try {
             await signOut(auth);
           } catch {}
-          localStorage.removeItem(OWNER_SESSION_KEY);
           setUser(null);
+          setRole(null);
           setAuthError(
             `تم رفض الحساب (${currentUser.email || 'غير معروف'}). النظام مخصص حصرياً للمالك المصرح به: ${OWNER_EMAIL}`
           );
         }
       }
-      setIsLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // One-click Direct Verified Owner Login
-  const loginAsVerifiedOwner = async (): Promise<{ success: boolean }> => {
+  // 1. Manager Login: strictly password verified, session-only
+  const loginAsManager = async (password: string): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
-    const ownerUser: AppUser = {
-      email: OWNER_EMAIL,
-      displayName: 'مالك النظام (مدهال الطيب)',
-      uid: 'owner_' + OWNER_EMAIL,
-    };
+    const cleanPass = password?.trim();
+    if (!cleanPass) {
+      const err = 'يرجى إدخال كلمة مرور المدير للمتابعة.';
+      setAuthError(err);
+      return { success: false, error: err };
+    }
+
+    // If supervisor password 12345678 is entered in manager box, log in as factory supervisor
+    if (cleanPass === '12345678') {
+      return loginAsFactorySupervisor('12345678');
+    }
+
+    let savedPasscode: string | null = null;
     try {
-      localStorage.setItem(
-        OWNER_SESSION_KEY,
-        JSON.stringify({ email: OWNER_EMAIL, timestamp: new Date().toISOString() })
-      );
+      savedPasscode = localStorage.getItem(OWNER_PASSCODE_KEY);
     } catch {}
-    setUser(ownerUser);
-    return { success: true };
+
+    const activeSecretKey = (savedPasscode && savedPasscode.trim()) || DEFAULT_MASTER_KEY;
+
+    const isValid =
+      cleanPass === activeSecretKey ||
+      cleanPass === DEFAULT_MASTER_KEY ||
+      cleanPass === 'mrm823994' ||
+      cleanPass === '123456' ||
+      cleanPass.toLowerCase() === DEFAULT_MASTER_KEY.toLowerCase();
+
+    if (isValid) {
+      const managerUser: AppUser = {
+        email: OWNER_EMAIL,
+        displayName: 'المدير العام (مدهال الطيب)',
+        uid: 'admin_' + Date.now(),
+      };
+      setUser(managerUser);
+      setRole('ADMIN');
+      try {
+        sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
+        localStorage.setItem('userRole', 'ADMIN');
+      } catch {}
+      return { success: true };
+    } else {
+      const err = 'كلمة مرور المدير غير صحيحة. يرجى التأكد وإعادة المحاولة.';
+      setAuthError(err);
+      return { success: false, error: err };
+    }
   };
 
-  // Google Login with resilient error shielding for iframes
+  // 2. Factory Supervisor Login: Password '12345678' or digit 1-8, view-only
+  const loginAsFactorySupervisor = async (
+    passOrDigit: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    setAuthError(null);
+    const clean = passOrDigit?.trim();
+    
+    if (clean === '12345678' || (/^\d$/.test(clean) && parseInt(clean, 10) >= 1 && parseInt(clean, 10) <= 8)) {
+      const supervisorUser: AppUser = {
+        email: 'factory_supervisor@medhal.local',
+        displayName: 'مسؤول المصنع (وضع المشاهدة فقط)',
+        uid: 'factory_supervisor_' + clean,
+      };
+
+      setUser(supervisorUser);
+      setRole('FACTORY_VIEWER');
+      try {
+        sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'FACTORY_VIEWER');
+        localStorage.setItem('userRole', 'VIEWER');
+      } catch {}
+      return { success: true };
+    } else {
+      const err = 'كلمة مرور مسؤول المصنع غير صحيحة (كلمة المرور المعتمدة: 12345678)';
+      setAuthError(err);
+      return { success: false, error: err };
+    }
+  };
+
+  // 3. Logout Manager: terminates manager privileges and drops to view mode immediately
+  const logoutManager = (): void => {
+    const supervisorUser: AppUser = {
+      email: 'factory_supervisor@medhal.local',
+      displayName: 'مسؤول المصنع (وضع المشاهدة فقط)',
+      uid: 'factory_supervisor_guest',
+    };
+    setUser(supervisorUser);
+    setRole('FACTORY_VIEWER');
+    try {
+      sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'FACTORY_VIEWER');
+      localStorage.setItem('userRole', 'VIEWER');
+    } catch {}
+    setAuthError(null);
+  };
+
+  // 4. Logout Completely: returns to the entry portal
+  const logoutCompletely = async (): Promise<void> => {
+    try {
+      await signOut(auth);
+    } catch {}
+    try {
+      sessionStorage.removeItem(ACTIVE_ROLE_SESSION_KEY);
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('makhzouni_owner_session_v1');
+    } catch {}
+    setUser(null);
+    setRole(null);
+    setAuthError(null);
+  };
+
+  // Compatibility methods
+  const loginAsVerifiedOwner = async (): Promise<{ success: boolean }> => {
+    return loginAsManager(DEFAULT_MASTER_KEY);
+  };
+
+  const loginWithEmail = async (email: string, pass: string) => {
+    return loginAsManager(pass);
+  };
+
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     if (isPopupActiveRef.current) {
       return { success: false, error: 'عملية المصادقة جارية بالفعل...' };
     }
-
     setAuthError(null);
     isPopupActiveRef.current = true;
-
     try {
       const result = await signInWithPopup(auth, googleAuthProvider);
       const email = result.user.email?.trim().toLowerCase();
@@ -149,94 +270,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           await signOut(auth);
         } catch {}
-        localStorage.removeItem(OWNER_SESSION_KEY);
         setUser(null);
-        const err = `عذراً، الحساب (${result.user.email}) غير مصرح له بالدخول. النظام محمي بالكامل ومخصص فقط للمالك: ${OWNER_EMAIL}`;
+        setRole(null);
+        const err = `عذراً، الحساب (${result.user.email}) غير مصرح له بالدخول كمدير.`;
         setAuthError(err);
         return { success: false, error: err };
       }
 
       setUser(result.user);
+      setRole('ADMIN');
       try {
-        localStorage.setItem(
-          OWNER_SESSION_KEY,
-          JSON.stringify({ email: OWNER_EMAIL, timestamp: new Date().toISOString() })
-        );
+        sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
       } catch {}
       return { success: true };
     } catch (error: any) {
-      // Gracefully handle iframe popup blocks and user dismissals without throwing uncaught asserts
-      let friendlyMessage = 'تعذر إتمام الدخول عبر النافذة المنبثقة. يمكنك استخدام "الدخول المباشر المعتمد للمالك" فورياً.';
-      
-      const errorCode = error?.code || '';
-      const errorMessage = String(error?.message || '');
-
-      if (errorCode === 'auth/popup-closed-by-user' || errorMessage.includes('popup-closed')) {
-        friendlyMessage = 'تم إغلاق نافذة Google أو حظر النوافذ المنبثقة. يمكنك استخدام زر "الدخول السريع المعتمد للمالك" للدخول الفوري.';
-      } else if (errorCode === 'auth/unauthorized-domain' || errorMessage.includes('unauthorized-domain')) {
-        friendlyMessage = 'بيئة التشغيل السحابية الحالية تحتاج إذناً بنطاق OAuth. يُرجى استخدام "الدخول السريع المعتمد للمالك" أدناه.';
-      } else if (errorMessage.includes('Pending promise')) {
-        friendlyMessage = 'تم إلغاء المصادقة المنبثقة. يمكنك استخدام "الدخول السريع المعتمد للمالك" مباشرة.';
-      }
-
-      setAuthError(friendlyMessage);
-      return { success: false, error: friendlyMessage };
+      const msg = error?.message || 'تعذر إتمام الدخول عبر Google';
+      setAuthError(msg);
+      return { success: false, error: msg };
     } finally {
       isPopupActiveRef.current = false;
     }
   };
 
-  // Dedicated Owner Passcode Authentication
-  const loginWithEmail = async (
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    setAuthError(null);
-    const cleanEmail = email.trim().toLowerCase();
-    const expected = OWNER_EMAIL.trim().toLowerCase();
-
-    // Strict front-door check: Forbid any attempt to login with non-owner email
-    if (cleanEmail !== expected) {
-      const err = `غير مصرح. لا يُسمح بالدخول سوى لبريد المالك المعتمد: ${OWNER_EMAIL}`;
-      setAuthError(err);
-      return { success: false, error: err };
-    }
-
-    if (!password || password.trim().length === 0) {
-      const err = 'يرجى إدخال كلمة المرور أو رمز المرور الخاص بحساب المالك.';
-      setAuthError(err);
-      return { success: false, error: err };
-    }
-
-    // Verify against saved passcode or accepted owner passwords
-    const trimmedPass = password.trim();
-    let savedPasscode: string | null = null;
-    try {
-      savedPasscode = localStorage.getItem(OWNER_PASSCODE_KEY);
-    } catch {}
-
-    const activeSecretKey = (savedPasscode && savedPasscode.trim()) || DEFAULT_MASTER_KEY;
-
-    // Checks valid if matches activeSecretKey, DEFAULT_MASTER_KEY, owner email prefix, or standard owner pin
-    const isValid =
-      trimmedPass === activeSecretKey ||
-      trimmedPass === DEFAULT_MASTER_KEY ||
-      trimmedPass === 'mrm823994' ||
-      trimmedPass === '123456' ||
-      trimmedPass.toLowerCase() === DEFAULT_MASTER_KEY.toLowerCase();
-
-    if (isValid) {
-      if (!savedPasscode && trimmedPass.length >= 4) {
-        try {
-          localStorage.setItem(OWNER_PASSCODE_KEY, trimmedPass);
-        } catch {}
-      }
-      return loginAsVerifiedOwner();
-    } else {
-      const err = 'كلمة المرور أو رمز الأمان غير صحيح. يرجى التأكد من الرمز وإعادة المحاولة.';
-      setAuthError(err);
-      return { success: false, error: err };
-    }
+  const logout = async (): Promise<void> => {
+    await logoutCompletely();
   };
 
   const getOwnerPasscode = (): string => {
@@ -253,7 +310,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const clean = newPasscode.trim();
       localStorage.setItem(OWNER_PASSCODE_KEY, clean);
 
-      // Persist to Cloud Firestore under backups
       try {
         await setDoc(doc(db, 'backups', 'owner_security_key'), {
           id: 'owner_security_key',
@@ -276,11 +332,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentPasscode: string,
     newPasscode: string
   ): Promise<{ success: boolean; error?: string }> => {
+    if (role !== 'ADMIN') {
+      return { success: false, error: 'غير مصرح: تغيير كلمة المرور متاح للمدير فقط.' };
+    }
+
     const activePasscode = getOwnerPasscode();
     const cleanCurrent = currentPasscode.trim();
     const cleanNew = newPasscode.trim();
 
-    // Verify current passcode
     const isCurrentValid =
       cleanCurrent === activePasscode ||
       cleanCurrent === DEFAULT_MASTER_KEY ||
@@ -308,6 +367,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetOwnerPasscodeToDefault = async (): Promise<void> => {
+    if (role !== 'ADMIN') return;
     try {
       localStorage.setItem(OWNER_PASSCODE_KEY, DEFAULT_MASTER_KEY);
       await setDoc(doc(db, 'backups', 'owner_security_key'), {
@@ -320,28 +380,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
   };
 
-  const logout = async (): Promise<void> => {
-    try {
-      await signOut(auth);
-    } catch {}
-    try {
-      localStorage.removeItem(OWNER_SESSION_KEY);
-    } catch {}
-    setUser(null);
-    setAuthError(null);
-  };
-
-  const isOwner = Boolean(
-    user && user.email?.trim().toLowerCase() === OWNER_EMAIL.trim().toLowerCase()
-  );
+  const isAdmin = role === 'ADMIN';
+  const isFactoryViewer = role === 'FACTORY_VIEWER';
+  const isOwner = isAdmin;
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        role,
         isOwner,
+        isAdmin,
+        isFactoryViewer,
         isLoading,
         authError,
+        loginAsManager,
+        loginAsFactorySupervisor,
+        logoutManager,
+        logoutCompletely,
         loginWithGoogle,
         loginWithEmail,
         loginAsVerifiedOwner,

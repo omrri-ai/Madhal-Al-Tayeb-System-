@@ -18,8 +18,11 @@ import {
   Settings,
   History,
   Factory,
+  ShieldCheck,
+  LogOut,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 
 export type NavView =
   | 'dashboard'
@@ -54,8 +57,9 @@ export const Navigation: React.FC<NavigationProps> = ({
   onOpenChangePassword,
 }) => {
   const { stats, customers } = useInventory();
+  const { isAdmin, isFactoryViewer, logout, logoutCompletely } = useAuth();
 
-  const navItems = [
+  const allNavItems = [
     {
       id: 'dashboard' as NavView,
       label: 'الرئيسية',
@@ -142,8 +146,11 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'الإعدادات والبيانات',
       icon: Settings,
       badge: null,
+      adminOnly: true,
     },
   ];
+
+  const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <>
@@ -161,23 +168,30 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
           </div>
 
-          {/* Quick Actions in Sidebar */}
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => onOpenQuickMovement('IN')}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl transition-colors cursor-pointer border border-emerald-200/60"
-            >
-              <span className="text-sm font-bold">+</span>
-              وارد جديد
-            </button>
-            <button
-              onClick={() => onOpenQuickMovement('OUT')}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors cursor-pointer border border-rose-200/60"
-            >
-              <span className="text-sm font-bold">-</span>
-              قسم صادر
-            </button>
-          </div>
+          {/* Quick Actions in Sidebar or Role Badge */}
+          {isAdmin ? (
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onOpenQuickMovement('IN')}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl transition-colors cursor-pointer border border-emerald-200/60"
+              >
+                <span className="text-sm font-bold">+</span>
+                وارد جديد
+              </button>
+              <button
+                onClick={() => onOpenQuickMovement('OUT')}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors cursor-pointer border border-rose-200/60"
+              >
+                <span className="text-sm font-bold">-</span>
+                قسم صادر
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4 p-2.5 bg-teal-50 border border-teal-200/80 rounded-xl flex items-center gap-2 text-teal-900 text-xs font-bold">
+              <Factory className="w-4 h-4 text-teal-600 shrink-0" />
+              <span>مسؤول المصنع (مشاهدة فقط)</span>
+            </div>
+          )}
         </div>
 
         {/* Navigation Links */}
@@ -327,14 +341,16 @@ export const Navigation: React.FC<NavigationProps> = ({
           <span>الأصناف</span>
         </button>
 
-        {/* Center Action Button for Mobile */}
-        <button
-          onClick={() => onOpenQuickMovement()}
-          className="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 transition-transform active:scale-95 cursor-pointer"
-          title="تسجيل حركة مخزنية"
-        >
-          <ArrowLeftRight className="w-5 h-5" />
-        </button>
+        {/* Center Action Button for Mobile (Manager Only) */}
+        {isAdmin && (
+          <button
+            onClick={() => onOpenQuickMovement()}
+            className="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 hover:bg-emerald-700 transition-transform active:scale-95 cursor-pointer"
+            title="تسجيل حركة مخزنية"
+          >
+            <ArrowLeftRight className="w-5 h-5" />
+          </button>
+        )}
 
         <button
           onClick={() => onSelectView('movements')}

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Archive, Trash2, RotateCcw, AlertTriangle, ShieldCheck, Boxes, X, Eye, Info } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Item } from '../../types/inventory';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ItemArchiveDetailModal } from './ItemArchiveDetailModal';
@@ -16,6 +17,7 @@ export const ArchiveTrashView: React.FC = () => {
     restoreFromTrash,
     permanentDeleteItem,
   } = useInventory();
+  const { isAdmin } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'archive' | 'trash'>('archive');
 
@@ -234,21 +236,25 @@ export const ArchiveTrashView: React.FC = () => {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => handleRestoreFromArchive(item)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                              title="استعادة الصنف"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>استعادة</span>
-                            </button>
-                            <button
-                              onClick={() => handleMoveArchiveToTrash(item)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="نقل للمحذوفات"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {isAdmin && (
+                              <>
+                                <button
+                                  onClick={() => handleRestoreFromArchive(item)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                  title="استعادة الصنف"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>استعادة</span>
+                                </button>
+                                <button
+                                  onClick={() => handleMoveArchiveToTrash(item)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="نقل للمحذوفات"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -328,22 +334,26 @@ export const ArchiveTrashView: React.FC = () => {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => handleRestoreFromTrash(item)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                              title="استعادة الصنف"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              <span>استعادة</span>
-                            </button>
-                            <button
-                              onClick={() => handlePermanentDelete(item)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                              title="حذف نهائي"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>حذف نهائي</span>
-                            </button>
+                            {isAdmin && (
+                              <>
+                                <button
+                                  onClick={() => handleRestoreFromTrash(item)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                  title="استعادة الصنف"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>استعادة</span>
+                                </button>
+                                <button
+                                  onClick={() => handlePermanentDelete(item)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                  title="حذف نهائي"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>حذف نهائي</span>
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

@@ -17,8 +17,10 @@ import {
   RotateCcw,
   Search,
   X,
+  Factory,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { NavView } from '../common/Navigation';
 import { StockMovement } from '../../types/inventory';
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
@@ -37,9 +39,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenAddItem,
 }) => {
   const { stats, items, movements, units, categories, getItemStock } = useInventory();
+  const { isAdmin } = useAuth();
   const [voucherMovement, setVoucherMovement] = useState<StockMovement | null>(null);
   const [movementFilter, setMovementFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Factory production metrics from real Firestore movements
+  const factoryMetrics = useMemo(() => {
+    let outQty = 0;
+    let outCount = 0;
+    let inQty = 0;
+    let inCount = 0;
+
+    for (const m of movements) {
+      if (!m) continue;
+      const isOut =
+        m.type === 'MFG_OUT' ||
+        (m.type as string) === 'خروج للمصنع' ||
+        (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
+      const isIn =
+        m.type === 'MFG_IN' ||
+        (m.type as string) === 'وارد من المصنع' ||
+        (m.referenceNumber && m.referenceNumber.startsWith('MFG-IN-'));
+
+      if (isOut) {
+        outCount++;
+        outQty += m.baseQuantity || 0;
+      } else if (isIn) {
+        inCount++;
+        inQty += m.baseQuantity || 0;
+      }
+    }
+
+    return {
+      outQty: Math.round(outQty * 1000) / 1000,
+      outCount,
+      inQty: Math.round(inQty * 1000) / 1000,
+      inCount,
+    };
+  }, [movements]);
 
   // Filtered movements for the invoice table with real-time multi-field search
   const filteredMovements = useMemo(() => {
@@ -91,27 +129,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => onOpenQuickMovement('IN')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
-            >
-              <ArrowDownLeft className="w-4 h-4" />
-              <span>تسجيل وارد وفاتورة توريد (+)</span>
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={() => onOpenQuickMovement('IN')}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
+                >
+                  <ArrowDownLeft className="w-4 h-4" />
+                  <span>تسجيل وارد وفاتورة توريد (+)</span>
+                </button>
 
-            <button
-              onClick={() => {
-                if (onOpenOutgoingDispatch) {
-                  onOpenOutgoingDispatch();
-                } else {
-                  onOpenQuickMovement('OUT');
-                }
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/30 transition-all cursor-pointer"
-            >
-              <Truck className="w-4 h-4" />
-              <span>قسم صادر وفواتير التصدير للشحن (-)</span>
-            </button>
+                <button
+                  onClick={() => {
+                    if (onOpenOutgoingDispatch) {
+                      onOpenOutgoingDispatch();
+                    } else {
+                      onOpenQuickMovement('OUT');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/30 transition-all cursor-pointer"
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>قسم صادر وفواتير التصدير للشحن (-)</span>
+                </button>
+              </>
+            )}
 
             <button
               onClick={() => onNavigate('movements')}
@@ -129,13 +171,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span>قسم المرتجعات ({stats.totalReturnsCount || 0})</span>
             </button>
 
-            <button
-              onClick={onOpenAddItem}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer border border-white/10"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة صنف جديد</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={onOpenAddItem}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer border border-white/10"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة صنف جديد</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -143,8 +187,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="absolute left-[-5%] bottom-[-20%] w-64 h-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
       </div>
 
-      {/* Primary Clean Corner Stats (Corner layout without repeated metrics) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* Primary Clean Corner Stats with Factory Production KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3.5 sm:gap-4">
         {/* Active Items */}
         <div
           onClick={() => onNavigate('items')}
@@ -223,10 +267,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
+        {/* 1. Factory Out Card: «خرج للمصنع» */}
+        <div
+          onClick={() => onNavigate('production')}
+          className="bg-white p-5 rounded-2xl border border-rose-200/90 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
+          title="اضغط لعرض قسم الإنتاج والتصنيع"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-rose-800">خرج للمصنع</span>
+            <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-colors">
+              <Factory className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black font-mono text-rose-900">
+            {factoryMetrics.outQty.toLocaleString('ar-SA')}
+          </div>
+          <div className="text-[11px] text-rose-600 mt-1 flex items-center justify-between">
+            <span>{factoryMetrics.outCount} حركة خروج</span>
+            <span className="font-bold text-rose-700 group-hover:translate-x-[-3px] transition-transform">المصنع ←</span>
+          </div>
+        </div>
+
+        {/* 2. Factory In Card: «وارد من المصنع» */}
+        <div
+          onClick={() => onNavigate('production')}
+          className="bg-white p-5 rounded-2xl border border-emerald-200/90 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
+          title="اضغط لعرض قسم الإنتاج والتصنيع"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-emerald-800">وارد من المصنع</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+              <Factory className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-900">
+            {factoryMetrics.inQty.toLocaleString('ar-SA')}
+          </div>
+          <div className="text-[11px] text-emerald-600 mt-1 flex items-center justify-between">
+            <span>{factoryMetrics.inCount} حركة توريد</span>
+            <span className="font-bold text-emerald-700 group-hover:translate-x-[-3px] transition-transform">المصنع ←</span>
+          </div>
+        </div>
+
         {/* Returns Stat Card */}
         <div
           onClick={() => onNavigate('returns')}
-          className="bg-white p-5 rounded-2xl border border-blue-100 shadow-2xs hover:shadow-md transition-all cursor-pointer group col-span-2 sm:col-span-1 lg:col-span-1"
+          className="bg-white p-5 rounded-2xl border border-blue-100 shadow-2xs hover:shadow-md transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-blue-700">سجل المرتجعات</span>

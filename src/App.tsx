@@ -33,7 +33,7 @@ import { Item, MovementType } from './types/inventory';
 import { Boxes } from 'lucide-react';
 
 const InventoryApp: React.FC = () => {
-  const { isOwner, isLoading: isAuthLoading } = useAuth();
+  const { user, isAdmin, isFactoryViewer, isLoading: isAuthLoading } = useAuth();
   const { archiveItem, softDeleteItem, isLoading: isDataLoading } = useInventory();
 
   // Navigation with history tracking
@@ -179,7 +179,7 @@ const InventoryApp: React.FC = () => {
     );
   }
 
-  if (!isOwner) {
+  if (!user || (!isAdmin && !isFactoryViewer)) {
     return <LoginView />;
   }
 

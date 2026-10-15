@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { FolderTree, Plus, Edit, Trash2, Boxes, X } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Category } from '../../types/inventory';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
 export const CategoriesView: React.FC = () => {
   const { categories, items, addCategory, updateCategory, deleteCategory } = useInventory();
+  const { isAdmin } = useAuth();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -71,13 +73,15 @@ export const CategoriesView: React.FC = () => {
             تنظيم وتوزيع الأصناف في تصنيفات واضحة لتسهيل الجرد وتصفية الحركات
           </p>
         </div>
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إضافة قسم جديد</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة قسم جديد</span>
+          </button>
+        )}
       </div>
 
       {/* Categories Grid */}
@@ -90,13 +94,15 @@ export const CategoriesView: React.FC = () => {
           <p className="text-xs text-slate-500 mb-6">
             أنشئ أول قسم لتنظيم أصناف مستودعك (مثل: المواد الغذائية، الأدوات الكهربائية، قطع الغيار...).
           </p>
-          <button
-            onClick={handleOpenAdd}
-            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إنشاء أول قسم</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={handleOpenAdd}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إنشاء أول قسم</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -124,22 +130,24 @@ export const CategoriesView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEdit(cat)}
-                        className="p-1.5 hover:text-slate-800 text-slate-400 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="تعديل"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(cat)}
-                        className="p-1.5 hover:text-rose-600 text-slate-400 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="حذف"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleOpenEdit(cat)}
+                          className="p-1.5 hover:text-slate-800 text-slate-400 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="تعديل"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(cat)}
+                          className="p-1.5 hover:text-rose-600 text-slate-400 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {cat.description && (

@@ -380,8 +380,15 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     <div>
       <h2 class="company-title">${companySettings.name}</h2>
       <div class="company-meta">
-        س.ت: ${companySettings.commercialRegister} | الرقم الضريبي: ${companySettings.taxId}<br/>
-        العنوان: ${companySettings.address} | الجوال: ${companySettings.phone}
+        ${[
+          companySettings.commercialRegister ? `س.ت: ${companySettings.commercialRegister}` : '',
+          companySettings.taxId ? `الرقم الضريبي: ${companySettings.taxId}` : ''
+        ].filter(Boolean).join(' | ')}
+        ${(companySettings.commercialRegister || companySettings.taxId) && (companySettings.address || companySettings.phone) ? '<br/>' : ''}
+        ${[
+          companySettings.address ? `العنوان: ${companySettings.address}` : '',
+          companySettings.phone ? `الجوال: ${companySettings.phone}` : ''
+        ].filter(Boolean).join(' | ')}
       </div>
     </div>
     <div style="text-align: left;">
@@ -513,9 +520,22 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
             <div className="flex justify-between items-start border-b pb-4">
               <div>
                 <h4 className="text-base font-black text-slate-900">{companySettings.name}</h4>
-                <p className="text-slate-500">
-                  س.ت: {companySettings.commercialRegister} | الرقم الضريبي: {companySettings.taxId}
-                </p>
+                <div className="text-xs text-slate-600 space-y-0.5">
+                  {(companySettings.commercialRegister || companySettings.taxId) && (
+                    <p>
+                      {companySettings.commercialRegister && <>سجل تجاري: <span className="font-mono">{companySettings.commercialRegister}</span></>}
+                      {companySettings.commercialRegister && companySettings.taxId && ' | '}
+                      {companySettings.taxId && <>الرقم الضريبي: <span className="font-mono">{companySettings.taxId}</span></>}
+                    </p>
+                  )}
+                  {(companySettings.address || companySettings.phone) && (
+                    <p>
+                      {companySettings.address && <>العنوان: {companySettings.address}</>}
+                      {companySettings.address && companySettings.phone && ' | '}
+                      {companySettings.phone && <>الجوال: <span className="font-mono">{companySettings.phone}</span></>}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="text-left font-mono">
                 <div className="text-slate-500">رقم السند</div>
@@ -913,47 +933,55 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                       <div className="sm:col-span-5">
-                        <label className="block text-slate-600 font-medium text-xs mb-1">
-                          الصنف <span className="text-rose-500">*</span>
+                        <label className="block text-slate-600 font-medium text-xs mb-1 flex items-center justify-between">
+                          <span>الصنف <span className="text-rose-500">*</span></span>
+                          <span className="text-[10px] text-emerald-700 font-bold">بحث أو تمرير للقائمة</span>
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => setPickingRowId(row.id)}
-                          className="w-full text-right p-2.5 sm:p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-emerald-500 rounded-xl transition-all flex items-center justify-between gap-2.5 group cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                        >
-                          {val?.item ? (
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
-                                {val.item.name}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPickingRowId(row.id)}
+                            className="flex-1 text-right p-2.5 sm:p-3 bg-white hover:bg-slate-50 border border-slate-200 hover:border-emerald-500 rounded-xl transition-all flex items-center justify-between gap-2 group cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-200 min-w-0"
+                          >
+                            {val?.item ? (
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                                  {val.item.name}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span dir="ltr" className="text-[11px] text-slate-500 font-mono inline-block">
+                                    {val.item.code}
+                                  </span>
+                                  <span className="text-slate-300">•</span>
+                                  <span
+                                    className={`text-[11px] font-semibold ${
+                                      (val.currentStock || 0) > 0 ? 'text-emerald-700' : 'text-rose-600 font-bold'
+                                    }`}
+                                  >
+                                    الرصيد: {val.currentStock} {val.baseUnit?.name || 'وحدة'}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span dir="ltr" className="text-[11px] text-slate-500 font-mono inline-block">
-                                  {val.item.code}
-                                </span>
-                                <span className="text-slate-300">•</span>
-                                <span
-                                  className={`text-[11px] font-semibold ${
-                                    (val.currentStock || 0) > 0 ? 'text-emerald-700' : 'text-rose-600 font-bold'
-                                  }`}
-                                >
-                                  الرصيد: {val.currentStock} {val.baseUnit?.name || 'وحدة'}
-                                </span>
+                            ) : (
+                              <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
+                                <Package className="w-4 h-4 text-slate-400 shrink-0" />
+                                <span>اضغط للبحث واختيار الصنف...</span>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
-                              <Package className="w-4 h-4 text-slate-400" />
-                              <span>اضغط للبحث واختيار الصنف...</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/80 group-hover:bg-emerald-100 transition-colors flex items-center gap-1">
-                              <Search className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>{val?.item ? 'تغيير' : 'اختيار'}</span>
-                            </span>
-                            <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
-                          </div>
-                        </button>
+                            )}
+                            <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 shrink-0" />
+                          </button>
+
+                          {/* Explicit Search Button */}
+                          <button
+                            type="button"
+                            onClick={() => setPickingRowId(row.id)}
+                            className="px-3 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+                            title="زر البحث: انقر للبحث بالاسم أو الكود أو التمرير واختيار الصنف"
+                          >
+                            <Search className="w-4 h-4 text-emerald-100" />
+                            <span>بحث الصنف</span>
+                          </button>
+                        </div>
                       </div>
 
                       <div className="sm:col-span-3">
@@ -1078,6 +1106,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
           }
         }}
         movementType="OUT"
+        allowZeroStockSelection={true}
       />
     </div>
   );

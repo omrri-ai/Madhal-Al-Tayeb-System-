@@ -207,10 +207,10 @@ export const FactoryVoucherModal: React.FC<FactoryVoucherModalProps> = ({
   <div class="voucher-banner">${voucherTitle}</div>
 
   <div class="info-card">
-    <div class="info-item"><strong>الطرف الأول:</strong> إدارة المخزون والمستودع</div>
-    <div class="info-item"><strong>الطرف الثاني:</strong> قسم المصنع والتصنيع</div>
+    <div class="info-item"><strong>أمين المستودع:</strong> عمرو العواضي (0558543794)</div>
+    <div class="info-item"><strong>جهة المصنع:</strong> قسم المصنع والتصنيع</div>
     <div class="info-item"><strong>نوع العملية:</strong> ${isOut ? 'خروج مواد خام وتصنيع للمصنع' : 'استلام وتوريد منتجات من المصنع'}</div>
-    <div class="info-item"><strong>حالة الحركة:</strong> معتمدة ومسجلة في المخزون</div>
+    <div class="info-item"><strong>حالة الحركة:</strong> معتمدة ومؤكدة في المخزون</div>
   </div>
 
   <table>
@@ -363,11 +363,11 @@ export const FactoryVoucherModal: React.FC<FactoryVoucherModalProps> = ({
           {/* Parties Meta */}
           <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
             <div>
-              <span className="text-slate-400">الطرف الأول: </span>
-              <strong className="text-slate-800">إدارة المستودع والمخزون</strong>
+              <span className="text-slate-400">أمين المستودع: </span>
+              <strong className="text-slate-800">عمرو العواضي (0558543794)</strong>
             </div>
             <div>
-              <span className="text-slate-400">الطرف الثاني: </span>
+              <span className="text-slate-400">جهة المصنع: </span>
               <strong className="text-slate-800">قسم المصنع والتصنيع</strong>
             </div>
             <div>
@@ -431,20 +431,24 @@ export const FactoryVoucherModal: React.FC<FactoryVoucherModalProps> = ({
           {/* Signatures Section */}
           <div className="pt-4 grid grid-cols-2 gap-6 text-center">
             <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
-              <div className="font-bold text-xs text-slate-800 mb-6 pb-2 border-b border-slate-200">
+              <div className="font-bold text-xs text-slate-800 mb-4 pb-2 border-b border-slate-200">
                 المسلّم ({isOut ? 'أمين المستودع' : 'مسؤول المصنع'})
               </div>
-              <div className="text-[11px] text-slate-500 mb-8 text-right">الاسم: ........................................</div>
+              <div className="text-[11px] text-slate-700 mb-6 text-right font-medium">
+                الاسم: {isOut ? 'عمرو العواضي (0558543794)' : '........................................'}
+              </div>
               <div className="border-t border-dashed border-slate-300 pt-2 text-[11px] text-slate-400">
                 التوقيع والاعتماد
               </div>
             </div>
 
             <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
-              <div className="font-bold text-xs text-slate-800 mb-6 pb-2 border-b border-slate-200">
+              <div className="font-bold text-xs text-slate-800 mb-4 pb-2 border-b border-slate-200">
                 المستلم ({isOut ? 'مسؤول المصنع' : 'أمين المستودع'})
               </div>
-              <div className="text-[11px] text-slate-500 mb-8 text-right">الاسم: ........................................</div>
+              <div className="text-[11px] text-slate-700 mb-6 text-right font-medium">
+                الاسم: {!isOut ? 'عمرو العواضي (0558543794)' : '........................................'}
+              </div>
               <div className="border-t border-dashed border-slate-300 pt-2 text-[11px] text-slate-400">
                 التوقيع والاعتماد
               </div>

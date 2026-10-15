@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Scale, Plus, Edit, Trash2, Sparkles, X, AlertCircle } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Unit } from '../../types/inventory';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
 export const UnitsView: React.FC = () => {
   const { units, items, addUnit, updateUnit, deleteUnit, seedCommonUnits } = useInventory();
+  const { isAdmin } = useAuth();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
@@ -74,25 +76,27 @@ export const UnitsView: React.FC = () => {
             إدارة الوحدات القابلة لإعادة الاستخدام (حبة، كرتون، درزن، شدة، كيلو...) واستخدامها كوحدة أساسية أو في تحويلات الأصناف
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Quick seed helper */}
-          <button
-            onClick={seedCommonUnits}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-            title="إضافة حزمة الوحدات الشائعة فوراً"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>إضافة الوحدات الشائعة</span>
-          </button>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {/* Quick seed helper */}
+            <button
+              onClick={seedCommonUnits}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              title="إضافة حزمة الوحدات الشائعة فوراً"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              <span>إضافة الوحدات الشائعة</span>
+            </button>
 
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة وحدة جديدة</span>
-          </button>
-        </div>
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة وحدة جديدة</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Units Table */}
@@ -105,22 +109,24 @@ export const UnitsView: React.FC = () => {
           <p className="text-xs text-slate-500 mb-6 leading-relaxed">
             أضف وحدات القياس والتعبئة التي تستخدمها في مستودعك، أو اضغط زر "إضافة الوحدات الشائعة" لبدء سريع.
           </p>
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={seedCommonUnits}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>إضافة الوحدات الشائعة</span>
-            </button>
-            <button
-              onClick={handleOpenAdd}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة وحدة يدوياً</span>
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={seedCommonUnits}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Sparkles className="w-4 h-4 text-amber-600" />
+                <span>إضافة الوحدات الشائعة</span>
+              </button>
+              <button
+                onClick={handleOpenAdd}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة وحدة يدوياً</span>
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
@@ -217,22 +223,26 @@ export const UnitsView: React.FC = () => {
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => handleOpenEdit(unit)}
-                            className="p-1.5 text-slate-400 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="تعديل الوحدة"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(unit)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="حذف الوحدة"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        {isAdmin ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleOpenEdit(unit)}
+                              className="p-1.5 text-slate-400 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="تعديل الوحدة"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteTarget(unit)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="حذف الوحدة"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium">مشاهدة</span>
+                        )}
                       </td>
                     </tr>
                   );

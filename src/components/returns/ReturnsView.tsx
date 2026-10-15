@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { ReturnRecord, ReturnType, ReturnStatus } from '../../types/inventory';
 import { ReturnFormModal } from './ReturnFormModal';
 import { ReturnDetailsModal } from './ReturnDetailsModal';
@@ -12,6 +13,7 @@ import { Plus, Search, Filter, ArrowDownLeft, ArrowUpRight, CheckCircle, Clock, 
 
 export const ReturnsView: React.FC = () => {
   const { returns, items, units } = useInventory();
+  const { isAdmin } = useAuth();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedReturn, setSelectedReturn] = useState<ReturnRecord | null>(null);
@@ -56,13 +58,15 @@ export const ReturnsView: React.FC = () => {
             تسجيل ومتابعة مرتجعات العملاء والفروع (وارد) والمرتجعات إلى الموردين (صادر) مع الربط الفعلي بأرصدة المخزون والحركات.
           </p>
         </div>
-        <button
-          onClick={() => setIsFormOpen(true)}
-          className="relative z-10 px-6 py-3.5 bg-white text-slate-900 hover:bg-slate-100 rounded-2xl font-bold text-sm shadow-lg shadow-black/20 transition flex items-center gap-2 shrink-0"
-        >
-          <Plus className="w-5 h-5 text-emerald-600" />
-          <span>تسجيل مرتجع جديد</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setIsFormOpen(true)}
+            className="relative z-10 px-6 py-3.5 bg-white text-slate-900 hover:bg-slate-100 rounded-2xl font-bold text-sm shadow-lg shadow-black/20 transition flex items-center gap-2 shrink-0 cursor-pointer"
+          >
+            <Plus className="w-5 h-5 text-emerald-600" />
+            <span>تسجيل مرتجع جديد</span>
+          </button>
+        )}
 
         {/* Decorative background shapes */}
         <div className="absolute -left-10 -bottom-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />

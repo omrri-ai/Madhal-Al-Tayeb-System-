@@ -19,7 +19,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
   preselectedItemId,
   editingMovement,
 }) => {
-  const { items, units, getItemStock, addMovement, updateMovement, showToast } = useInventory();
+  const { items, units, getItemStock, addMovement, updateMovement, updateItem, showToast } = useInventory();
 
   const activeItems = useMemo(
     () => items.filter((i) => !i.isDeleted && !i.isArchived),
@@ -34,6 +34,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
   const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 16));
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [addToProduction, setAddToProduction] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   // Sync state when editing or opening
@@ -50,6 +51,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       );
       setReferenceNumber(editingMovement.referenceNumber || '');
       setNotes(editingMovement.notes || '');
+      setAddToProduction(false);
       setErrorMsg('');
     } else {
       setType(defaultType);
@@ -59,6 +61,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       setDate(new Date().toISOString().substring(0, 16));
       setReferenceNumber('');
       setNotes('');
+      setAddToProduction(false);
       setErrorMsg('');
     }
   }, [isOpen, editingMovement, defaultType, preselectedItemId, activeItems]);
@@ -189,12 +192,19 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
         quantity: numQuantity,
         date: new Date(date).toISOString(),
         referenceNumber,
-        notes,
+        notes: addToProduction ? (notes ? `${notes} (تابع للإنتاج والتصنيع)` : 'إضافة إلى الإنتاج والتصنيع') : notes,
       });
 
       if (!res.success) {
         setErrorMsg(res.error || 'حدث خطأ أثناء تسجيل الحركة');
         return;
+      }
+
+      if (type === 'IN' && addToProduction && selectedItem) {
+        updateItem(itemId, {
+          ...selectedItem,
+          isProductionItem: true,
+        });
       }
     }
 
@@ -384,6 +394,25 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Add to Production Checkbox when type is IN */}
+          {type === 'IN' && (
+            <div className="p-3.5 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition" onClick={() => setAddToProduction(!addToProduction)}>
+              <input
+                type="checkbox"
+                id="addToProduction"
+                checked={addToProduction}
+                onChange={(e) => setAddToProduction(e.target.checked)}
+                className="w-4 h-4 text-indigo-600 rounded-sm border-indigo-300 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="addToProduction" className="text-xs font-black text-indigo-950 cursor-pointer select-none flex-1">
+                ☐ إضافة إلى الإنتاج والتصنيع
+                <span className="block text-[11px] font-normal text-indigo-700 mt-0.5">
+                  يُضاف الصنف للمخزون المعتاد ويُصنف كمنتج تابع للإنتاج والتصنيع ليظهر في القسم المخصص تلقائياً.
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Interactive Conversion & Balance Status Card */}
           {selectedItem && (

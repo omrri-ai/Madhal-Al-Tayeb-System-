@@ -37,6 +37,7 @@ export interface Item {
   archiveReason?: string; // Reason why item was archived
   deleteReason?: string; // Reason why item was deleted
   editReason?: string; // Last reason why item was modified
+  isProductionItem?: boolean;
   isArchived: boolean;
   isDeleted: boolean; // Soft delete to Trash
   createdAt: string;

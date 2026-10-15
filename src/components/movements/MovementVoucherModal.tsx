@@ -63,8 +63,15 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
     <div>
       <h2 class="company-title">${companySettings.name}</h2>
       <div class="company-meta">
-        س.ت: ${companySettings.commercialRegister} | الرقم الضريبي: ${companySettings.taxId}<br/>
-        العنوان: ${companySettings.address} | الجوال: ${companySettings.phone}
+        ${[
+          companySettings.commercialRegister ? `س.ت: ${companySettings.commercialRegister}` : '',
+          companySettings.taxId ? `الرقم الضريبي: ${companySettings.taxId}` : ''
+        ].filter(Boolean).join(' | ')}
+        ${(companySettings.commercialRegister || companySettings.taxId) && (companySettings.address || companySettings.phone) ? '<br/>' : ''}
+        ${[
+          companySettings.address ? `العنوان: ${companySettings.address}` : '',
+          companySettings.phone ? `الجوال: ${companySettings.phone}` : ''
+        ].filter(Boolean).join(' | ')}
       </div>
     </div>
     <div style="text-align: left;">
@@ -135,7 +142,6 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
   <div class="info-box">
     <div><strong>حالة السند:</strong> <span style="color: #065f46; font-weight: bold;">معتمد ومرحل (${movement.status || 'APPROVED'})</span></div>
     <div><strong>أمين المستودع / المُصدر:</strong> ${movement.createdByName || companySettings.managerName || 'إدارة النظام'}</div>
-    <div><strong>رصيد الصنف الحالي:</strong> ${currentStock} ${baseUnit?.name || 'وحدة'}</div>
     ${movement.referenceNumber ? `<div><strong>رقم المرجع الخارجي:</strong> #${movement.referenceNumber}</div>` : ''}
     ${movement.notes ? `<div style="grid-column: span 2;"><strong>ملاحظات:</strong> ${movement.notes}</div>` : ''}
   </div>
@@ -222,8 +228,20 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
             <div>
               <h2 className="text-xl font-black text-slate-900 mb-1">{companySettings.name}</h2>
               <div className="text-xs text-slate-600 space-y-0.5">
-                <p>سجل تجاري: <span className="font-mono">{companySettings.commercialRegister}</span> | الرقم الضريبي: <span className="font-mono">{companySettings.taxId}</span></p>
-                <p>العنوان: {companySettings.address} | الجوال: <span className="font-mono">{companySettings.phone}</span></p>
+                {(companySettings.commercialRegister || companySettings.taxId) && (
+                  <p>
+                    {companySettings.commercialRegister && <>سجل تجاري: <span className="font-mono">{companySettings.commercialRegister}</span></>}
+                    {companySettings.commercialRegister && companySettings.taxId && ' | '}
+                    {companySettings.taxId && <>الرقم الضريبي: <span className="font-mono">{companySettings.taxId}</span></>}
+                  </p>
+                )}
+                {(companySettings.address || companySettings.phone) && (
+                  <p>
+                    {companySettings.address && <>العنوان: {companySettings.address}</>}
+                    {companySettings.address && companySettings.phone && ' | '}
+                    {companySettings.phone && <>الجوال: <span className="font-mono">{companySettings.phone}</span></>}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -364,12 +382,6 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
             <div>
               <span className="text-slate-500 block">أمين المستودع / المُصدر:</span>
               <span className="font-bold text-slate-900">{movement.createdByName || companySettings.managerName || 'إدارة النظام'}</span>
-            </div>
-            <div>
-              <span className="text-slate-500 block">رصيد الصنف المتوفر حالياً:</span>
-              <span className="font-bold font-mono text-slate-900">
-                {currentStock} {baseUnit?.name || 'وحدة'}
-              </span>
             </div>
             {movement.referenceNumber && (
               <div>

@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { StockMovement, Item, Unit, Category } from '../../types/inventory';
 import { FactoryMovementModal } from './FactoryMovementModal';
 import { FactoryVoucherModal } from './FactoryVoucherModal';
@@ -31,6 +32,7 @@ type TypeFilter = 'ALL' | 'MFG_OUT' | 'MFG_IN';
 
 export const ProductionView: React.FC<ProductionViewProps> = () => {
   const { movements, items, units, categories, getItemStock } = useInventory();
+  const { isAdmin } = useAuth();
 
   // Modals state
   const [modalType, setModalType] = useState<'MFG_OUT' | 'MFG_IN' | null>(null);
@@ -47,6 +49,7 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
   const factoryMovements = useMemo(() => {
     return movements.filter((m) => {
       if (!m) return false;
+      const item = items.find((i) => i.id === m.itemId);
       return (
         m.type === 'MFG_OUT' ||
         m.type === 'MFG_IN' ||
@@ -55,10 +58,11 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
         (m.referenceNumber &&
           (m.referenceNumber.startsWith('MFG-OUT-') || m.referenceNumber.startsWith('MFG-IN-'))) ||
         m.destinationType === 'PRODUCTION' ||
-        m.destinationType === 'FACTORY'
+        m.destinationType === 'FACTORY' ||
+        (item?.isProductionItem && (m.type === 'IN' || m.type === 'OUT'))
       );
     });
-  }, [movements]);
+  }, [movements, items]);
 
   // Filtered movements based on search and filters
   const filteredMovements = useMemo(() => {
@@ -256,64 +260,76 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
         </div>
       </div>
 
-      {/* 2. The Two Main Action Buttons (خروج للمصنع & وارد من المصنع) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-        {/* Button 1: خروج للمصنع */}
-        <button
-          onClick={() => setModalType('MFG_OUT')}
-          className="group relative bg-white hover:bg-rose-50/40 p-6 rounded-3xl border-2 border-rose-200/80 hover:border-rose-400 shadow-sm hover:shadow-md transition-all text-right flex items-center justify-between overflow-hidden"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 group-hover:bg-rose-600 group-hover:text-white transition duration-200 shadow-xs">
-              <ArrowUpRight className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-black text-slate-900 group-hover:text-rose-700 transition">
-                  خروج للمصنع
-                </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-black">
-                  يخصم من المخزون
-                </span>
+      {/* 2. The Two Main Action Buttons (خروج للمصنع & وارد من المصنع) or View-Only Banner */}
+      {isAdmin ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+          {/* Button 1: خروج للمصنع */}
+          <button
+            onClick={() => setModalType('MFG_OUT')}
+            className="group relative bg-white hover:bg-rose-50/40 p-6 rounded-3xl border-2 border-rose-200/80 hover:border-rose-400 shadow-sm hover:shadow-md transition-all text-right flex items-center justify-between overflow-hidden cursor-pointer"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 group-hover:bg-rose-600 group-hover:text-white transition duration-200 shadow-xs">
+                <ArrowUpRight className="w-7 h-7" />
               </div>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                صرف مواد خام أو أصناف إلى المصنع، مع التحقق الفوري من توفر الرصيد الكافي
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-900 group-hover:text-rose-700 transition">
+                    خروج للمصنع
+                  </h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-black">
+                    يخصم من المخزون
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  صرف مواد خام أو أصناف إلى المصنع، مع التحقق الفوري من توفر الرصيد الكافي
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-slate-50 text-slate-400 group-hover:bg-rose-100 group-hover:text-rose-700 transition">
-            <span className="text-base font-bold">←</span>
-          </div>
-        </button>
+            <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-slate-50 text-slate-400 group-hover:bg-rose-100 group-hover:text-rose-700 transition">
+              <span className="text-base font-bold">←</span>
+            </div>
+          </button>
 
-        {/* Button 2: وارد من المصنع */}
-        <button
-          onClick={() => setModalType('MFG_IN')}
-          className="group relative bg-white hover:bg-emerald-50/40 p-6 rounded-3xl border-2 border-emerald-200/80 hover:border-emerald-400 shadow-sm hover:shadow-md transition-all text-right flex items-center justify-between overflow-hidden"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 group-hover:bg-emerald-600 group-hover:text-white transition duration-200 shadow-xs">
-              <ArrowDownLeft className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-black text-slate-900 group-hover:text-emerald-700 transition">
-                  وارد من المصنع
-                </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-black">
-                  يضاف للمخزون
-                </span>
+          {/* Button 2: وارد من المصنع */}
+          <button
+            onClick={() => setModalType('MFG_IN')}
+            className="group relative bg-white hover:bg-emerald-50/40 p-6 rounded-3xl border-2 border-emerald-200/80 hover:border-emerald-400 shadow-sm hover:shadow-md transition-all text-right flex items-center justify-between overflow-hidden cursor-pointer"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 group-hover:bg-emerald-600 group-hover:text-white transition duration-200 shadow-xs">
+                <ArrowDownLeft className="w-7 h-7" />
               </div>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                استلام منتجات جاهزة أو بضائع مصنعة من المصنع وإضافتها مباشرة لرصيد المخزون
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-900 group-hover:text-emerald-700 transition">
+                    وارد من المصنع
+                  </h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-black">
+                    يضاف للمخزون
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  استلام منتجات جاهزة أو بضائع مصنعة من المصنع وإضافتها مباشرة لرصيد المخزون
+                </p>
+              </div>
             </div>
+            <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-slate-50 text-slate-400 group-hover:bg-emerald-100 group-hover:text-emerald-700 transition">
+              <span className="text-base font-bold">←</span>
+            </div>
+          </button>
+        </div>
+      ) : (
+        <div className="bg-teal-50 border border-teal-200 rounded-3xl p-4 sm:p-5 flex items-center gap-3 text-teal-900 text-xs">
+          <Factory className="w-6 h-6 text-teal-700 shrink-0" />
+          <div className="flex-1">
+            <span className="font-bold text-sm block mb-0.5">وضع مسؤول المصنع — مشاهدة فقط:</span>
+            <p className="text-teal-800">
+              يمكنك البحث في سجل العمليات أدناه، وتصفية الحركات حسب النوع والفترة، وطباعة السندات وتصدير ملفات CSV. عمليات صرف المواد واستلام البضائع مقتصرة على وضع المدير.
+            </p>
           </div>
-          <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-slate-50 text-slate-400 group-hover:bg-emerald-100 group-hover:text-emerald-700 transition">
-            <span className="text-base font-bold">←</span>
-          </div>
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* 3. Search & Filters Bar */}
       <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-4">
