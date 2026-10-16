@@ -19,6 +19,7 @@ import {
   Category,
   CompanySettings,
   Customer,
+  DamagedRecord,
   Item,
   ProductionOrder,
   ReturnRecord,
@@ -77,24 +78,59 @@ export const FirestoreStorage = {
   // Load all collections safely from Cloud Firestore with local cache resilience
   async loadAll(): Promise<InventoryDatabaseData> {
     try {
-      const fetchColl = async (name: string) => {
+      type QueryResult<T> = {
+        data: T[];
+        state: 'SUCCESS' | 'EMPTY' | 'NETWORK_ERROR' | 'PERMISSION_DENIED';
+        error?: any;
+      };
+
+      const fetchCollSafely = async <T>(
+        name: string,
+        mapper: (docData: any) => T,
+        validator: (item: T) => boolean
+      ): Promise<QueryResult<T>> => {
         try {
-          return await getDocs(collection(db, name));
-        } catch (err) {
-          console.warn(`Could not read collection "${name}" from Firestore (offline/latency):`, err);
-          return null;
+          const snap = await getDocs(collection(db, name));
+          if (!snap || snap.empty || snap.docs.length === 0) {
+            return { data: [], state: 'EMPTY' };
+          }
+          const validDocs = snap.docs.map((d) => mapper(d.data())).filter(validator);
+          return { data: validDocs, state: validDocs.length > 0 ? 'SUCCESS' : 'EMPTY' };
+        } catch (err: any) {
+          const errMsg = err?.message || String(err);
+          const isPerm = err?.code === 'permission-denied' || errMsg.includes('Missing or insufficient permissions');
+          console.warn(`Firestore read query on "${name}" resulted in:`, isPerm ? 'PERMISSION_DENIED' : 'NETWORK_ERROR', err);
+          return {
+            data: [],
+            state: isPerm ? 'PERMISSION_DENIED' : 'NETWORK_ERROR',
+            error: err,
+          };
         }
       };
 
-      const [unitsSnap, categoriesSnap, itemsSnap, movementsSnap, branchesSnap, returnsSnap, customersSnap, prodOrdersSnap] = await Promise.all([
-        fetchColl('units'),
-        fetchColl('categories'),
-        fetchColl('items'),
-        fetchColl('movements'),
-        fetchColl('branches'),
-        fetchColl('returns'),
-        fetchColl('customers'),
-        fetchColl('production_orders'),
+      const isGenuineItem = (i: any): i is Item =>
+        Boolean(i && i.id && !i.id.startsWith('unit_') && !i.id.startsWith('cat_') && !i.id.startsWith('branch_') && !i.id.startsWith('mov_') && !i.id.startsWith('ret_') && i.name);
+
+      const [
+        unitsRes,
+        categoriesRes,
+        itemsRes,
+        movementsRes,
+        branchesRes,
+        returnsRes,
+        customersRes,
+        prodOrdersRes,
+        damagedRes,
+      ] = await Promise.all([
+        fetchCollSafely<Unit>('units', (d) => d as Unit, (u) => Boolean(u && u.id && u.name)),
+        fetchCollSafely<Category>('categories', (d) => d as Category, (c) => Boolean(c && c.id && c.name)),
+        fetchCollSafely<Item>('items', (d) => d as Item, isGenuineItem),
+        fetchCollSafely<StockMovement>('movements', (d) => d as StockMovement, (m) => Boolean(m && m.id && m.itemId)),
+        fetchCollSafely<Branch>('branches', (d) => d as Branch, (b) => Boolean(b && b.id && b.name)),
+        fetchCollSafely<ReturnRecord>('returns', (d) => d as ReturnRecord, (r) => Boolean(r && r.id && r.type)),
+        fetchCollSafely<Customer>('customers', (d) => d as Customer, (c) => Boolean(c && c.id && c.name)),
+        fetchCollSafely<ProductionOrder>('production_orders', (d) => d as ProductionOrder, (p) => Boolean(p && p.id && p.orderNumber)),
+        fetchCollSafely<DamagedRecord>('damaged_records', (d) => d as DamagedRecord, (r) => Boolean(r && r.id && r.itemId)),
       ]);
 
       let cloudSettings: CompanySettings | undefined = undefined;
@@ -107,78 +143,72 @@ export const FirestoreStorage = {
         console.warn('Could not read system_settings document from Firestore (offline or uninitialized):', settingsErr);
       }
 
-      const isGenuineItem = (i: any): i is Item =>
-        Boolean(i && i.id && !i.id.startsWith('unit_') && !i.id.startsWith('cat_') && !i.id.startsWith('branch_') && !i.id.startsWith('mov_') && !i.id.startsWith('ret_'));
+      // Load existing local storage data first for safe merge & disaster recovery
+      const localData = StorageService.loadAll();
 
-      const cloudUnits: Unit[] = (unitsSnap?.docs || [])
-        .map((d) => d.data() as Unit)
-        .filter((u) => u && u.id && !u.id.startsWith('item_') && !u.id.startsWith('cat_') && !u.id.startsWith('branch_'));
+      // Safe resolution function that NEVER wipes local non-empty data with an empty cloud state or network failure
+      const resolveSafely = <T extends { id?: string }>(
+        cloudRes: QueryResult<T>,
+        localItems: T[] = []
+      ): T[] => {
+        // 1. If cloud failed (network offline or permission denied), 100% preserve existing local data
+        if (cloudRes.state === 'NETWORK_ERROR' || cloudRes.state === 'PERMISSION_DENIED') {
+          console.info(`Preserving local cache because cloud query state is ${cloudRes.state}.`);
+          return localItems;
+        }
 
-      const cloudCategories: Category[] = (categoriesSnap?.docs || [])
-        .map((d) => d.data() as Category)
-        .filter((c) => c && c.id && !c.id.startsWith('item_') && !c.id.startsWith('unit_') && !c.id.startsWith('branch_'));
+        // 2. If cloud returned valid data:
+        if (cloudRes.state === 'SUCCESS') {
+          // Two-way merge: include cloud items, plus any local items created offline that have not synced yet
+          const cloudIds = new Set(cloudRes.data.map((c) => c.id).filter(Boolean));
+          const unsyncedLocal = localItems.filter((loc) => loc.id && !cloudIds.has(loc.id));
+          return [...cloudRes.data, ...unsyncedLocal];
+        }
 
-      const cloudItems: Item[] = (itemsSnap?.docs || [])
-        .map((d) => d.data() as Item)
-        .filter(isGenuineItem);
+        // 3. If cloud returned EMPTY (0 docs):
+        // If local data already had records, DO NOT WIPE THEM! Keep local records so un-migrated or offline data isn't deleted!
+        if (localItems.length > 0) {
+          console.info('Preserving existing local records because cloud collection is currently unpopulated (empty snapshot).');
+          return localItems;
+        }
 
-      const cloudMovements: StockMovement[] = (movementsSnap?.docs || [])
-        .map((d) => d.data() as StockMovement)
-        .filter((m) => m && m.id && m.itemId);
-
-      const cloudBranches: Branch[] = (branchesSnap?.docs || [])
-        .map((d) => d.data() as Branch)
-        .filter((b) => b && b.id && !b.id.startsWith('item_') && !b.id.startsWith('unit_') && !b.id.startsWith('cat_'));
-
-      const cloudReturns: ReturnRecord[] = (returnsSnap?.docs || [])
-        .map((d) => d.data() as ReturnRecord)
-        .filter((r) => r && r.id && r.type);
-
-      const cloudCustomers: Customer[] = (customersSnap?.docs || [])
-        .map((d) => d.data() as Customer)
-        .filter((c) => c && c.id);
-
-      const cloudProductionOrders: ProductionOrder[] = (prodOrdersSnap?.docs || [])
-        .map((d) => d.data() as ProductionOrder)
-        .filter((p) => p && p.id && p.orderNumber);
-
-      // If all collections returned null (e.g. completely offline with no local Firestore cache)
-      const hasAnyFirestoreData =
-        unitsSnap !== null ||
-        categoriesSnap !== null ||
-        itemsSnap !== null ||
-        movementsSnap !== null ||
-        branchesSnap !== null ||
-        returnsSnap !== null ||
-        customersSnap !== null ||
-        prodOrdersSnap !== null;
-
-      if (!hasAnyFirestoreData) {
-        console.warn('Firestore is completely offline or unreachable. Loading from StorageService local cache.');
-        const localData = await StorageService.loadAll();
-        return localData;
-      }
-
-      const cloudData: InventoryDatabaseData = {
-        units: cloudUnits,
-        categories: cloudCategories,
-        items: cloudItems,
-        movements: cloudMovements,
-        branches: cloudBranches,
-        returns: cloudReturns,
-        customers: cloudCustomers,
-        productionOrders: cloudProductionOrders,
-        settings: cloudSettings,
+        return [];
       };
 
-      // Ensure local offline backup is synchronized with cloud data
-      StorageService.saveAll(cloudData).catch(() => {});
+      const finalUnits = unitsRes.data.length > 0 ? unitsRes.data : (localData.units || []);
+      const finalCategories = categoriesRes.data.length > 0 ? categoriesRes.data : (localData.categories || []);
+      const finalItems = resolveSafely(itemsRes, localData.items);
+      const finalMovements = resolveSafely(movementsRes, localData.movements);
+      const finalBranches = branchesRes.data.length > 0 ? branchesRes.data : (localData.branches || []);
+      const finalReturns = resolveSafely(returnsRes, localData.returns);
+      const finalCustomers = resolveSafely(customersRes, localData.customers);
+      const finalProductionOrders = resolveSafely(prodOrdersRes, localData.productionOrders);
+      const finalDamagedRecords = resolveSafely(damagedRes, localData.damagedRecords);
 
-      return cloudData;
+      const resolvedData: InventoryDatabaseData = {
+        units: finalUnits,
+        categories: finalCategories,
+        items: finalItems,
+        movements: finalMovements,
+        branches: finalBranches,
+        returns: finalReturns,
+        customers: finalCustomers,
+        productionOrders: finalProductionOrders,
+        damagedRecords: finalDamagedRecords,
+        settings: cloudSettings || localData.settings,
+      };
+
+      // Only update local storage cache if we have confirmed cloud data or if local was empty
+      // NEVER overwrite local non-empty data with an empty state!
+      if (finalItems.length > 0 || finalMovements.length > 0) {
+        StorageService.saveAll(resolvedData).catch(() => {});
+      }
+
+      return resolvedData;
     } catch (error: any) {
-      console.warn('Failed to load from Cloud Firestore, falling back to StorageService:', error);
+      console.warn('Failed to load from Cloud Firestore, falling back safely to StorageService:', error);
       try {
-        const localData = await StorageService.loadAll();
+        const localData = StorageService.loadAll();
         return localData;
       } catch {
         return {
@@ -339,6 +369,30 @@ export const FirestoreStorage = {
       await this.recordAuditLog('DELETE_RETURN', 'return', returnId, `حذف سجل المرتجع: ${returnId}`);
     } catch (err) {
       console.error('Error deleting return from Firestore:', err);
+      throw err;
+    }
+  },
+
+  // Save Damaged Record
+  async saveDamagedRecord(record: DamagedRecord): Promise<void> {
+    verifyAdminWritePermission(`حفظ سجل التلف ${record.id}`);
+    try {
+      await setDoc(doc(db, 'damaged_records', record.id), cleanObject(record));
+      await this.recordAuditLog('SAVE_DAMAGED', 'حركة مخزنية', record.id, `تسجيل تلف صنف: ${record.reason}`);
+    } catch (err) {
+      console.error('Error saving damaged record to Firestore:', err);
+      throw err;
+    }
+  },
+
+  // Delete Damaged Record
+  async deleteDamagedRecord(id: string): Promise<void> {
+    verifyAdminWritePermission(`حذف سجل التلف ${id}`);
+    try {
+      await deleteDoc(doc(db, 'damaged_records', id));
+      await this.recordAuditLog('DELETE_DAMAGED', 'حركة مخزنية', id, `حذف سجل تلف: ${id}`);
+    } catch (err) {
+      console.error('Error deleting damaged record from Firestore:', err);
       throw err;
     }
   },
@@ -571,6 +625,7 @@ export const FirestoreStorage = {
     onBranches?: (branches: Branch[]) => void;
     onReturns?: (returns: ReturnRecord[]) => void;
     onCustomers?: (customers: Customer[]) => void;
+    onDamagedRecords?: (damaged: DamagedRecord[]) => void;
     onError?: (error: any) => void;
   }): () => void {
     const unsubscribes: (() => void)[] = [];
@@ -674,6 +729,18 @@ export const FirestoreStorage = {
       unsubscribes.push(unsub);
     }
 
+    if (callbacks.onDamagedRecords) {
+      const unsub = onSnapshot(
+        collection(db, 'damaged_records'),
+        (snap) => {
+          const records = snap.docs.map((d) => d.data() as DamagedRecord).filter((r) => r && r.id);
+          callbacks.onDamagedRecords?.(records);
+        },
+        (err) => callbacks.onError?.(err)
+      );
+      unsubscribes.push(unsub);
+    }
+
     return () => {
       unsubscribes.forEach((fn) => fn());
     };
@@ -691,7 +758,15 @@ export const FirestoreStorage = {
     (data.movements || []).forEach((m) => m.id && allOperations.push({ col: 'movements', id: m.id, data: m }));
     (data.branches || []).forEach((b) => b.id && allOperations.push({ col: 'branches', id: b.id, data: b }));
     (data.returns || []).forEach((r) => r.id && allOperations.push({ col: 'returns', id: r.id, data: r }));
+    (data.customers || []).forEach((c) => c.id && allOperations.push({ col: 'customers', id: c.id, data: c }));
     (data.productionOrders || []).forEach((p) => p.id && allOperations.push({ col: 'production_orders', id: p.id, data: p }));
+    (data.damagedRecords || []).forEach((d) => d.id && allOperations.push({ col: 'damaged_records', id: d.id, data: d }));
+
+    // Safety guard: NEVER execute empty batch over cloud collections
+    if (allOperations.length === 0) {
+      console.warn('syncAllToFirestore skipped: payload contains 0 operations. Guarding cloud data from empty overwrite.');
+      return { success: true, count: 0 };
+    }
 
     const CHUNK_SIZE = 100;
     for (let i = 0; i < allOperations.length; i += CHUNK_SIZE) {

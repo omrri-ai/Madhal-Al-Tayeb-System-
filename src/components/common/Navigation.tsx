@@ -20,6 +20,7 @@ import {
   Factory,
   ShieldCheck,
   LogOut,
+  AlertTriangle,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
@@ -36,6 +37,7 @@ export type NavView =
   | 'units'
   | 'archive'
   | 'audit_log'
+  | 'damaged'
   | 'reports'
   | 'settings';
 
@@ -56,7 +58,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   setMobileMenuOpen,
   onOpenChangePassword,
 }) => {
-  const { stats, customers } = useInventory();
+  const { stats, customers, damagedRecords } = useInventory();
   const { isAdmin, isFactoryViewer, logout, logoutCompletely } = useAuth();
 
   const allNavItems = [
@@ -97,6 +99,13 @@ export const Navigation: React.FC<NavigationProps> = ({
       badgeColor: 'bg-emerald-100 text-emerald-800',
     },
     {
+      id: 'damaged' as NavView,
+      label: 'التالف والمفقودات',
+      icon: AlertTriangle,
+      badge: damagedRecords.length > 0 ? damagedRecords.length : null,
+      badgeColor: 'bg-amber-100 text-amber-800',
+    },
+    {
       id: 'branches' as NavView,
       label: 'إدارة الفروع',
       icon: Building2,
@@ -128,12 +137,14 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: Archive,
       badge: stats.archivedItemsCount + stats.deletedItemsCount > 0 ? stats.archivedItemsCount + stats.deletedItemsCount : null,
       badgeColor: 'bg-amber-100 text-amber-800',
+      adminOnly: true,
     },
     {
       id: 'audit_log' as NavView,
       label: 'سجل التعديل والحذف',
       icon: History,
       badge: null,
+      adminOnly: true,
     },
     {
       id: 'reports' as NavView,

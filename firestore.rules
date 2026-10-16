@@ -1,92 +1,138 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default Deny All
+    // -------------------------------------------------------------
+    // 1. الرفض التلقائي الافتراضي لجميع العمليات (Default Deny)
+    // يُغلق أي مسار غير مصرح به صراحةً ويمنع الوصول العشوائي تماماً
+    // -------------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Owner check: strictly restricted to verified owner account when token is present,
-    // or allows authenticated owner app operations
-    function isOwner() {
-      return request.auth == null ||
-        request.auth.token.email == 'mrm823994@gmail.com';
+    // -------------------------------------------------------------
+    // 2. دوال المصادقة وفحص الصلاحيات (Authentication & RBAC Gates)
+    // -------------------------------------------------------------
+
+    // التحقق من أن المستخدم مسجل ومصادق عليه عبر Firebase Auth
+    // يمنع نهائياً أي وصول عندما يكون غياب المصادقة السحابية
+    function isSignedIn() {
+      return request.auth != null;
     }
 
+    // صلاحية المدير العام (المالك):
+    // محصورة حصرًا بالبريد المعتمد للمالك بعد توثيقه أو عبر وثيقة الإدارة المعتمدة
+    function isOwner() {
+      return isSignedIn() && (
+        request.auth.token.email == 'mrm823994@gmail.com' ||
+        exists(/databases/$(database)/documents/system_admins/$(request.auth.uid))
+      );
+    }
+
+    // صلاحية المشاهدة والمعاينة:
+    // محصورة حصرًا بحسابات المشاهدة المعتمدة أو وثائق المشاهدين المصرح لهم
+    function isViewer() {
+      return isSignedIn() && (
+        request.auth.token.email == 'mrm823994@gmail.com' ||
+        request.auth.token.email == 'supervisor@medhal.sa' ||
+        request.auth.token.email == 'factory_supervisor@medhal.local' ||
+        exists(/databases/$(database)/documents/system_admins/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/system_viewers/$(request.auth.uid))
+      );
+    }
+
+    // التحقق من صحة المعرّفات لمنع حقن المعرّفات المشبوهة
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
 
-    // System Settings & Configuration
+    // -------------------------------------------------------------
+    // 3. قواعد المجموعات (Collections Rules)
+    // -------------------------------------------------------------
+
+    // إعدادات وبيانات النظام
     match /system_settings/{settingId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(settingId);
     }
 
-    // Customers
+    // سجلات العملاء
     match /customers/{customerId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(customerId);
     }
 
-    // App Data
-    match /app_data/{docId} {
-      allow read, write: if isOwner() && isValidId(docId);
+    // سجلات التالف (معالجة النقص السابق وحمايتها من التعديل العشوائي)
+    match /damaged_records/{recordId} {
+      allow read: if isViewer();
+      allow write: if isOwner() && isValidId(recordId);
     }
 
-    // Units
+    // أوامر الإنتاج والتصنيع (معالجة النقص السابق)
+    match /production_orders/{orderId} {
+      allow read: if isViewer();
+      allow write: if isOwner() && isValidId(orderId);
+    }
+
+
+    // وحدات القياس
     match /units/{unitId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(unitId);
     }
 
-    // Categories
+    // الأقسام والتصنيفات
     match /categories/{categoryId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(categoryId);
     }
 
-    // Items
+    // الأصناف والمنتجات
     match /items/{itemId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(itemId);
     }
 
-    // Stock Movements
+    // الحركات المخزنية (الوارد والصادر)
     match /movements/{movementId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(movementId);
     }
 
-    // Branches
+    // الفروع والمستودعات
     match /branches/{branchId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(branchId);
     }
 
-    // Returns
+    // المرتجعات
     match /returns/{returnId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow write: if isOwner() && isValidId(returnId);
     }
 
-    // Audit Log - Immutable audit entries (read and create only for owner, no update or delete)
+    // سجل التدقيق المالي والإداري - محمي ضد التعديل أو الحذف نهائياً (Immutable Audit Trail)
     match /audit_log/{logId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow create: if isOwner() && isValidId(logId);
       allow update, delete: if false;
     }
 
     match /audit_logs/{logId} {
-      allow read: if isOwner();
+      allow read: if isViewer();
       allow create: if isOwner() && isValidId(logId);
       allow update, delete: if false;
     }
 
-    // Backups
+    // النسخ الاحتياطية السحابية
     match /backups/{backupId} {
       allow read: if isOwner();
       allow write: if isOwner() && isValidId(backupId);
+    }
+
+    // جدول مسؤولي النظام (للقراءة المصادق عليها فقط دون تعديل من العميل)
+    match /system_admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
   }
 }

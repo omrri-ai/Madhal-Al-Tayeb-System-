@@ -169,9 +169,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isValid) {
       const managerUser: AppUser = {
-        email: OWNER_EMAIL,
+        email: auth.currentUser?.email || OWNER_EMAIL,
         displayName: 'المدير العام (مدهال الطيب)',
-        uid: 'admin_' + Date.now(),
+        uid: auth.currentUser?.uid || ('admin_' + Date.now()),
       };
       setUser(managerUser);
       setRole('ADMIN');
@@ -187,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 2. Factory Supervisor Login: Password '12345678' or digit 1-8, view-only
+  // 2. Factory Supervisor Login: Password '12345678' or digit 1-8, strictly view-only
   const loginAsFactorySupervisor = async (
     passOrDigit: string
   ): Promise<{ success: boolean; error?: string }> => {

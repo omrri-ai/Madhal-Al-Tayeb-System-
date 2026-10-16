@@ -7,8 +7,36 @@ export type MovementType =
   | 'PRODUCTION_RETURN'   // مرتجع مواد من الإنتاج للمستودع (سابق)
   | 'MFG_OUT'             // خروج للمصنع
   | 'MFG_IN'              // وارد من المصنع
+  | 'DAMAGED'             // تالف
   | 'خروج للمصنع'
   | 'وارد من المصنع';
+
+export type DamagedSection = 'GENERAL' | 'PRODUCTION';
+
+export type DamagedReason =
+  | 'تلف تخزين'
+  | 'انتهاء صلاحية'
+  | 'كسر / تلف عرضي'
+  | 'عيب مصنعي'
+  | 'أخرى';
+
+export interface DamagedRecord {
+  id: string;
+  date: string;
+  section: DamagedSection;
+  itemId: string;
+  unitId: string;
+  quantity: number;
+  factorApplied: number;
+  baseQuantity: number;
+  reason: DamagedReason | string;
+  notes?: string;
+  movementId?: string;
+  createdById?: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Unit {
   id: string;
@@ -117,6 +145,9 @@ export interface StockMovement {
   // Production Order Link
   productionOrderId?: string;
   productionOrderNumber?: string;
+  
+  // Damaged Record Link
+  damagedRecordId?: string;
   
   // Legacy / Direct fields
   branchId?: string;

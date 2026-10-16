@@ -1,0 +1,5 @@
+{
+  "summary": "تقرير التحقق التقني وحسم المخاطر لنظام مخزون مدهال الطيب يغطي التحقق من قواعد firestore.rules وشرط request.auth == null، تتبع مسارات تفريغ وفقدان البيانات في storage.ts وfirestoreStorage.ts، حقيقة استخدام المجموعات الثلاث (customers, damaged_records, production_orders)، تحليل كود addItem وتكرار الأسماء، الربط الدقيق لحركات التالف، وتدقيق صلاحيات المدير ومسؤول المعاينة، مع مقترحات الإصلاح بصيغة diffs دون تطبيقها.",
+  "updatedAt": "2026-10-16T16:02:02.141287029Z",
+  "userFacing": true
+}

@@ -64,7 +64,8 @@ export type ReportTab =
   | 'stagnant'
   | 'turnover'
   | 'alerts'
-  | 'production';
+  | 'production'
+  | 'damaged';
 
 export interface ReportsFilterState {
   period: ExtendedPeriod;
@@ -87,7 +88,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   savedFilters,
   onSaveFilters,
 }) => {
-  const { movements, items, categories, units, branches, returns, getItemStock, getItemStockSummary } =
+  const { movements, items, categories, units, branches, returns, damagedRecords, getItemStock, getItemStockSummary } =
     useInventory();
 
   // Tab navigation
@@ -449,6 +450,25 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       return true;
     });
   }, [returns, dateRange, selectedBranchId, searchQuery]);
+  const periodDamagedRecords = useMemo(() => {
+    return damagedRecords.filter((r) => {
+      const d = r.date;
+      if (d < dateRange.startIso || d > dateRange.endIso) return false;
+      if (selectedCategoryId !== 'all') {
+        const item = items.find((i) => i.id === r.itemId);
+        if (!item || item.categoryId !== selectedCategoryId) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const item = items.find((i) => i.id === r.itemId);
+        const matchName = (item?.name || '').toLowerCase().includes(q);
+        const matchCode = (item?.code || '').toLowerCase().includes(q);
+        const matchReason = (r.reason || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchReason) return false;
+      }
+      return true;
+    });
+  }, [damagedRecords, items, dateRange, selectedCategoryId, searchQuery]);
 
   const returnsMetrics = useMemo(() => {
     const total = periodReturns.length;
@@ -1119,6 +1139,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           { id: 'movements', label: 'حركة الأصناف (الأكثر والأقل)', icon: TrendingUp },
           { id: 'returns', label: 'تقرير المرتجعات (وارد وصادر)', icon: RotateCcw },
           { id: 'production', label: 'حركات الإنتاج والتصنيع', icon: Factory },
+          { id: 'damaged', label: 'تحليل التالف', icon: AlertTriangle },
           { id: 'stagnant', label: 'الأصناف الراكدة', icon: Clock },
           { id: 'branches', label: 'تحليل الفروع والمواقع', icon: Building2 },
           { id: 'categories', label: 'تحليل الأقسام والتصنيفات', icon: Layers },
@@ -2448,7 +2469,75 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       )}
 
-      {/* TAB: PRODUCTION MOVEMENTS REPORT */}
+      {/* TAB: DAMAGED ANALYSIS REPORT */}
+      {activeTab === 'damaged' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>تحليل التالف والمفقودات (المخزون العام والإنتاج والتصنيع)</span>
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                إجمالي الكميات التالفة حسب الفترة والقسم والصنف مع تفاصيل العمليات خلال الفترة المحددة
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+              {periodDamagedRecords.length} عملية تالف
+            </span>
+          </div>
+
+          {periodDamagedRecords.length === 0 ? (
+            <div className="p-12 text-center text-xs text-slate-500 font-bold">
+              لا توجد عمليات تلف مسجلة خلال هذه الفترة.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">التاريخ والوقت</th>
+                    <th className="py-3 px-4">القسم</th>
+                    <th className="py-3 px-4">الصنف التالف</th>
+                    <th className="py-3 px-4 text-center">الكمية التالفة</th>
+                    <th className="py-3 px-4">سبب التلف</th>
+                    <th className="py-3 px-4">الملاحظات</th>
+                    <th className="py-3 px-4">المسجل</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-800">
+                  {periodDamagedRecords.map((r) => {
+                    const item = items.find((i) => i.id === r.itemId);
+                    const unit = units.find((u) => u.id === r.unitId);
+                    const isGen = r.section === 'GENERAL';
+
+                    return (
+                      <tr key={r.id} className="hover:bg-slate-50/80">
+                        <td className="py-3 px-4 font-medium whitespace-nowrap">
+                          {new Date(r.date).toLocaleString('ar-SA')}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isGen ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                            {isGen ? 'المخزون العام' : 'الإنتاج والتصنيع'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-bold text-slate-900">{item?.name || 'صنف محذوف'}</td>
+                        <td className="py-3 px-4 text-center font-mono font-bold text-rose-700">
+                          {r.quantity} {unit?.name || 'وحدة'}
+                        </td>
+                        <td className="py-3 px-4 font-semibold text-slate-800">{r.reason}</td>
+                        <td className="py-3 px-4 text-slate-600">{r.notes || '-'}</td>
+                        <td className="py-3 px-4 text-slate-500">{r.createdByName || 'إدارة النظام'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'production' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">

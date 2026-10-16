@@ -157,28 +157,30 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           )}
 
           {/* Quick Movement Buttons */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                onClose();
-                onRecordMovement(item, 'IN');
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
-            >
-              <ArrowDownLeft className="w-4 h-4" />
-              <span>تسجيل دخول كميات لهذا الصنف</span>
-            </button>
-            <button
-              onClick={() => {
-                onClose();
-                onRecordMovement(item, 'OUT');
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
-            >
-              <ArrowUpRight className="w-4 h-4" />
-              <span>تسجيل خروج كميات لهذا الصنف</span>
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  onClose();
+                  onRecordMovement(item, 'IN');
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                <ArrowDownLeft className="w-4 h-4" />
+                <span>تسجيل دخول كميات لهذا الصنف</span>
+              </button>
+              <button
+                onClick={() => {
+                  onClose();
+                  onRecordMovement(item, 'OUT');
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                <span>تسجيل خروج كميات لهذا الصنف</span>
+              </button>
+            </div>
+          )}
 
           {/* Movement History for this Item */}
           <div className="space-y-3">

@@ -444,23 +444,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             ) : (
               <>
                 <p>لا توجد أي فواتير أو حركات مخزنية مسجلة حتى الآن في هذا التصنيف.</p>
-                <div className="flex items-center justify-center gap-2 pt-2">
-                  <button
-                    onClick={() => onOpenQuickMovement('IN')}
-                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-xs"
-                  >
-                    + تسجيل وارد
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (onOpenOutgoingDispatch) onOpenOutgoingDispatch();
-                      else onOpenQuickMovement('OUT');
-                    }}
-                    className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-bold text-xs"
-                  >
-                    - تسجيل صادر
-                  </button>
-                </div>
+                {isAdmin && (
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <button
+                      onClick={() => onOpenQuickMovement('IN')}
+                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-xs"
+                    >
+                      + تسجيل وارد
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (onOpenOutgoingDispatch) onOpenOutgoingDispatch();
+                        else onOpenQuickMovement('OUT');
+                      }}
+                      className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-bold text-xs"
+                    >
+                      - تسجيل صادر
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

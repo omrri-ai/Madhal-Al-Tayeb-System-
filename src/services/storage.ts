@@ -1,4 +1,4 @@
-import { Branch, Category, CompanySettings, Customer, Item, ProductionOrder, ReturnRecord, StockMovement, Unit } from '../types/inventory';
+import { Branch, Category, CompanySettings, Customer, DamagedRecord, Item, ProductionOrder, ReturnRecord, StockMovement, Unit } from '../types/inventory';
 
 const DB_NAME = 'MakhzouniInventoryDB';
 const DB_VERSION = 5;
@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   BRANCHES: 'makhzouni_branches_v1',
   RETURNS: 'makhzouni_returns_v1',
   PRODUCTION_ORDERS: 'makhzouni_production_orders_v1',
+  DAMAGED: 'makhzouni_damaged_v1',
   EMERGENCY_BACKUP: 'makhzouni_emergency_backup_v1',
   PENDING_SYNC_QUEUE: 'makhzouni_pending_sync_queue_v1',
 };
@@ -87,6 +88,7 @@ export interface InventoryDatabaseData {
   returns?: ReturnRecord[];
   customers?: Customer[];
   productionOrders?: ProductionOrder[];
+  damagedRecords?: DamagedRecord[];
   settings?: CompanySettings;
 }
 
@@ -105,22 +107,9 @@ export const isGenuineItem = (obj: any): obj is Item => {
   );
 };
 
-const RESET_OPERATIONS_KEY = 'makhzouni_zero_stock_migration_v1';
-
 export const StorageService = {
   // Initial load: loads from LocalStorage synchronously, then verifies/syncs with IndexedDB
   loadAll(): InventoryDatabaseData {
-    // One-time client purge of stale movements cache to guarantee 0 stock across all devices
-    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-      if (localStorage.getItem(RESET_OPERATIONS_KEY) !== 'done') {
-        localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify([]));
-        localStorage.setItem(STORAGE_KEYS.RETURNS, JSON.stringify([]));
-        localStorage.setItem(RESET_OPERATIONS_KEY, 'done');
-        try {
-          this.clearOperationsOnly().catch(() => {});
-        } catch {}
-      }
-    }
 
     const localUnits = loadLocal<Unit[]>(STORAGE_KEYS.UNITS, []);
     const localCategories = loadLocal<Category[]>(STORAGE_KEYS.CATEGORIES, []);
@@ -130,6 +119,7 @@ export const StorageService = {
     const localBranches = loadLocal<Branch[]>(STORAGE_KEYS.BRANCHES, []);
     const localReturns = loadLocal<ReturnRecord[]>(STORAGE_KEYS.RETURNS, []);
     const localProductionOrders = loadLocal<ProductionOrder[]>(STORAGE_KEYS.PRODUCTION_ORDERS, []);
+    const localDamaged = loadLocal<DamagedRecord[]>(STORAGE_KEYS.DAMAGED, []);
 
     // Clean up local items key if polluted
     if (rawLocalItems.length !== localItems.length) {
@@ -144,6 +134,7 @@ export const StorageService = {
       branches: localBranches,
       returns: localReturns,
       productionOrders: localProductionOrders,
+      damagedRecords: localDamaged,
     };
   },
 
@@ -162,6 +153,9 @@ export const StorageService = {
     }
     if (data.productionOrders) {
       saveLocal(STORAGE_KEYS.PRODUCTION_ORDERS, data.productionOrders);
+    }
+    if (data.damagedRecords) {
+      saveLocal(STORAGE_KEYS.DAMAGED, data.damagedRecords);
     }
 
     // Always maintain an emergency recovery copy whenever items exist
@@ -394,6 +388,7 @@ export const StorageService = {
   async clearOperationsOnly(): Promise<void> {
     saveLocal(STORAGE_KEYS.MOVEMENTS, []);
     saveLocal(STORAGE_KEYS.RETURNS, []);
+    saveLocal(STORAGE_KEYS.DAMAGED, []);
     try {
       const db = await openIndexedDB();
       const tx = db.transaction(['movements', 'returns'], 'readwrite');

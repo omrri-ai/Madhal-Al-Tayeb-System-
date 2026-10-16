@@ -1,38 +1,82 @@
-# Implementation Plan: Unified Stock Voucher Management
+# Damaged Items (التالف) Feature Implementation Plan
 
-The goal is to transition from individual movement records to a "Voucher" entity model, grouping related movements (same reference/ID).
+This plan outlines the architecture, UX design, and data strategy for adding the **Damaged Items (التالف)** management feature to **مدهال الطيب**, supporting both General Inventory (المخزون العام) and Production & Manufacturing (الإنتاج والتصنيع).
 
-## 1. Data Structure Changes
-- Maintain existing `StockMovement` as the base record.
-- Use `referenceNumber` as the primary key for grouping.
-- Add fields for `lastModifiedAt` and `isModified` flag.
-- Maintain `auditLogs` for historical tracking of "before" and "after" values.
+---
 
-## 2. UI/UX Changes (Movements/Dashboard)
-- **Grouping**: Implement a `useMemo` in `MovementsView` to group movements by `referenceNumber` (or `batchId`).
-- **Accordion View**:
-  - Main row: Summary of the voucher (Type, Date, Reference, Total Items/Qty, Notes, "Modified" badge if applicable).
-  - Expanded row: List of individual items in the voucher, including detailed audit log summaries.
-  - **Mobile**: Table transforms into responsive cards on smaller screens.
-- **Actions**: Provide `Print` (entire voucher), `Edit` (multi-item), `Delete` (entire voucher), and `Copy` buttons.
+## User Review & Critical Decisions
 
-## 3. Implementation Steps
-1. **MovementsView.tsx**:
-   - Refactor `filteredMovements` to group by `referenceNumber`.
-   - Update table rendering for accordion functionality and mobile responsiveness.
-   - Implement "Edit Voucher" and "Delete Voucher" actions.
-   - Ensure search functionality returns the entire voucher if any item inside matches.
-2. **StockMovementModal.tsx / MultiItemVoucherModal**:
-   - Refactor edit functionality for multi-item vouchers.
-   - Ensure atomic updates for voucher integrity and stock validations.
-3. **MovementVoucherModal.tsx**:
-   - Redesign A4 print template: Logo, company name, reference number, date, type, destination/branch, detailed items table, totals, notes, and signatures.
-4. **Export (CSV/PDF)**:
-   - CSV: Include `Voucher Number` column, and add an option to export a single voucher.
-5. **Safety & Audit**:
-   - Implement robust stock validations to prevent negative stock upon editing/deletion.
-   - Log changes (before/after values) to the audit log for each voucher modification.
+> [!IMPORTANT]
+> - **Section Selection**: Users choose between General Inventory and Production & Manufacturing when recording damaged items.
+> - **Stock Deduction**: Automatically deducts the damaged quantity from the item's stock in the specified section without double-counting in regular outgoing or production dispatches.
+> - **Permissions**: Fully integrates existing permissions (Manager can record/manage; Viewer/Auditor can view only without recording, editing, deleting, printing, or exporting).
 
-## 4. Migration Strategy
-- Treat existing individual records (without reference numbers) as single-item vouchers.
-- Retain existing structure for backward compatibility.
+---
+
+## 1. Overview & Core Concept
+
+- **What It Does**: Provides a dedicated workflow and log for recording damaged, spoiled, broken, or expired items across General Inventory and Production & Manufacturing, complete with stock validation, dedicated search/filters, and analytics reports.
+- **Target Audience / Persona**: Warehouse managers and inventory supervisors tracking waste and damages, and auditors reviewing damaged item analytics.
+- **Key Value**: Accurate inventory balancing, waste traceability, and analytical visibility into damaged stock without compromising production records or regular dispatch logs.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **Key User Flows**:
+  1. Navigation: Access the new "التالف" (Damaged) tab from the main sidebar or reports.
+  2. Recording Damage Modal ("تسجيل صنف تالف"):
+     - Step 1: Select Section (المخزون العام vs. الإنتاج والتصنيع).
+     - Step 2: Select Item (filtered by section compatibility).
+     - Step 3: Enter Quantity (validated against available stock in that section).
+     - Step 4: Select Reason (e.g., تلف تخزين, انتهاء صلاحية, كسر عرضي, عيب مصنعي, أخرى) and optional notes.
+     - Step 5: Save -> Updates stock and creates an independent damaged record.
+  3. Damaged Log & Filters: Searchable table with filters by date, section, item, and reason.
+  4. Reports & Analytics: Charts and breakdown tables showing total damaged quantities grouped by period, section, and item.
+- **Visual Identity & Theme**:
+  - Consistent with the app's clean Tailwind UI (slate/indigo/amber/rose palettes for warnings/damages).
+  - Clear amber/rose status badges for damaged records.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Storage and Stock Integration**
+  - *Chosen Approach*: Maintain a dedicated `damagedRecords` collection in context/storage, and record corresponding inventory deduction movements (or subtract in `getItemStock`) so stock reflects the damage once without duplicating regular dispatches.
+  - *Why*: Ensures strict separation from regular sales/dispatches while maintaining accurate real-time inventory balances.
+- **Decision 2: Permission Enforcement**
+  - *Chosen Approach*: Enforce `isAdmin` / `canEdit` checks so viewers/auditors can only inspect the damaged log and reports without modifying or recording.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   InventoryContext                     │
+│  - damagedRecords state & Firestore persistence        │
+│  - addDamagedRecord / deleteDamagedRecord              │
+│  - getItemStock integration                            │
+└───────────────┬───────────────────────┬────────────────┘
+                │                       │
+                ▼                       ▼
+┌───────────────────────────┐   ┌──────────────────────────┐
+│  DamagedManagementView    │   │      ReportsView         │
+│  - Log & Table            │   │  - Damaged Analytics     │
+│  - Filters & Search       │   │  - Period & Section breakdown│
+│  - Add Damaged Modal      │   │                          │
+└───────────────────────────┘   └──────────────────────────┘
+```
+
+- **Data Model (`DamagedRecord`)**:
+  - `id`: string
+  - `date`: string (ISO)
+  - `section`: `'GENERAL' | 'PRODUCTION'`
+  - `itemId`: string
+  - `unitId`: string
+  - `quantity`: number
+  - `baseQuantity`: number
+  - `reason`: string
+  - `notes`?: string
+  - `createdById`?: string
+  - `createdByName`?: string

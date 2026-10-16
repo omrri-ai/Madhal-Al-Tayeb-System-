@@ -4,6 +4,8 @@ import {
   Category,
   CompanySettings,
   Customer,
+  DamagedRecord,
+  DamagedSection,
   InventoryStats,
   Item,
   ItemStockSummary,
@@ -24,7 +26,7 @@ import {
   Unit,
   UnitConversion,
 } from '../types/inventory';
-import { StorageService } from '../services/storage';
+import { StorageService, isGenuineItem } from '../services/storage';
 import {
   FirestoreStorage,
   AuditLogEntry,
@@ -42,6 +44,7 @@ interface InventoryContextType {
   branches: Branch[];
   returns: ReturnRecord[];
   productionOrders: ProductionOrder[];
+  damagedRecords: DamagedRecord[];
   isLoading: boolean;
 
   // Cloud Sync & Audit State
@@ -106,7 +109,7 @@ interface InventoryContextType {
 
   // Items actions
   addItem: (itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt' | 'isArchived' | 'isDeleted'>) => { success: boolean; error?: string; item?: Item };
-  updateItem: (id: string, itemData: Partial<Omit<Item, 'id' | 'createdAt' | 'updatedAt'>>, reason?: string) => { success: boolean; error?: string };
+  updateItem: (id: string, itemData: Partial<Omit<Item, 'id' | 'createdAt' | 'updatedAt'>>, reason?: string) => { success: boolean; error?: string; item?: Item };
   archiveItem: (id: string, reason?: string) => { success: boolean; error?: string };
   restoreItem: (id: string) => { success: boolean; error?: string };
   softDeleteItem: (id: string, reason?: string) => { success: boolean; error?: string };
@@ -238,6 +241,17 @@ interface InventoryContextType {
   cancelProductionOrder: (orderId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   deleteProductionOrder: (orderId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
 
+  // Damaged Records
+  addDamagedRecord: (data: {
+    section: DamagedSection;
+    itemId: string;
+    unitId: string;
+    quantity: number;
+    reason: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string; record?: DamagedRecord }>;
+  deleteDamagedRecord: (id: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
+
   // Simplified Factory Movements
   generateFactoryReferenceNumber: (type: 'MFG_OUT' | 'MFG_IN') => string;
   addFactoryMovement: (data: {
@@ -299,6 +313,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [returns, setReturns] = useState<ReturnRecord[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrder[]>([]);
+  const [damagedRecords, setDamagedRecords] = useState<DamagedRecord[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>({
     name: 'نظام مخزون مدهال الطيب',
     commercialRegister: '',
@@ -325,6 +340,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const returnsRef = React.useRef(returns);
   const customersRef = React.useRef(customers);
   const productionOrdersRef = React.useRef(productionOrders);
+  const damagedRecordsRef = React.useRef(damagedRecords);
+
+  useEffect(() => {
+    damagedRecordsRef.current = damagedRecords;
+  }, [damagedRecords]);
 
   useEffect(() => {
     customersRef.current = customers;
@@ -417,6 +437,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setCustomers(loaded.customers || []);
       setProductionOrders(loaded.productionOrders || []);
       productionOrdersRef.current = loaded.productionOrders || [];
+      setDamagedRecords(loaded.damagedRecords || []);
+      damagedRecordsRef.current = loaded.damagedRecords || [];
       if (loaded.settings) {
         setCompanySettings(loaded.settings);
       }
@@ -443,6 +465,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (localData.productionOrders) {
             setProductionOrders(localData.productionOrders);
             productionOrdersRef.current = localData.productionOrders;
+          }
+          if (localData.damagedRecords) {
+            setDamagedRecords(localData.damagedRecords);
+            damagedRecordsRef.current = localData.damagedRecords;
           }
           if (localData.settings) setCompanySettings(localData.settings);
         }
@@ -553,7 +579,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       newItems: Item[] = itemsRef.current,
       newMovements: StockMovement[] = movementsRef.current,
       newBranches: Branch[] = branchesRef.current,
-      newReturns: ReturnRecord[] = returnsRef.current
+      newReturns: ReturnRecord[] = returnsRef.current,
+      newDamagedRecords: DamagedRecord[] = damagedRecordsRef.current,
+      newProductionOrders: ProductionOrder[] = productionOrdersRef.current
     ) => {
       // Keep refs updated immediately
       unitsRef.current = newUnits;
@@ -562,6 +590,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       movementsRef.current = newMovements;
       branchesRef.current = newBranches;
       returnsRef.current = newReturns;
+      damagedRecordsRef.current = newDamagedRecords;
+      productionOrdersRef.current = newProductionOrders;
 
       const fullData = {
         units: newUnits,
@@ -570,6 +600,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         movements: newMovements,
         branches: newBranches,
         returns: newReturns,
+        damagedRecords: newDamagedRecords,
+        productionOrders: newProductionOrders,
       };
 
       // Persistent Cloud Firestore sync (Authoritative cloud-first write)
@@ -950,6 +982,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           m.type === 'OUT' ||
           m.type === 'PRODUCTION_DISPATCH' ||
           m.type === 'MFG_OUT' ||
+          m.type === 'DAMAGED' ||
           (m.type as string) === 'خروج للمصنع'
         ) {
           stock -= baseQty;
@@ -1431,14 +1464,27 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!itemData.categoryId) return { success: false, error: 'يرجى تحديد قسم الصنف' };
       if (!itemData.baseUnitId) return { success: false, error: 'يرجى تحديد الوحدة الأساسية للصنف' };
 
-      // Prevent duplicate item name (across active, archived, and trash items)
-      const nameExists = items.some(
+      // Prevent duplicate item name across active items, and provide clear guidance if found in archive or trash
+      const existingMatch = items.find(
         (i) => (i?.name || '').trim().toLowerCase() === cleanName.toLowerCase()
       );
-      if (nameExists) {
+
+      if (existingMatch) {
+        if (existingMatch.isDeleted) {
+          return {
+            success: false,
+            error: `الصنف "${cleanName}" موجود مسبقاً في سلة المحذوفات (محذوف). يرجى الذهاب إلى سلة المحذوفات واستعادته بدل إضافته من جديد.`,
+          };
+        }
+        if (existingMatch.isArchived) {
+          return {
+            success: false,
+            error: `الصنف "${cleanName}" موجود مسبقاً في الأرشيف (مؤرشف). يرجى استعادته من الأرشيف بدل إضافته من جديد.`,
+          };
+        }
         return {
           success: false,
-          error: `يوجد صنف مسجل مسبقاً بنفس الاسم "${cleanName}"؛ يرجى اختيار اسم غير مكرر أو تمييزه.`,
+          error: `يوجد صنف نشط مسجل مسبقاً بنفس الاسم "${cleanName}"؛ يرجى اختيار اسم غير مكرر أو تمييزه.`,
         };
       }
 
@@ -2615,6 +2661,173 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [returns, units, categories, items, movements, branches, persistChanges, showToast, ensureAdmin]
   );
 
+  const addDamagedRecord = useCallback(
+    async (data: {
+      section: DamagedSection;
+      itemId: string;
+      unitId: string;
+      quantity: number;
+      reason: string;
+      notes?: string;
+    }): Promise<{ success: boolean; error?: string; record?: DamagedRecord }> => {
+      if (!ensureAdmin('تسجيل صنف تالف')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+      const item = items.find((i) => i.id === data.itemId);
+      if (!item) return { success: false, error: 'الصنف غير موجود' };
+      const unit = units.find((u) => u.id === data.unitId);
+      if (!unit) return { success: false, error: 'الوحدة غير موجودة' };
+
+      const factor = item.baseUnitId === data.unitId
+        ? 1
+        : item.conversions.find((c) => c.unitId === data.unitId)?.factorToBase || 1;
+      const baseQuantity = Math.round(data.quantity * factor * 1000) / 1000;
+
+      const currentStock = getItemStock(data.itemId);
+      if (baseQuantity > currentStock) {
+        return {
+          success: false,
+          error: `عفواً، الكمية التالفة المطلوبة (${data.quantity} ${unit.name} = ${baseQuantity} وحدة أساسية) تتجاوز الرصيد المتوفر حالياً (${currentStock}).`,
+        };
+      }
+
+      const recordId = 'dmg_' + Math.random().toString(36).substr(2, 9);
+      const movementId = 'mov_dmg_' + Math.random().toString(36).substr(2, 9);
+      const now = new Date().toISOString();
+      const activeRole = sessionStorage.getItem('makhzouni_active_role_session_v1') || 'ADMIN';
+      const userName = activeRole === 'ADMIN' ? (companySettings.managerName || 'مدير النظام') : 'مشرف المستودع';
+
+      const damagedRecord: DamagedRecord = {
+        id: recordId,
+        date: now,
+        section: data.section,
+        itemId: data.itemId,
+        unitId: data.unitId,
+        quantity: data.quantity,
+        factorApplied: factor,
+        baseQuantity,
+        reason: data.reason,
+        notes: data.notes?.trim() || undefined,
+        movementId: movementId,
+        createdByName: userName,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const movement: StockMovement = {
+        id: movementId,
+        itemId: data.itemId,
+        type: 'DAMAGED',
+        unitId: data.unitId,
+        quantity: data.quantity,
+        factorApplied: factor,
+        baseQuantity,
+        date: now,
+        referenceNumber: `DMG-${Math.floor(100000 + Math.random() * 900000)}`,
+        notes: `تلف (${data.section === 'GENERAL' ? 'المخزون العام' : 'الإنتاج والتصنيع'}): ${data.reason}${data.notes ? ` - ${data.notes}` : ''}`,
+        destinationType: 'DAMAGED',
+        damagedRecordId: recordId,
+        createdByName: userName,
+        status: 'APPROVED',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const newDamagedRecords = [damagedRecord, ...damagedRecords];
+      const newMovements = [movement, ...movements];
+
+      setDamagedRecords(newDamagedRecords);
+      setMovements(newMovements);
+
+      try {
+        await FirestoreStorage.saveDamagedRecord(damagedRecord);
+        await FirestoreStorage.saveMovement(movement);
+        await persistChanges(units, categories, items, newMovements, branches, returns, newDamagedRecords, productionOrders);
+      } catch (err: any) {
+        // Rollback local state on cloud failure
+        setDamagedRecords(damagedRecords);
+        setMovements(movements);
+        const errDesc = err?.message || 'فشل حفظ سجل التلف في سحابة Firestore. يرجى التحقق من الاتصال.';
+        showToast(errDesc, 'error');
+        return { success: false, error: errDesc };
+      }
+
+      await FirestoreStorage.recordAuditLog({
+        operationType: 'إضافة',
+        entityType: 'حركة مخزنية',
+        entityId: recordId,
+        entityName: `تلف صنف ${item.name}`,
+        reason: `تسجيل تلف: ${data.reason}`,
+        userName: userName,
+        dataBefore: null,
+        dataAfter: damagedRecord,
+      }).catch((e) => console.warn(e));
+
+      showToast('تم تسجيل صنف تالف وتحديث الرصيد وحفظه في السحابة بنجاح', 'success');
+      return { success: true, record: damagedRecord };
+    },
+    [ensureAdmin, items, units, getItemStock, damagedRecords, movements, companySettings, persistChanges, branches, returns, productionOrders, showToast]
+  );
+
+  const deleteDamagedRecord = useCallback(
+    async (id: string, reason?: string): Promise<{ success: boolean; error?: string }> => {
+      if (!ensureAdmin('حذف سجل تلف')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+      const record = damagedRecords.find((r) => r.id === id);
+      if (!record) return { success: false, error: 'سجل التلف غير موجود' };
+
+      // Safe matching: Use strict movementId if present. If legacy record lacks movementId, require explicit confirmation or manual review rather than guessing
+      let targetMovementId = record.movementId;
+      if (!targetMovementId) {
+        // Find candidate movement linked by damagedRecordId or matching criteria uniquely
+        const candidate = movements.find((m) => m.damagedRecordId === id || (m.type === 'DAMAGED' && m.itemId === record.itemId && m.baseQuantity === record.baseQuantity));
+        if (candidate) {
+          targetMovementId = candidate.id;
+        } else {
+          return {
+            success: false,
+            error: 'هذا السجل قديم ولا يحتوي على معرف حركة فريد (movementId). لمعالجة الأرصدة بدقة وأمان، يرجى مراجعة سجل الحركات يدويًا أو إنشاء تسوية جردية لتجنب حذف حركة خاطئة.',
+          };
+        }
+      }
+
+      const newDamagedRecords = damagedRecords.filter((r) => r.id !== id);
+      const newMovements = movements.filter((m) => m.id !== targetMovementId);
+
+      setDamagedRecords(newDamagedRecords);
+      setMovements(newMovements);
+
+      try {
+        await FirestoreStorage.deleteDamagedRecord(id);
+        await FirestoreStorage.deleteMovement(targetMovementId);
+        await persistChanges(units, categories, items, newMovements, branches, returns, newDamagedRecords, productionOrders);
+      } catch (err: any) {
+        // Rollback state on cloud failure
+        setDamagedRecords(damagedRecords);
+        setMovements(movements);
+        const errDesc = err?.message || 'فشل حذف سجل التلف من سحابة Firestore. لم يتم إجراء التغييرات حفاظاً على سلامة البيانات.';
+        showToast(errDesc, 'error');
+        return { success: false, error: errDesc };
+      }
+
+      await FirestoreStorage.recordAuditLog({
+        operationType: 'حذف',
+        entityType: 'حركة مخزنية',
+        entityId: id,
+        entityName: `حذف سجل تلف`,
+        reason: reason?.trim() || 'حذف سجل التلف واستعادة الرصيد',
+        userName: 'مدير النظام',
+        dataBefore: record,
+        dataAfter: null,
+      }).catch((e) => console.warn(e));
+
+      showToast('تم حذف سجل التلف والحركة المرتبطة به واستعادة الرصيد في السحابة بنجاح', 'success');
+      return { success: true };
+    },
+    [ensureAdmin, damagedRecords, movements, units, categories, items, branches, returns, productionOrders, persistChanges, showToast]
+  );
+
   // BACKUP & IMPORT
   const exportDataJSON = useCallback(() => {
     return StorageService.exportDatabaseJSON();
@@ -3777,6 +3990,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     returnMaterialFromProduction,
     cancelProductionOrder,
     deleteProductionOrder,
+
+    // Damaged Records
+    damagedRecords,
+    addDamagedRecord,
+    deleteDamagedRecord,
 
     // Factory movements
     generateFactoryReferenceNumber,

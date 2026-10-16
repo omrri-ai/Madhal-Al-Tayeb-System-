@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for unified stock voucher management, focusing on grouping movements by reference number and UI enhancements.",
-  "updatedAt": "2026-10-14T07:08:10.773071037Z",
+  "summary": "Implementation plan for adding Damaged Items (التالف) feature supporting General Inventory and Production & Manufacturing with logging, analytics, and permission controls.",
+  "updatedAt": "2026-10-16T13:45:20.251083540Z",
   "requestFeedback": true,
   "userFacing": true
 }
