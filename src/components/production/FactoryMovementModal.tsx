@@ -164,7 +164,9 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError(null);
+
 
     if (!selectedItemId) {
       setFormError('يرجى اختيار الصنف أولاً للمتابعة.');

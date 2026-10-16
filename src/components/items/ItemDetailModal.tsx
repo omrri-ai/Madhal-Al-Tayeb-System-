@@ -195,10 +195,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               </p>
             ) : (
               <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                {itemMovements.map((m) => {
+                {itemMovements.map((m, idx) => {
                   const mUnit = units.find((u) => u.id === m.unitId)?.name || 'وحدة';
                   return (
-                    <div key={m.id} className="p-3 text-xs flex items-center justify-between hover:bg-slate-50">
+                    <div key={m.id ? `${m.id}_${idx}` : idx} className="p-3 text-xs flex items-center justify-between hover:bg-slate-50">
+
                       <div className="flex items-center gap-2.5">
                         <span
                           className={`w-6 h-6 rounded-md flex items-center justify-center ${

@@ -14,6 +14,8 @@ import {
   Info,
 } from 'lucide-react';
 import { StockMovement, Item, Category, Branch, Unit } from '../../types/inventory';
+import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
+
 
 interface AnalyticsChartsProps {
   movements: StockMovement[];
@@ -124,10 +126,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         const d = new Date(m.date);
         const hour = d.getHours();
         const bIdx = Math.min(3, Math.floor(hour / 6));
-        if (m.type === 'IN') {
+        if (isIncomingMovement(m.type)) {
           buckets[bIdx].inQty += m.baseQuantity;
           buckets[bIdx].inCount++;
-        } else {
+        } else if (isOutgoingMovement(m.type)) {
           buckets[bIdx].outQty += m.baseQuantity;
           buckets[bIdx].outCount++;
         }
@@ -158,10 +160,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         const key = m.date.slice(0, 10);
         const b = buckets.find((item) => item.dateKey === key);
         if (b) {
-          if (m.type === 'IN') {
+          if (isIncomingMovement(m.type)) {
             b.inQty += m.baseQuantity;
             b.inCount++;
-          } else {
+          } else if (isOutgoingMovement(m.type)) {
             b.outQty += m.baseQuantity;
             b.outCount++;
           }
@@ -197,10 +199,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
           return mTime >= bTime && mTime < nextTime;
         });
         if (b) {
-          if (m.type === 'IN') {
+          if (isIncomingMovement(m.type)) {
             b.inQty += m.baseQuantity;
             b.inCount++;
-          } else {
+          } else if (isOutgoingMovement(m.type)) {
             b.outQty += m.baseQuantity;
             b.outCount++;
           }
@@ -229,10 +231,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         const key = m.date.slice(0, 7);
         const b = buckets.find((item) => item.dateKey === key);
         if (b) {
-          if (m.type === 'IN') {
+          if (isIncomingMovement(m.type)) {
             b.inQty += m.baseQuantity;
             b.inCount++;
-          } else {
+          } else if (isOutgoingMovement(m.type)) {
             b.outQty += m.baseQuantity;
             b.outCount++;
           }
@@ -254,9 +256,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   }, [timelineData]);
 
   // Aggregate totals
-  const totalInQty = useMemo(() => movements.filter((m) => m.type === 'IN').reduce((acc, m) => acc + m.baseQuantity, 0), [movements]);
-  const totalOutQty = useMemo(() => movements.filter((m) => m.type === 'OUT').reduce((acc, m) => acc + m.baseQuantity, 0), [movements]);
+  const totalInQty = useMemo(() => movements.filter((m) => isIncomingMovement(m.type)).reduce((acc, m) => acc + m.baseQuantity, 0), [movements]);
+  const totalOutQty = useMemo(() => movements.filter((m) => isOutgoingMovement(m.type)).reduce((acc, m) => acc + m.baseQuantity, 0), [movements]);
   const hasAnyActivity = movements.length > 0;
+
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">

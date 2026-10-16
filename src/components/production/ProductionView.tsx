@@ -22,6 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { StockMovement, Item, Unit, Category } from '../../types/inventory';
 import { FactoryMovementModal } from './FactoryMovementModal';
 import { FactoryVoucherModal } from './FactoryVoucherModal';
+import { deduplicateById } from '../../utils/arabicSearch';
 
 interface ProductionViewProps {
   onOpenAddItem?: () => void;
@@ -47,21 +48,27 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
 
   // Identify all factory operations from movements collection
   const factoryMovements = useMemo(() => {
-    return movements.filter((m) => {
+    const list = movements.filter((m) => {
       if (!m) return false;
       const item = items.find((i) => i.id === m.itemId);
       return (
         m.type === 'MFG_OUT' ||
         m.type === 'MFG_IN' ||
+        m.type === 'PRODUCTION_RECEIPT' ||
+        m.type === 'PRODUCTION_DISPATCH' ||
+        m.type === 'PRODUCTION_RETURN' ||
         (m.type as string) === 'خروج للمصنع' ||
         (m.type as string) === 'وارد من المصنع' ||
-        (m.referenceNumber &&
-          (m.referenceNumber.startsWith('MFG-OUT-') || m.referenceNumber.startsWith('MFG-IN-'))) ||
+        Boolean(
+          m.referenceNumber &&
+            (m.referenceNumber.startsWith('MFG-') || m.referenceNumber.startsWith('PRD-'))
+        ) ||
         m.destinationType === 'PRODUCTION' ||
         m.destinationType === 'FACTORY' ||
         (item?.isProductionItem && (m.type === 'IN' || m.type === 'OUT'))
       );
     });
+    return deduplicateById(list);
   }, [movements, items]);
 
   // Filtered movements based on search and filters
@@ -477,7 +484,7 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredMovements.map((m) => {
+                  {filteredMovements.map((m, idx) => {
                     const item = items.find((i) => i.id === m.itemId);
                     const unit = units.find((u) => u.id === m.unitId);
                     const baseUnit = units.find((u) => u.id === item?.baseUnitId);
@@ -491,7 +498,8 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
                       (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
 
                     return (
-                      <tr key={m.id} className="hover:bg-slate-50/70 transition">
+                      <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/70 transition">
+
                         {/* Reference */}
                         <td className="p-3.5 pr-5 font-mono font-bold text-slate-900">
                           <button
@@ -583,7 +591,7 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
 
             {/* Mobile Cards View */}
             <div className="md:hidden divide-y divide-slate-100">
-              {filteredMovements.map((m) => {
+              {filteredMovements.map((m, idx) => {
                 const item = items.find((i) => i.id === m.itemId);
                 const unit = units.find((u) => u.id === m.unitId);
                 const baseUnit = units.find((u) => u.id === item?.baseUnitId);
@@ -596,7 +604,8 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
                   (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
 
                 return (
-                  <div key={m.id} className="p-4 space-y-3">
+                  <div key={m.id ? `${m.id}_card_${idx}` : idx} className="p-4 space-y-3">
+
                     <div className="flex items-center justify-between">
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black ${

@@ -31,3 +31,53 @@ export function matchesArabicSearch(target: string, query: string): boolean {
   const queryWords = normalizedQuery.split(' ').filter(Boolean);
   return queryWords.every((word) => normalizedTarget.includes(word));
 }
+
+/**
+ * Utility to deduplicate an array of objects by unique `id` property to prevent duplicate React keys.
+ */
+export function deduplicateById<T extends { id: string }>(items: T[]): T[] {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (item && item.id) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        result.push(item);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Utility to check if a movement type is an incoming movement (وارد).
+ */
+export function isIncomingMovement(type: string | undefined | null): boolean {
+  if (!type) return false;
+  return (
+    type === 'IN' ||
+    type === 'MFG_IN' ||
+    type === 'PRODUCTION_RECEIPT' ||
+    type === 'PRODUCTION_RETURN' ||
+    type === 'وارد من المصنع' ||
+    type === 'وارد'
+  );
+}
+
+/**
+ * Utility to check if a movement type is an outgoing movement (صادر/تالف).
+ */
+export function isOutgoingMovement(type: string | undefined | null): boolean {
+  if (!type) return false;
+  return (
+    type === 'OUT' ||
+    type === 'MFG_OUT' ||
+    type === 'PRODUCTION_DISPATCH' ||
+    type === 'DAMAGED' ||
+    type === 'خروج للمصنع' ||
+    type === 'صادر'
+  );
+}
+
+

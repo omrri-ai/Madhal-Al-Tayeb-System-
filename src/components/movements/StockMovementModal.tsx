@@ -144,8 +144,11 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
 
   const isInsufficientStock = type === 'OUT' && resultingStock < 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMsg('');
 
     if (!itemId) {
@@ -170,46 +173,57 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       return;
     }
 
-    if (editingMovement) {
-      const res = updateMovement(editingMovement.id, {
-        unitId,
-        quantity: numQuantity,
-        type,
-        date: new Date(date).toISOString(),
-        referenceNumber,
-        notes,
-      });
+    setIsSubmitting(true);
 
-      if (!res.success) {
-        setErrorMsg(res.error || 'حدث خطأ أثناء تعديل الحركة');
-        return;
-      }
-    } else {
-      const res = addMovement({
-        itemId,
-        type,
-        unitId,
-        quantity: numQuantity,
-        date: new Date(date).toISOString(),
-        referenceNumber,
-        notes: addToProduction ? (notes ? `${notes} (تابع للإنتاج والتصنيع)` : 'إضافة إلى الإنتاج والتصنيع') : notes,
-      });
-
-      if (!res.success) {
-        setErrorMsg(res.error || 'حدث خطأ أثناء تسجيل الحركة');
-        return;
-      }
-
-      if (type === 'IN' && addToProduction && selectedItem) {
-        updateItem(itemId, {
-          ...selectedItem,
-          isProductionItem: true,
+    try {
+      if (editingMovement) {
+        const res = updateMovement(editingMovement.id, {
+          unitId,
+          quantity: numQuantity,
+          type,
+          date: new Date(date).toISOString(),
+          referenceNumber,
+          notes,
         });
-      }
-    }
 
-    onClose();
+        if (!res.success) {
+          setErrorMsg(res.error || 'حدث خطأ أثناء تعديل الحركة');
+          setIsSubmitting(false);
+          return;
+        }
+      } else {
+        const res = addMovement({
+          itemId,
+          type,
+          unitId,
+          quantity: numQuantity,
+          date: new Date(date).toISOString(),
+          referenceNumber,
+          notes: addToProduction ? (notes ? `${notes} (تابع للإنتاج والتصنيع)` : 'إضافة إلى الإنتاج والتصنيع') : notes,
+        });
+
+        if (!res.success) {
+          setErrorMsg(res.error || 'حدث خطأ أثناء تسجيل الحركة');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (type === 'IN' && addToProduction && selectedItem) {
+          updateItem(itemId, {
+            ...selectedItem,
+            isProductionItem: true,
+          }, 'إضافة الصنف إلى الإنتاج والتصنيع');
+        }
+      }
+
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'حدث خطأ غير متوقع');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
 
   if (!isOpen) return null;
 

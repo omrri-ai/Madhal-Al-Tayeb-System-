@@ -34,6 +34,8 @@ import {
 } from '../services/firestoreStorage';
 import { OWNER_EMAIL } from '../services/firebase';
 import { useAuth } from './AuthContext';
+import { deduplicateById } from '../utils/arabicSearch';
+
 
 interface InventoryContextType {
   // State
@@ -428,17 +430,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }));
       }
 
-      setUnits(sortUnitsWithHabbaFirst(finalUnits));
-      setCategories(loaded.categories || []);
-      setItems(loaded.items || []);
-      setMovements(loaded.movements || []);
-      setBranches(currentBranches);
-      setReturns(loaded.returns || []);
-      setCustomers(loaded.customers || []);
-      setProductionOrders(loaded.productionOrders || []);
-      productionOrdersRef.current = loaded.productionOrders || [];
-      setDamagedRecords(loaded.damagedRecords || []);
-      damagedRecordsRef.current = loaded.damagedRecords || [];
+      setUnits(sortUnitsWithHabbaFirst(deduplicateById(finalUnits)));
+      setCategories(deduplicateById(loaded.categories || []));
+      setItems(deduplicateById(loaded.items || []));
+      setMovements(deduplicateById(loaded.movements || []));
+      setBranches(deduplicateById(currentBranches));
+      setReturns(deduplicateById(loaded.returns || []));
+      setCustomers(deduplicateById(loaded.customers || []));
+      setProductionOrders(deduplicateById(loaded.productionOrders || []));
+      productionOrdersRef.current = deduplicateById(loaded.productionOrders || []);
+      setDamagedRecords(deduplicateById(loaded.damagedRecords || []));
+      damagedRecordsRef.current = deduplicateById(loaded.damagedRecords || []);
       if (loaded.settings) {
         setCompanySettings(loaded.settings);
       }
@@ -454,21 +456,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const localData = await StorageService.loadAll();
         if (localData) {
           if (localData.units && localData.units.length > 0) {
-            setUnits(sortUnitsWithHabbaFirst(localData.units));
+            setUnits(sortUnitsWithHabbaFirst(deduplicateById(localData.units)));
           }
-          if (localData.categories) setCategories(localData.categories);
-          if (localData.items) setItems(localData.items);
-          if (localData.movements) setMovements(localData.movements);
-          if (localData.branches) setBranches(localData.branches);
-          if (localData.returns) setReturns(localData.returns);
-          if (localData.customers) setCustomers(localData.customers);
+          if (localData.categories) setCategories(deduplicateById(localData.categories));
+          if (localData.items) setItems(deduplicateById(localData.items));
+          if (localData.movements) setMovements(deduplicateById(localData.movements));
+          if (localData.branches) setBranches(deduplicateById(localData.branches));
+          if (localData.returns) setReturns(deduplicateById(localData.returns));
+          if (localData.customers) setCustomers(deduplicateById(localData.customers));
           if (localData.productionOrders) {
-            setProductionOrders(localData.productionOrders);
-            productionOrdersRef.current = localData.productionOrders;
+            setProductionOrders(deduplicateById(localData.productionOrders));
+            productionOrdersRef.current = deduplicateById(localData.productionOrders);
           }
           if (localData.damagedRecords) {
-            setDamagedRecords(localData.damagedRecords);
-            damagedRecordsRef.current = localData.damagedRecords;
+            setDamagedRecords(deduplicateById(localData.damagedRecords));
+            damagedRecordsRef.current = deduplicateById(localData.damagedRecords);
           }
           if (localData.settings) setCompanySettings(localData.settings);
         }
@@ -488,41 +490,54 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Instantaneous multi-device synchronization (PC & Mobile stay perfectly in sync in real time)
     const unsubscribe = FirestoreStorage.subscribeToAllCollections({
       onItems: (cloudItems: Item[]) => {
-        setItems(cloudItems);
-        itemsRef.current = cloudItems;
+        const deduped = deduplicateById(cloudItems);
+        setItems(deduped);
+        itemsRef.current = deduped;
       },
       onMovements: (cloudMovements: StockMovement[]) => {
-        setMovements(cloudMovements);
-        movementsRef.current = cloudMovements;
+        const deduped = deduplicateById(cloudMovements);
+        setMovements(deduped);
+        movementsRef.current = deduped;
       },
       onCategories: (cloudCategories: Category[]) => {
-        setCategories(cloudCategories);
-        categoriesRef.current = cloudCategories;
+        const deduped = deduplicateById(cloudCategories);
+        setCategories(deduped);
+        categoriesRef.current = deduped;
       },
       onUnits: (cloudUnits: Unit[]) => {
         if (cloudUnits.length > 0) {
-          const sorted = sortUnitsWithHabbaFirst(cloudUnits);
+          const sorted = sortUnitsWithHabbaFirst(deduplicateById(cloudUnits));
           setUnits(sorted);
           unitsRef.current = sorted;
         }
       },
       onBranches: (cloudBranches: Branch[]) => {
-        setBranches(cloudBranches);
-        branchesRef.current = cloudBranches;
+        const deduped = deduplicateById(cloudBranches);
+        setBranches(deduped);
+        branchesRef.current = deduped;
       },
       onReturns: (cloudReturns: ReturnRecord[]) => {
-        setReturns(cloudReturns);
-        returnsRef.current = cloudReturns;
+        const deduped = deduplicateById(cloudReturns);
+        setReturns(deduped);
+        returnsRef.current = deduped;
       },
       onCustomers: (cloudCustomers: Customer[]) => {
-        setCustomers(cloudCustomers);
-        customersRef.current = cloudCustomers;
+        const deduped = deduplicateById(cloudCustomers);
+        setCustomers(deduped);
+        customersRef.current = deduped;
       },
       onProductionOrders: (cloudOrders: ProductionOrder[]) => {
-        setProductionOrders(cloudOrders);
-        productionOrdersRef.current = cloudOrders;
+        const deduped = deduplicateById(cloudOrders);
+        setProductionOrders(deduped);
+        productionOrdersRef.current = deduped;
+      },
+      onDamagedRecords: (cloudDamaged: DamagedRecord[]) => {
+        const deduped = deduplicateById(cloudDamaged);
+        setDamagedRecords(deduped);
+        damagedRecordsRef.current = deduped;
       },
     } as any);
+
 
     return () => {
       unsubscribe();
@@ -961,7 +976,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Calculate current stock in base units with foolproof numerical safety
   const getItemStock = useCallback(
     (itemId: string): number => {
-      const itemMovements = movements.filter((m) => m && m.itemId === itemId);
+      const uniqueMovements = deduplicateById(movements);
+      const itemMovements = uniqueMovements.filter((m) => m && m.itemId === itemId);
       let stock = 0;
       for (const m of itemMovements) {
         const factor = Number(m.factorApplied) > 0 ? Number(m.factorApplied) : 1;
@@ -1020,7 +1036,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       let totalIn = 0;
       let totalOut = 0;
-      for (const m of movements.filter((m) => m && m.itemId === itemId)) {
+      const uniqueMovements = deduplicateById(movements);
+      for (const m of uniqueMovements.filter((m) => m && m.itemId === itemId)) {
         const factor = Number(m.factorApplied) > 0 ? Number(m.factorApplied) : 1;
         const baseQty =
           m.baseQuantity !== undefined && m.baseQuantity !== null && !isNaN(Number(m.baseQuantity))
@@ -1047,6 +1064,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           else totalOut += Math.abs(baseQty);
         }
       }
+
 
       // Format equivalents in all configured units
       const formattedBalances: ItemStockSummary['formattedBalances'] = [];
@@ -1464,24 +1482,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!itemData.categoryId) return { success: false, error: 'يرجى تحديد قسم الصنف' };
       if (!itemData.baseUnitId) return { success: false, error: 'يرجى تحديد الوحدة الأساسية للصنف' };
 
-      // Prevent duplicate item name across active items, and provide clear guidance if found in archive or trash
+      // Prevent duplicate item name across active items only
       const existingMatch = items.find(
-        (i) => (i?.name || '').trim().toLowerCase() === cleanName.toLowerCase()
+        (i) => !i.isDeleted && !i.isArchived && (i?.name || '').trim().toLowerCase() === cleanName.toLowerCase()
       );
 
       if (existingMatch) {
-        if (existingMatch.isDeleted) {
-          return {
-            success: false,
-            error: `الصنف "${cleanName}" موجود مسبقاً في سلة المحذوفات (محذوف). يرجى الذهاب إلى سلة المحذوفات واستعادته بدل إضافته من جديد.`,
-          };
-        }
-        if (existingMatch.isArchived) {
-          return {
-            success: false,
-            error: `الصنف "${cleanName}" موجود مسبقاً في الأرشيف (مؤرشف). يرجى استعادته من الأرشيف بدل إضافته من جديد.`,
-          };
-        }
         return {
           success: false,
           error: `يوجد صنف نشط مسجل مسبقاً بنفس الاسم "${cleanName}"؛ يرجى اختيار اسم غير مكرر أو تمييزه.`,
@@ -3109,7 +3115,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       // Update state locally
-      const updatedMovements = [...newMovements, ...movements];
+      const updatedMovements = deduplicateById([...newMovements, ...movementsRef.current]);
       setMovements(updatedMovements);
       movementsRef.current = updatedMovements;
 
@@ -3117,10 +3123,33 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setProductionOrders(updatedOrders);
       productionOrdersRef.current = updatedOrders;
 
+      persistChanges(
+        units,
+        categories,
+        items,
+        updatedMovements,
+        branches,
+        returns,
+        damagedRecords,
+        updatedOrders
+      );
+
       showToast(`تم صرف ${dispatchEntries.length} مواد بنجاح لأمر الإنتاج (${order.orderNumber}) - سند رقم ${voucherNumber}`, 'success');
       return { success: true, voucher: dispatchRecord };
     },
-    [productionOrders, items, units, movements, getItemStock, showToast]
+    [
+      productionOrders,
+      items,
+      units,
+      categories,
+      branches,
+      returns,
+      damagedRecords,
+      movements,
+      getItemStock,
+      persistChanges,
+      showToast,
+    ]
   );
 
   const recordProductionConsumption = useCallback(
@@ -3376,7 +3405,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       // Update state locally
-      const updatedMovements = [newMovement, ...movements];
+      const updatedMovements = deduplicateById([newMovement, ...movementsRef.current]);
       setMovements(updatedMovements);
       movementsRef.current = updatedMovements;
 
@@ -3384,10 +3413,32 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setProductionOrders(updatedOrders);
       productionOrdersRef.current = updatedOrders;
 
+      persistChanges(
+        units,
+        categories,
+        items,
+        updatedMovements,
+        branches,
+        returns,
+        damagedRecords,
+        updatedOrders
+      );
+
       showToast(`تم استلام ${data.quantity} من المنتج الجاهز (${item.name}) وإضافته للمخزون - سند رقم ${voucherNumber}`, 'success');
       return { success: true, voucher: receiptRecord };
     },
-    [productionOrders, items, units, movements, showToast]
+    [
+      productionOrders,
+      items,
+      units,
+      categories,
+      branches,
+      returns,
+      damagedRecords,
+      movements,
+      persistChanges,
+      showToast,
+    ]
   );
 
   const returnMaterialFromProduction = useCallback(
@@ -3524,7 +3575,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       // Update state locally
-      const updatedMovements = [...newMovements, ...movements];
+      const updatedMovements = deduplicateById([...newMovements, ...movementsRef.current]);
       setMovements(updatedMovements);
       movementsRef.current = updatedMovements;
 
@@ -3532,10 +3583,32 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setProductionOrders(updatedOrders);
       productionOrdersRef.current = updatedOrders;
 
+      persistChanges(
+        units,
+        categories,
+        items,
+        updatedMovements,
+        branches,
+        returns,
+        damagedRecords,
+        updatedOrders
+      );
+
       showToast(`تم إرجاع ${returnEntries.length} مواد للمستودع وزيادة رصيدها بنجاح - سند رقم ${voucherNumber}`, 'success');
       return { success: true, voucher: returnRecord };
     },
-    [productionOrders, items, units, movements, showToast]
+    [
+      productionOrders,
+      items,
+      units,
+      categories,
+      branches,
+      returns,
+      damagedRecords,
+      movements,
+      persistChanges,
+      showToast,
+    ]
   );
 
   const cancelProductionOrder = useCallback(
@@ -3725,9 +3798,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           maxAllowedStock: currentStock,
         });
 
-        const updatedMovements = [newMovement, ...movementsRef.current];
+        const updatedMovements = deduplicateById([newMovement, ...movementsRef.current]);
         setMovements(updatedMovements);
         movementsRef.current = updatedMovements;
+
+        persistChanges(
+          units,
+          categories,
+          items,
+          updatedMovements,
+          branches,
+          returns,
+          damagedRecords,
+          productionOrders
+        );
 
         showToast(
           data.type === 'MFG_OUT'
@@ -3743,7 +3827,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, error: errorMsg };
       }
     },
-    [items, units, getItemStock, generateFactoryReferenceNumber, showToast]
+    [
+      items,
+      units,
+      categories,
+      branches,
+      returns,
+      damagedRecords,
+      productionOrders,
+      getItemStock,
+      generateFactoryReferenceNumber,
+      persistChanges,
+      showToast,
+    ]
   );
 
   const clearDatabase = useCallback(async () => {

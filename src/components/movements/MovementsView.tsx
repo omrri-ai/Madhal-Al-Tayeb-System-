@@ -21,6 +21,8 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { StockMovementModal } from './StockMovementModal';
 import { MovementVoucherModal } from './MovementVoucherModal';
 import { Building2, Truck } from 'lucide-react';
+import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
+
 
 interface MovementsViewProps {
   onOpenNewMovement: (type?: MovementType) => void;
@@ -79,14 +81,19 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
         destinationStr.includes(query) ||
         (m.notes && m.notes.toLowerCase().includes(query));
 
+      const matchesType =
+        typeFilter === 'ALL' ||
+        (typeFilter === 'IN' ? isIncomingMovement(m.type) : isOutgoingMovement(m.type));
+
       return (
         matchesSearch &&
-        (typeFilter === 'ALL' || m.type === typeFilter) &&
+        matchesType &&
         (itemFilter === 'ALL' || m.itemId === itemFilter) &&
         (branchFilter === 'ALL' || m.branchId === branchFilter) &&
         (!startDate || m.date >= startDate) &&
         (!endDate || m.date <= `${endDate}T23:59:59`)
       );
+
     });
 
     // Sort descending by date & creation time (newest first)
@@ -190,7 +197,8 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                 const first = movementsGroup[0];
                 const refKey = first.referenceNumber || first.batchId || `ref-${first.id}`;
                 const isExpanded = expandedVouchers[refKey];
-                const displayRef = first.referenceNumber || (first.type === 'IN' ? 'توريد مخزني' : 'صرف مخزني');
+                const isFirstIn = isIncomingMovement(first.type);
+                const displayRef = first.referenceNumber || (isFirstIn ? 'توريد مخزني' : 'صرف مخزني');
                 const destinationDisplay = first.destinationName || first.branchName || first.customerName || first.supplierName || 'مستودع مدهال الطيب الرئيسي';
 
                 return (
@@ -206,7 +214,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                       </td>
                       <td className="py-3.5 px-4 font-bold font-mono text-slate-900">
                         <span className="inline-flex items-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${first.type === 'IN' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <span className={`w-2 h-2 rounded-full ${isFirstIn ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                           {displayRef}
                         </span>
                       </td>
@@ -234,18 +242,20 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                         <td colSpan={6} className="p-4 bg-slate-50/80">
                           <div className="space-y-1.5">
                             <div className="text-xs font-bold text-slate-500 mb-2">تفاصيل الأصناف في هذا السند:</div>
-                            {movementsGroup.map(m => {
+                            {movementsGroup.map((m, idx) => {
                               const itm = items.find(i => i.id === m.itemId);
                               const unt = units.find(u => u.id === m.unitId);
+                              const itemIsIn = isIncomingMovement(m.type);
                               return (
-                                <div key={m.id} className="flex items-center justify-between border border-slate-200/80 p-2.5 bg-white rounded-xl shadow-2xs">
+                                <div key={m.id ? `${m.id}_${idx}` : idx} className="flex items-center justify-between border border-slate-200/80 p-2.5 bg-white rounded-xl shadow-2xs">
                                   <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.type === 'IN' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                      {m.type === 'IN' ? 'وارد' : 'صادر'}
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${itemIsIn ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                      {itemIsIn ? 'وارد' : 'صادر'}
                                     </span>
                                     <span className="font-bold text-slate-900 text-xs">{itm?.name || 'صنف غير معروف'}</span>
                                     <span className="text-[11px] font-mono text-slate-400">({itm?.code || '-'})</span>
                                   </div>
+
                                   <div className="font-mono text-xs font-bold text-slate-800">
                                     {m.quantity} {unt?.name || 'وحدة'}
                                   </div>

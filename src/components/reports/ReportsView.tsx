@@ -36,9 +36,24 @@ import { useInventory } from '../../context/InventoryContext';
 import { StockMovement, Item } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 import { AnalyticsCharts } from './AnalyticsCharts';
+import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
 
 import { NavView } from '../common/Navigation';
+
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
+
+function isDateInRange(dateStr: string | undefined | null, start: Date, end: Date): boolean {
+  if (!dateStr) return false;
+  let timeMs: number;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    timeMs = new Date(y, m - 1, d, 12, 0, 0).getTime();
+  } else {
+    timeMs = new Date(dateStr).getTime();
+  }
+  if (isNaN(timeMs)) return false;
+  return timeMs >= start.getTime() && timeMs <= end.getTime();
+}
 
 export type ExtendedPeriod =
   | 'today'
@@ -275,10 +290,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   // Filter movements for Current and Previous Period
   const { currentMovements, prevMovements } = useMemo(() => {
     const cur = movements.filter((m) => {
-      const d = m.date;
-      if (d < dateRange.startIso || d > dateRange.endIso) return false;
+      if (!m) return false;
+      if (!isDateInRange(m.date, dateRange.start, dateRange.end)) return false;
       if (selectedBranchId !== 'all' && m.branchId !== selectedBranchId) return false;
-      if (selectedMovementType !== 'all' && m.type !== selectedMovementType) return false;
+      if (selectedMovementType === 'IN' && !isIncomingMovement(m.type)) return false;
+      if (selectedMovementType === 'OUT' && !isOutgoingMovement(m.type)) return false;
+      if (selectedMovementType !== 'all' && selectedMovementType !== 'IN' && selectedMovementType !== 'OUT' && m.type !== selectedMovementType) return false;
       if (selectedCategoryId !== 'all') {
         const it = items.find((i) => i.id === m.itemId);
         if (!it || it.categoryId !== selectedCategoryId) return false;
@@ -287,10 +304,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     });
 
     const prev = movements.filter((m) => {
-      const d = m.date;
-      if (d < dateRange.prevStartIso || d > dateRange.prevEndIso) return false;
+      if (!m) return false;
+      if (!isDateInRange(m.date, dateRange.prevStart, dateRange.prevEnd)) return false;
       if (selectedBranchId !== 'all' && m.branchId !== selectedBranchId) return false;
-      if (selectedMovementType !== 'all' && m.type !== selectedMovementType) return false;
+      if (selectedMovementType === 'IN' && !isIncomingMovement(m.type)) return false;
+      if (selectedMovementType === 'OUT' && !isOutgoingMovement(m.type)) return false;
+      if (selectedMovementType !== 'all' && selectedMovementType !== 'IN' && selectedMovementType !== 'OUT' && m.type !== selectedMovementType) return false;
       if (selectedCategoryId !== 'all') {
         const it = items.find((i) => i.id === m.itemId);
         if (!it || it.categoryId !== selectedCategoryId) return false;
@@ -316,10 +335,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     let outBaseQty = 0;
 
     for (const m of currentMovements) {
-      if (m.type === 'IN') {
+      if (isIncomingMovement(m.type)) {
         inCount++;
         inBaseQty += m.baseQuantity;
-      } else if (m.type === 'OUT') {
+      } else if (isOutgoingMovement(m.type)) {
         outCount++;
         outBaseQty += m.baseQuantity;
       }
@@ -332,14 +351,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     let prevOutCount = 0;
 
     for (const m of prevMovements) {
-      if (m.type === 'IN') {
+      if (isIncomingMovement(m.type)) {
         prevInCount++;
         prevInBaseQty += m.baseQuantity;
-      } else if (m.type === 'OUT') {
+      } else if (isOutgoingMovement(m.type)) {
         prevOutCount++;
         prevOutBaseQty += m.baseQuantity;
       }
     }
+
 
     const netChange = inBaseQty - outBaseQty;
     const prevNetChange = prevInBaseQty - prevOutBaseQty;
@@ -436,8 +456,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   // Filter Returns for Selected Period and Branch/Search
   const periodReturns = useMemo(() => {
     return returns.filter((r) => {
-      const d = r.date;
-      if (d < dateRange.startIso || d > dateRange.endIso) return false;
+      if (!isDateInRange(r.date, dateRange.start, dateRange.end)) return false;
       if (selectedBranchId !== 'all' && r.branchId !== selectedBranchId) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -452,8 +471,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   }, [returns, dateRange, selectedBranchId, searchQuery]);
   const periodDamagedRecords = useMemo(() => {
     return damagedRecords.filter((r) => {
-      const d = r.date;
-      if (d < dateRange.startIso || d > dateRange.endIso) return false;
+      if (!isDateInRange(r.date, dateRange.start, dateRange.end)) return false;
       if (selectedCategoryId !== 'all') {
         const item = items.find((i) => i.id === r.itemId);
         if (!item || item.categoryId !== selectedCategoryId) return false;
@@ -559,10 +577,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         totalQty: 0,
         movementsCount: 0,
       };
-      if (m.type === 'IN') {
+      if (isIncomingMovement(m.type)) {
         prev.inQty += m.baseQuantity;
         prev.inCount++;
-      } else {
+      } else if (isOutgoingMovement(m.type)) {
         prev.outQty += m.baseQuantity;
         prev.outCount++;
       }
@@ -636,7 +654,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     > = {};
 
     for (const m of currentMovements) {
-      if (m.type === 'OUT') {
+      if (isOutgoingMovement(m.type)) {
         const bId = m.branchId || 'main';
         const bName =
           m.branchName ||
@@ -701,9 +719,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     for (const m of currentMovements) {
       const it = items.find((i) => i.id === m.itemId);
       if (it && catMap[it.categoryId]) {
-        if (m.type === 'IN') {
+        if (isIncomingMovement(m.type)) {
           catMap[it.categoryId].inQty += m.baseQuantity;
-        } else {
+        } else if (isOutgoingMovement(m.type)) {
           catMap[it.categoryId].outQty += m.baseQuantity;
         }
       }
@@ -2574,7 +2592,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800">
-                  {productionReportMovements.map((m) => {
+                  {productionReportMovements.map((m, idx) => {
                     const item = items.find((i) => i.id === m.itemId);
                     const unit = units.find((u) => u.id === m.unitId);
                     const baseUnit = units.find((u) => u.id === item?.baseUnitId);
@@ -2586,7 +2604,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
 
                     return (
-                      <tr key={m.id} className="hover:bg-slate-50/80">
+                      <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/80">
+
                         <td className="py-3 px-4 font-mono font-bold text-slate-900">
                           <button
                             onClick={() => setVoucherMovement(m)}

@@ -27,6 +27,8 @@ import {
   Unit,
 } from '../types/inventory';
 import { StorageService, InventoryDatabaseData } from './storage';
+import { deduplicateById } from '../utils/arabicSearch';
+
 
 export type { AuditLogEntry };
 
@@ -638,7 +640,7 @@ export const FirestoreStorage = {
         collection(db, 'items'),
         (snap) => {
           const items = snap.docs.map((d) => d.data() as Item).filter(isGenuineItem);
-          callbacks.onItems?.(items);
+          callbacks.onItems?.(deduplicateById(items));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -650,7 +652,7 @@ export const FirestoreStorage = {
         collection(db, 'movements'),
         (snap) => {
           const movements = snap.docs.map((d) => d.data() as StockMovement).filter((m) => m && m.id && m.itemId);
-          callbacks.onMovements?.(movements);
+          callbacks.onMovements?.(deduplicateById(movements));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -662,7 +664,7 @@ export const FirestoreStorage = {
         collection(db, 'categories'),
         (snap) => {
           const categories = snap.docs.map((d) => d.data() as Category).filter((c) => c && c.id && c.name);
-          callbacks.onCategories?.(categories);
+          callbacks.onCategories?.(deduplicateById(categories));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -674,7 +676,7 @@ export const FirestoreStorage = {
         collection(db, 'units'),
         (snap) => {
           const units = snap.docs.map((d) => d.data() as Unit).filter((u) => u && u.id && u.name);
-          callbacks.onUnits?.(units);
+          callbacks.onUnits?.(deduplicateById(units));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -686,7 +688,7 @@ export const FirestoreStorage = {
         collection(db, 'branches'),
         (snap) => {
           const branches = snap.docs.map((d) => d.data() as Branch).filter((b) => b && b.id && b.name);
-          callbacks.onBranches?.(branches);
+          callbacks.onBranches?.(deduplicateById(branches));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -698,7 +700,7 @@ export const FirestoreStorage = {
         collection(db, 'customers'),
         (snap) => {
           const customers = snap.docs.map((d) => d.data() as Customer).filter((c) => c && c.id && c.name);
-          callbacks.onCustomers?.(customers);
+          callbacks.onCustomers?.(deduplicateById(customers));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -710,7 +712,7 @@ export const FirestoreStorage = {
         collection(db, 'returns'),
         (snap) => {
           const returns = snap.docs.map((d) => d.data() as ReturnRecord).filter((r) => r && r.id);
-          callbacks.onReturns?.(returns);
+          callbacks.onReturns?.(deduplicateById(returns));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -722,7 +724,7 @@ export const FirestoreStorage = {
         collection(db, 'production_orders'),
         (snap) => {
           const orders = snap.docs.map((d) => d.data() as ProductionOrder).filter((p) => p && p.id && p.orderNumber);
-          (callbacks as any).onProductionOrders?.(orders);
+          (callbacks as any).onProductionOrders?.(deduplicateById(orders));
         },
         (err) => callbacks.onError?.(err)
       );
@@ -734,12 +736,13 @@ export const FirestoreStorage = {
         collection(db, 'damaged_records'),
         (snap) => {
           const records = snap.docs.map((d) => d.data() as DamagedRecord).filter((r) => r && r.id);
-          callbacks.onDamagedRecords?.(records);
+          callbacks.onDamagedRecords?.(deduplicateById(records));
         },
         (err) => callbacks.onError?.(err)
       );
       unsubscribes.push(unsub);
     }
+
 
     return () => {
       unsubscribes.forEach((fn) => fn());

@@ -392,9 +392,9 @@ export const ProductionOrderDetailModal: React.FC<ProductionOrderDetailModalProp
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {order.dispatches.map((disp) => (
+                    {order.dispatches.map((disp, idx) => (
                       <div
-                        key={disp.id}
+                        key={disp.id ? `${disp.id}_${idx}` : idx}
                         className="p-3.5 bg-slate-50 hover:bg-slate-100/70 rounded-xl border border-slate-200 flex items-center justify-between transition-colors"
                       >
                         <div>
@@ -433,9 +433,9 @@ export const ProductionOrderDetailModal: React.FC<ProductionOrderDetailModalProp
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {order.consumptions.map((cons) => (
+                    {order.consumptions.map((cons, idx) => (
                       <div
-                        key={cons.id}
+                        key={cons.id ? `${cons.id}_${idx}` : idx}
                         className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2"
                       >
                         <div className="flex items-center justify-between text-xs">
@@ -451,11 +451,11 @@ export const ProductionOrderDetailModal: React.FC<ProductionOrderDetailModalProp
 
                         <div className="text-xs text-slate-600">
                           <ul className="list-disc list-inside space-y-1">
-                            {cons.items.map((it, idx) => {
+                            {cons.items.map((it, itemIdx) => {
                               const itm = items.find((i) => i.id === it.itemId);
                               const u = units.find((un) => un.id === it.unitId);
                               return (
-                                <li key={idx}>
+                                <li key={itemIdx}>
                                   <strong>{itm?.name || it.itemId}</strong>: استهلاك {it.quantity} {u?.name}
                                   {it.scrapQuantity && it.scrapQuantity > 0 ? (
                                     <span className="text-rose-600 font-bold mr-2">
@@ -483,12 +483,12 @@ export const ProductionOrderDetailModal: React.FC<ProductionOrderDetailModalProp
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {order.receipts.map((rec) => {
+                    {order.receipts.map((rec, idx) => {
                       const itm = items.find((i) => i.id === rec.itemId);
                       const u = units.find((un) => un.id === rec.unitId);
                       return (
                         <div
-                          key={rec.id}
+                          key={rec.id ? `${rec.id}_${idx}` : idx}
                           className="p-3.5 bg-emerald-50/50 hover:bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between transition-colors"
                         >
                           <div>
@@ -529,15 +529,16 @@ export const ProductionOrderDetailModal: React.FC<ProductionOrderDetailModalProp
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {order.returns.map((ret) => (
+                    {order.returns.map((ret, idx) => (
                       <div
-                        key={ret.id}
+                        key={ret.id ? `${ret.id}_${idx}` : idx}
                         className="p-3.5 bg-amber-50/50 hover:bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between transition-colors"
                       >
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-bold text-amber-900 text-xs">
                               #{ret.voucherNumber}
+
                             </span>
                             <span className="text-[11px] text-slate-500">
                               {new Date(ret.date).toLocaleString('ar-SA')}

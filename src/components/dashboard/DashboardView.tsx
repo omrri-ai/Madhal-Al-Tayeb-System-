@@ -481,13 +481,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredMovements.map((m) => {
+                {filteredMovements.map((m, idx) => {
                   const item = items.find((i) => i.id === m.itemId);
                   const unit = units.find((u) => u.id === m.unitId);
                   const baseUnit = units.find((u) => u.id === item?.baseUnitId);
 
                   return (
-                    <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/80 transition-colors">
+
                       {/* Type Badge */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         <span

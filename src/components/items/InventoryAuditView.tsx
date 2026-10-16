@@ -742,8 +742,9 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {outMovements.map((m) => (
-                            <tr key={m.id} className="hover:bg-slate-50/50">
+                          {outMovements.map((m, idx) => (
+                            <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/50">
+
                               <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
                                 {new Date(m.date).toLocaleString('ar-SA', {
                                   year: 'numeric',
@@ -887,10 +888,11 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {allChronologicalMovementsWithBalance.map((m) => {
+                          {allChronologicalMovementsWithBalance.map((m, idx) => {
                             const isIn = m.type === 'IN';
                             return (
-                              <tr key={m.id} className="hover:bg-slate-50/50">
+                              <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/50">
+
                                 <td className="p-3 whitespace-nowrap">
                                   <span
                                     className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
