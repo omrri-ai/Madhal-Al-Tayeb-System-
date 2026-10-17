@@ -867,44 +867,11 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
           {/* Items Table Section */}
           <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Package className="w-4 h-4 text-slate-600" />
                 <span>2. أصناف سند الصرف المخزني:</span>
               </h4>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newRowId = 'row_' + Date.now();
-                    const defaultItem = activeItems[0];
-                    setRows((prev) => [
-                      ...prev,
-                      {
-                        id: newRowId,
-                        itemId: defaultItem ? defaultItem.id : '',
-                        unitId: defaultItem ? defaultItem.baseUnitId : '',
-                        quantity: '1',
-                        notes: '',
-                      },
-                    ]);
-                    setPickingRowId(newRowId);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
-                  title="فتح نافذة البحث السريع لإضافة صنف جديد"
-                >
-                  <Search className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>بحث وإضافة صنف</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddRow}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
-                >
-                  <Plus className="w-4 h-4 text-emerald-400" />
-                  <span>إضافة بند صنف</span>
-                </button>
-              </div>
             </div>
 
             <div className="space-y-3">
@@ -1049,6 +1016,41 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
                 );
               })}
             </div>
+
+            {/* Add row / Search buttons below all items */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const newRowId = 'row_' + Date.now();
+                  const defaultItem = activeItems[0];
+                  setRows((prev) => [
+                    ...prev,
+                    {
+                      id: newRowId,
+                      itemId: defaultItem ? defaultItem.id : '',
+                      unitId: defaultItem ? defaultItem.baseUnitId : '',
+                      quantity: '1',
+                      notes: '',
+                    },
+                  ]);
+                  setPickingRowId(newRowId);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                title="فتح نافذة البحث السريع لإضافة صنف جديد"
+              >
+                <Search className="w-4 h-4 text-emerald-600" />
+                <span>بحث وإضافة صنف جديد</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAddRow}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <span>إضافة بند صنف</span>
+              </button>
+            </div>
           </div>
 
           {/* Reference & Notes */}
@@ -1106,6 +1108,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
           }
         }}
         movementType="OUT"
+        items={rows as any}
         allowZeroStockSelection={true}
       />
     </div>

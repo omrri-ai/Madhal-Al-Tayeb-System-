@@ -32,11 +32,10 @@ export const ItemPickerBottomSheet: React.FC<ItemPickerBottomSheetProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Use either customItems passed in or all active items
+  // Always use all active items from inventory context as base items
   const baseItems = useMemo(() => {
-    const list = customItems || allItems;
-    return list.filter((i) => !i.isDeleted && !i.isArchived);
-  }, [customItems, allItems]);
+    return allItems.filter((i) => !i.isDeleted && !i.isArchived);
+  }, [allItems]);
 
   // Focus search input when sheet opens
   useEffect(() => {
@@ -75,7 +74,16 @@ export const ItemPickerBottomSheet: React.FC<ItemPickerBottomSheetProps> = ({
       });
     }
 
+    // If OUT, exclude items already selected in OTHER rows to prevent picking duplicates
     if (movementType === 'OUT') {
+      const selectedIds = new Set(
+        (customItems || [])
+          .filter((r: any) => !selectedItemId || r.itemId !== selectedItemId)
+          .map((r: any) => r.itemId)
+          .filter(Boolean)
+      );
+      result = result.filter((item) => !selectedIds.has(item.id));
+
       // Sort in-stock items first, zero-stock items last
       return [...result].sort((a, b) => {
         const stockA = getItemStock(a.id);
@@ -87,7 +95,7 @@ export const ItemPickerBottomSheet: React.FC<ItemPickerBottomSheetProps> = ({
     }
 
     return result;
-  }, [baseItems, searchQuery, movementType, getItemStock]);
+  }, [baseItems, searchQuery, movementType, getItemStock, customItems]);
 
   if (!isOpen) return null;
 
