@@ -20,8 +20,15 @@ import { MovementType, StockMovement } from '../../types/inventory';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { StockMovementModal } from './StockMovementModal';
 import { MovementVoucherModal } from './MovementVoucherModal';
-import { Building2, Truck } from 'lucide-react';
+import { OutgoingDispatchModal } from './OutgoingDispatchModal';
+import { Building2, Truck, Edit2 } from 'lucide-react';
 import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
+import { UniversalReportModal } from '../reports/UniversalReportModal';
+import {
+  ReportPeriod,
+  computeReportDateRange,
+  isRecordInDateRange,
+} from '../../utils/reportDateFilters';
 
 
 interface MovementsViewProps {
@@ -67,6 +74,41 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   }, [initialMovementId, movements]);
 
   const [deleteTarget, setDeleteTarget] = useState<StockMovement | null>(null);
+  const [editingDispatchVoucher, setEditingDispatchVoucher] = useState<string | null>(null);
+
+  // Quick Movements Report Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportInitialPeriod, setReportInitialPeriod] = useState<ReportPeriod>('today');
+  const [reportTitle, setReportTitle] = useState('تقرير حركات اليوم');
+
+  const handleOpenReport = (selectedPeriod: ReportPeriod, customTitle: string) => {
+    setReportInitialPeriod(selectedPeriod);
+    setReportTitle(customTitle);
+    setIsReportModalOpen(true);
+  };
+
+  // Precomputed Date Ranges & Counts for Quick Buttons
+  const todayRange = useMemo(() => computeReportDateRange('today'), []);
+  const yesterdayRange = useMemo(() => computeReportDateRange('yesterday'), []);
+  const weekRange = useMemo(() => computeReportDateRange('this_week'), []);
+  const monthRange = useMemo(() => computeReportDateRange('this_month'), []);
+
+  const todayCount = useMemo(
+    () => movements.filter((m) => isRecordInDateRange(m.date, todayRange)).length,
+    [movements, todayRange]
+  );
+  const yesterdayCount = useMemo(
+    () => movements.filter((m) => isRecordInDateRange(m.date, yesterdayRange)).length,
+    [movements, yesterdayRange]
+  );
+  const weekCount = useMemo(
+    () => movements.filter((m) => isRecordInDateRange(m.date, weekRange)).length,
+    [movements, weekRange]
+  );
+  const monthCount = useMemo(
+    () => movements.filter((m) => isRecordInDateRange(m.date, monthRange)).length,
+    [movements, monthRange]
+  );
 
   const filteredMovements = useMemo(() => {
     const list = movements.filter((m) => {
@@ -107,7 +149,24 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   const groupedMovements = useMemo(() => {
     const groups: Record<string, StockMovement[]> = {};
     filteredMovements.forEach((m) => {
-      const key = m.referenceNumber || m.batchId || `ref-${m.id}`;
+      const cleanRef = (m.referenceNumber || '').trim().toLowerCase();
+      const cleanBatch = (m.batchId || '').trim().toLowerCase();
+      const cleanNotes = (m.notes || '').trim().toLowerCase();
+      let key = `mov_${m.id}`;
+      if (cleanRef) {
+        key = `ref_${cleanRef}`;
+      } else if (cleanBatch) {
+        key = `batch_${cleanBatch}`;
+      } else if (cleanNotes && cleanNotes.length < 40) {
+        key = `notes_${cleanNotes}`;
+      } else {
+        const timeMin = new Date(m.createdAt || m.date).toISOString().substring(0, 16);
+        const dest = (m.destinationName || m.branchName || m.customerName || m.supplierName || '').trim().toLowerCase();
+        if (dest) {
+          key = `time_${timeMin}_dest_${dest}`;
+        }
+      }
+
       if (!groups[key]) groups[key] = [];
       groups[key].push(m);
     });
@@ -163,14 +222,98 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
               className="w-full pr-10 pl-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-colors"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              title="تصدير السجل كملف Excel / CSV"
+            >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span>تصدير CSV</span>
             </button>
-            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer">
-              <Printer className="w-4 h-4 text-slate-600" />
-              <span>طباعة السجل</span>
+            <button
+              onClick={() => handleOpenReport('all', 'تقرير سجل حركات المخزون')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
+              title="معاينة وطباعة وتصدير التقرير كـ PDF"
+            >
+              <Printer className="w-4 h-4 text-emerald-400" />
+              <span>طباعة وتصدير التقرير</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Report Download & Print Strip */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+            <span className="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
+              <FileText className="w-4 h-4" />
+            </span>
+            <span>تقارير وتنزيل الحركات المباشرة (تنزيل PDF / طباعة فورية):</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
+            {/* Today */}
+            <button
+              type="button"
+              onClick={() => handleOpenReport('today', 'تقرير حركات اليوم')}
+              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200 text-emerald-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
+              title="فتح معاينة وتنزيل تقرير حركات اليوم"
+            >
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <span>حركات اليوم</span>
+              </div>
+              <span className="px-1.5 py-0.5 bg-emerald-200 text-emerald-900 rounded-md text-[10px] font-mono font-bold">
+                {todayCount}
+              </span>
+            </button>
+
+            {/* Yesterday */}
+            <button
+              type="button"
+              onClick={() => handleOpenReport('yesterday', 'تقرير حركات أمس')}
+              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-sky-50 hover:bg-sky-100/90 border border-sky-200 text-sky-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
+              title="فتح معاينة وتنزيل تقرير حركات أمس"
+            >
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                <span>حركات أمس</span>
+              </div>
+              <span className="px-1.5 py-0.5 bg-sky-200 text-sky-900 rounded-md text-[10px] font-mono font-bold">
+                {yesterdayCount}
+              </span>
+            </button>
+
+            {/* Week */}
+            <button
+              type="button"
+              onClick={() => handleOpenReport('this_week', 'تقرير حركات هذا الأسبوع')}
+              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100/90 border border-indigo-200 text-indigo-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
+              title="فتح معاينة وتنزيل تقرير حركات هذا الأسبوع"
+            >
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                <span>حركات الأسبوع</span>
+              </div>
+              <span className="px-1.5 py-0.5 bg-indigo-200 text-indigo-900 rounded-md text-[10px] font-mono font-bold">
+                {weekCount}
+              </span>
+            </button>
+
+            {/* Month */}
+            <button
+              type="button"
+              onClick={() => handleOpenReport('this_month', 'تقرير حركات هذا الشهر')}
+              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100/90 border border-amber-200 text-amber-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
+              title="فتح معاينة وتنزيل تقرير حركات هذا الشهر"
+            >
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                <span>حركات الشهر</span>
+              </div>
+              <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded-md text-[10px] font-mono font-bold">
+                {monthCount}
+              </span>
             </button>
           </div>
         </div>
@@ -228,13 +371,24 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                         {destinationDisplay}
                       </td>
                       <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button 
-                          onClick={() => setVoucherMovement(first)} 
-                          className="p-1.5 text-slate-500 hover:text-emerald-700 cursor-pointer"
-                          title="عرض وطباعة السند"
-                        >
-                          <Printer className="w-4 h-4 text-emerald-600" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          {!isFirstIn && (
+                            <button
+                              onClick={() => setEditingDispatchVoucher(first.batchId || first.referenceNumber || first.id)}
+                              className="p-1.5 text-slate-500 hover:text-amber-700 cursor-pointer rounded-lg hover:bg-amber-50 transition-colors"
+                              title="تعديل السند المعتمد وإعادة احتساب المخزون"
+                            >
+                              <Edit2 className="w-4 h-4 text-amber-600" />
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => setVoucherMovement(first)} 
+                            className="p-1.5 text-slate-500 hover:text-emerald-700 cursor-pointer rounded-lg hover:bg-emerald-50 transition-colors"
+                            title="معاينة وطباعة السند"
+                          >
+                            <Printer className="w-4 h-4 text-emerald-600" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {isExpanded && (
@@ -244,20 +398,25 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                             <div className="text-xs font-bold text-slate-500 mb-2">تفاصيل الأصناف في هذا السند:</div>
                             {movementsGroup.map((m, idx) => {
                               const itm = items.find(i => i.id === m.itemId);
+                              const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف مخزني');
+                              const itmCode = itm?.code || m.itemCode || '-';
                               const unt = units.find(u => u.id === m.unitId);
+                              const untName = unt?.name || m.unitName || 'وحدة';
                               const itemIsIn = isIncomingMovement(m.type);
+                              const qty = typeof m.quantity === 'number' && !isNaN(m.quantity) ? m.quantity : Number(m.quantity) || 0;
+
                               return (
                                 <div key={m.id ? `${m.id}_${idx}` : idx} className="flex items-center justify-between border border-slate-200/80 p-2.5 bg-white rounded-xl shadow-2xs">
                                   <div className="flex items-center gap-2">
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${itemIsIn ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
                                       {itemIsIn ? 'وارد' : 'صادر'}
                                     </span>
-                                    <span className="font-bold text-slate-900 text-xs">{itm?.name || 'صنف غير معروف'}</span>
-                                    <span className="text-[11px] font-mono text-slate-400">({itm?.code || '-'})</span>
+                                    <span className="font-bold text-slate-900 text-xs">{itmName}</span>
+                                    <span className="text-[11px] font-mono text-slate-400">({itmCode})</span>
                                   </div>
 
                                   <div className="font-mono text-xs font-bold text-slate-800">
-                                    {m.quantity} {unt?.name || 'وحدة'}
+                                    {qty} {untName}
                                   </div>
                                 </div>
                               );
@@ -287,6 +446,24 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
             currentStock={getItemStock(voucherMovement.itemId)}
         />
       )}
+
+      {/* Edit Approved Outgoing Dispatch Voucher Modal */}
+      {editingDispatchVoucher && (
+        <OutgoingDispatchModal
+          isOpen={Boolean(editingDispatchVoucher)}
+          editVoucherNoOrBatch={editingDispatchVoucher}
+          onClose={() => setEditingDispatchVoucher(null)}
+        />
+      )}
+
+      {/* Universal Report Modal with PDF Export and Direct Print */}
+      <UniversalReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        initialSections={['movements']}
+        reportTitle={reportTitle}
+        initialPeriod={reportInitialPeriod}
+      />
     </div>
   );
 };

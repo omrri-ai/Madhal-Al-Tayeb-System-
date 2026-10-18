@@ -162,6 +162,34 @@ interface InventoryContextType {
     }[];
   }) => { success: boolean; error?: string; voucherNumber?: string; movements?: StockMovement[] };
 
+  updateMultiItemDispatch: (
+    voucherRefOrBatch: string,
+    dispatchData: {
+      destinationType: 'BRANCH' | 'CUSTOMER';
+      branchId?: string;
+      branchName?: string;
+      customerName?: string;
+      customerPhone?: string;
+      customerCity?: string;
+      destinationContactName?: string;
+      destinationPhone?: string;
+      destinationAddress?: string;
+      shippingCompany?: ShippingCarrier;
+      customShippingCompany?: string;
+      shippingTrackingNumber?: string;
+      referenceNumber?: string;
+      notes?: string;
+      editReason: string;
+      date: string;
+      items: {
+        itemId: string;
+        unitId: string;
+        quantity: number;
+        notes?: string;
+      }[];
+    }
+  ) => { success: boolean; error?: string; voucherNumber?: string; movements?: StockMovement[] };
+
   updateMovement: (id: string, movementData: {
     unitId: string;
     quantity: number;
@@ -375,7 +403,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     returnsRef.current = returns;
   }, [returns]);
 
-  const { role, isOwner } = useAuth();
+  const { role, isOwner, user } = useAuth();
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -619,7 +647,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         productionOrders: newProductionOrders,
       };
 
-      // Persistent Cloud Firestore sync (Authoritative cloud-first write)
+      // 1. Immediately write to local storage & IndexedDB cache for instant offline persistence across page reloads
+      try {
+        await StorageService.saveAll(fullData);
+      } catch (storageErr) {
+        console.warn('StorageService.saveAll error in persistChanges:', storageErr);
+      }
+
+      // 2. Persistent Cloud Firestore sync (Authoritative cloud-first write)
       setCloudSyncStatus('syncing');
       try {
         await FirestoreStorage.syncAllToFirestore(fullData);
@@ -632,11 +667,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.error('Cloud Firestore sync error:', err);
         setCloudSyncStatus('error');
         const errMsg = err?.message || 'فشل حفظ وتحديث البيانات في سحابة Firestore. يرجى التحقق من الاتصال والصلاحيات.';
-        showToast(errMsg, 'error');
-        throw new Error(errMsg);
+        console.warn(errMsg);
       }
     },
-    [refreshAuditLogs, refreshCloudBackups, showToast]
+    [refreshAuditLogs, refreshCloudBackups]
   );
 
   // Online / Offline Listeners & Auto-Sync
@@ -1567,7 +1601,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const cleanReason = reason?.trim();
       if (!cleanReason) {
-        return { success: false, error: 'يرجى إدخال سبب التعديل لحفظ التغييرات.' };
+        return { success: false, error: 'كتابة سبب التعديل إلزامية لتوثيق وتعديل بيانات الصنف في سجل الرقابة' };
       }
 
       if (itemData.name) {
@@ -1576,7 +1610,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           return { success: false, error: 'اسم الصنف لا يمكن أن يكون فارغاً' };
         }
         const nameConflict = items.some(
-          (i) => i.id !== id && (i?.name || '').trim().toLowerCase() === cleanName.toLowerCase()
+          (i) => i.id !== id && !i.isDeleted && (i?.name || '').trim().toLowerCase() === cleanName.toLowerCase()
         );
         if (nameConflict) {
           return { success: false, error: `يوجد صنف آخر مسجل مسبقاً بنفس الاسم "${cleanName}"` };
@@ -1586,7 +1620,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (itemData.code) {
         const cleanCode = itemData.code.trim();
         const codeConflict = items.some(
-          (i) => i.id !== id && (i?.code || '').trim().toLowerCase() === cleanCode.toLowerCase()
+          (i) => i.id !== id && !i.isDeleted && (i?.code || '').trim().toLowerCase() === cleanCode.toLowerCase()
         );
         if (codeConflict) {
           return { success: false, error: `رمز أو رقم الصنف "${cleanCode}" مسجل مسبقاً لصنف آخر` };
@@ -1605,15 +1639,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      // Check if conversions are changing when movements already exist
-      if (itemData.conversions) {
-         const hasMovements = movements.some((m) => m.itemId === id);
-         if (hasMovements) {
-           return {
-             success: false,
-             error: 'لا يمكن تعديل معاملات التحويل لوجود حركات مخزنية سابقة مرتبطة بالصنف.',
-           };
-         }
+      // Check if conversions actually changed before blocking
+      const haveConversionsChanged = () => {
+        if (!itemData.conversions) return false;
+        const oldConvs = existing.conversions || [];
+        const newConvs = itemData.conversions || [];
+        if (oldConvs.length !== newConvs.length) return true;
+        return newConvs.some((nc) => {
+          const matched = oldConvs.find((oc) => oc.unitId === nc.unitId);
+          return !matched || Number(matched.factorToBase) !== Number(nc.factorToBase);
+        });
+      };
+
+      if (haveConversionsChanged()) {
+        const hasMovements = movements.some((m) => m.itemId === id);
+        if (hasMovements) {
+          return {
+            success: false,
+            error: 'لا يمكن تعديل معاملات التحويل لوجود حركات مخزنية سابقة مرتبطة بالصنف.',
+          };
+        }
       }
 
       // Clean conversions
@@ -1649,21 +1694,34 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       FirestoreStorage.saveItem(updatedItem).catch((err) => {
         console.warn('Auto-save update item to Firestore deferred:', err);
       });
+      const performer = user?.displayName || user?.email || (isOwner ? 'المدير العام' : OWNER_EMAIL);
       FirestoreStorage.recordAuditLog({
         operationType: 'تعديل',
         entityType: 'صنف',
         entityId: id,
         entityName: updatedItem.name,
         reason: cleanReason,
-        userName: OWNER_EMAIL,
+        userName: performer,
         dataBefore: existing,
         dataAfter: updatedItem,
       }).catch((e) => console.warn(e));
-      persistChanges(units, categories, updated, movements, branches, returns);
+      persistChanges(units, categories, updated, movements, branches, returns, damagedRecords, productionOrders);
       showToast(`تم حفظ تعديلات الصنف "${updatedItem.name}" بنجاح`, 'success');
-      return { success: true };
+      return { success: true, item: updatedItem };
     },
-    [items, movements, units, categories, branches, returns, persistChanges, showToast]
+    [
+      items,
+      movements,
+      units,
+      categories,
+      branches,
+      returns,
+      damagedRecords,
+      productionOrders,
+      persistChanges,
+      showToast,
+      ensureAdmin,
+    ]
   );
 
   const archiveItem = useCallback(
@@ -1882,6 +1940,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         date: data.date || new Date().toISOString(),
         referenceNumber: data.referenceNumber?.trim(),
         notes: data.notes?.trim(),
+        itemName: item.name,
+        itemCode: item.code,
+        unitName: movementUnit,
         destinationType: data.destinationType,
         branchId: data.branchId,
         branchName: data.branchName,
@@ -2054,6 +2115,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         date: dispatchData.date || nowIso,
         referenceNumber: voucherNo,
         notes: e.notes || dispatchData.notes?.trim(),
+        itemName: e.item.name,
+        itemCode: e.item.code,
+        unitName: units.find((u) => u.id === e.unitId)?.name || 'وحدة',
         destinationType: dispatchData.destinationType,
         destinationName,
         destinationContactName: destinationContact,
@@ -2087,6 +2151,257 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم تصدير ${calculatedEntries.length} أصناف بنجاح إلى ${targetDesc} (رقم السند: ${voucherNo})`, 'success');
 
       return { success: true, voucherNumber: voucherNo, movements: newMovements };
+    },
+    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast]
+  );
+
+  const updateMultiItemDispatch = useCallback(
+    (
+      voucherRefOrBatch: string,
+      dispatchData: {
+        destinationType: 'BRANCH' | 'CUSTOMER';
+        branchId?: string;
+        branchName?: string;
+        customerName?: string;
+        customerPhone?: string;
+        customerCity?: string;
+        destinationContactName?: string;
+        destinationPhone?: string;
+        destinationAddress?: string;
+        shippingCompany?: ShippingCarrier;
+        customShippingCompany?: string;
+        shippingTrackingNumber?: string;
+        referenceNumber?: string;
+        notes?: string;
+        editReason: string;
+        date: string;
+        items: {
+          itemId: string;
+          unitId: string;
+          quantity: number;
+          notes?: string;
+        }[];
+      }
+    ) => {
+      if (!ensureAdmin('تعديل سند خروج معتمد')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+
+      if (!dispatchData.editReason?.trim()) {
+        const errMsg = 'يرجى إدخال سبب التعديل بشكل إلزامي لضمان التوثيق والرقابة.';
+        showToast(errMsg, 'error');
+        return { success: false, error: errMsg };
+      }
+
+      if (!dispatchData.items || dispatchData.items.length === 0) {
+        const errMsg = 'يرجى إضافة صنف واحد على الأقل في سند الخروج.';
+        showToast(errMsg, 'error');
+        return { success: false, error: errMsg };
+      }
+
+      // Enforce unique items (no item duplication within voucher)
+      const itemIds = dispatchData.items.map((i) => i.itemId);
+      if (new Set(itemIds).size !== itemIds.length) {
+        const errMsg = 'عفواً، يتضمن السند أصناف مكررة! يمنع تكرار الصنف نفسه داخل السند.';
+        showToast(errMsg, 'error');
+        return { success: false, error: errMsg };
+      }
+
+      if (dispatchData.destinationType === 'BRANCH' && !dispatchData.branchId) {
+        return { success: false, error: 'يرجى تحديد الفرع المراد التصدير إليه' };
+      }
+
+      if (dispatchData.destinationType === 'CUSTOMER' && !dispatchData.customerName?.trim()) {
+        return { success: false, error: 'يرجى إدخال اسم العميل للشحنة' };
+      }
+
+      // Locate existing movements belonging to this voucher batch or reference
+      const searchKey = voucherRefOrBatch.trim().toLowerCase();
+      const existingMovements = movements.filter((m) => {
+        const mRef = (m.referenceNumber || '').trim().toLowerCase();
+        const mBatch = (m.batchId || '').trim().toLowerCase();
+        return (
+          m.id === voucherRefOrBatch ||
+          (mBatch && mBatch === searchKey) ||
+          (mRef && mRef === searchKey)
+        );
+      });
+
+      if (existingMovements.length === 0) {
+        const errMsg = 'عفواً، لم يتم العثور على السند المعتمد المراد تعديله.';
+        showToast(errMsg, 'error');
+        return { success: false, error: errMsg };
+      }
+
+      // Calculate virtual stock available after temporarily restoring previous dispatch quantities
+      const virtualStockMap: Record<string, number> = {};
+      existingMovements.forEach((oldM) => {
+        const current = getItemStock(oldM.itemId);
+        if (oldM.type === 'OUT') {
+          virtualStockMap[oldM.itemId] = (virtualStockMap[oldM.itemId] ?? current) + oldM.baseQuantity;
+        }
+      });
+
+      // Verify all new item entries against virtual stock
+      const calculatedEntries: {
+        item: Item;
+        unitId: string;
+        quantity: number;
+        factor: number;
+        baseQuantity: number;
+        notes?: string;
+      }[] = [];
+
+      const newRequiredPerItem: Record<string, number> = {};
+
+      for (const entry of dispatchData.items) {
+        const item = items.find((i) => i.id === entry.itemId && !i.isDeleted);
+        if (!item) {
+          const errMsg = 'أحد الأصناف المحددة غير موجود أو تم حذفه';
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
+
+        if (entry.quantity <= 0) {
+          const errMsg = `الكمية المدخلة للصنف "${item.name}" يجب أن تكون أكبر من الصفر`;
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
+
+        let factor = 1;
+        if (entry.unitId !== item.baseUnitId) {
+          const conv = item.conversions.find((c) => c.unitId === entry.unitId);
+          if (!conv) {
+            const u = units.find((un) => un.id === entry.unitId);
+            const errMsg = `الوحدة (${u?.name || 'المختارة'}) ليس لها معامل تحويل معتمد للصنف "${item.name}"`;
+            showToast(errMsg, 'error');
+            return { success: false, error: errMsg };
+          }
+          factor = conv.factorToBase;
+        }
+
+        const baseQuantity = Math.round(entry.quantity * factor * 1000) / 1000;
+        newRequiredPerItem[item.id] = Math.round(((newRequiredPerItem[item.id] || 0) + baseQuantity) * 1000) / 1000;
+
+        const availableVirtual = virtualStockMap[item.id] ?? getItemStock(item.id);
+        const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+
+        if (availableVirtual < newRequiredPerItem[item.id] || availableVirtual <= 0) {
+          const errMsg = `عفواً، لا يمكن إتمام التعديل: الكمية المعدلة المطلوبة للصنف "${item.name}" (${newRequiredPerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتاح عند إرجاع الكمية السابقة (${availableVirtual} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
+
+        calculatedEntries.push({
+          item,
+          unitId: entry.unitId,
+          quantity: entry.quantity,
+          factor,
+          baseQuantity,
+          notes: entry.notes,
+        });
+      }
+
+      // Preservation of metadata
+      const firstOld = existingMovements[0];
+      const batchId = firstOld.batchId || 'batch_' + Date.now();
+      const voucherNo = dispatchData.referenceNumber?.trim() || firstOld.referenceNumber || `DSP-${new Date().getFullYear()}-EDIT`;
+      const originalCreatedAt = firstOld.createdAt || new Date().toISOString();
+      const nowIso = new Date().toISOString();
+
+      const targetBranch = dispatchData.destinationType === 'BRANCH'
+        ? branches.find((b) => b.id === dispatchData.branchId)
+        : undefined;
+
+      const destinationContact = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.destinationContactName?.trim() || targetBranch?.branchManagerName || targetBranch?.managerName || targetBranch?.name)
+        : dispatchData.customerName?.trim();
+
+      const destinationPhone = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.destinationPhone?.trim() || targetBranch?.branchManagerPhone || targetBranch?.phone)
+        : dispatchData.customerPhone?.trim();
+
+      const destinationAddress = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.destinationAddress?.trim() || targetBranch?.city || targetBranch?.address)
+        : dispatchData.customerCity?.trim();
+
+      const destinationName = dispatchData.destinationType === 'BRANCH'
+        ? (dispatchData.branchName || targetBranch?.name)
+        : dispatchData.customerName?.trim();
+
+      const updatedMovementsList: StockMovement[] = calculatedEntries.map((e, idx) => {
+        const oldMatch = existingMovements[idx];
+        return {
+          id: oldMatch ? oldMatch.id : 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+          itemId: e.item.id,
+          itemName: e.item.name,
+          itemCode: e.item.code,
+          type: 'OUT',
+          unitId: e.unitId,
+          unitName: units.find((u) => u.id === e.unitId)?.name || 'وحدة',
+          quantity: e.quantity,
+          factorApplied: e.factor,
+          baseQuantity: e.baseQuantity,
+          date: dispatchData.date || firstOld.date || nowIso,
+          referenceNumber: voucherNo,
+          notes: e.notes || dispatchData.notes?.trim(),
+          destinationType: dispatchData.destinationType,
+          destinationName,
+          destinationContactName: destinationContact,
+          destinationPhone,
+          destinationAddress,
+          branchId: dispatchData.branchId,
+          branchName: destinationName,
+          customerName: dispatchData.customerName?.trim(),
+          customerPhone: destinationPhone,
+          customerCity: destinationAddress,
+          shippingCompany: dispatchData.shippingCompany,
+          customShippingCompany: dispatchData.customShippingCompany?.trim(),
+          shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
+          batchId,
+          createdByName: firstOld.createdByName || OWNER_EMAIL,
+          status: 'APPROVED',
+          createdAt: originalCreatedAt,
+          updatedAt: nowIso,
+        };
+      });
+
+      // Filter out old movements of this batch/reference and append updated ones
+      const oldIdsSet = new Set(existingMovements.map((m) => m.id));
+      const remainingMovements = movements.filter((m) => !oldIdsSet.has(m.id));
+      const nextMovementsState = [...updatedMovementsList, ...remainingMovements];
+
+      setMovements(nextMovementsState);
+      movementsRef.current = nextMovementsState;
+
+      // Delete removed old movements from Firestore if any
+      existingMovements.forEach((oldM) => {
+        if (!updatedMovementsList.some((um) => um.id === oldM.id)) {
+          FirestoreStorage.deleteMovement(oldM.id).catch((e) => console.warn(e));
+        }
+      });
+
+      // Save new/updated movements to Firestore
+      updatedMovementsList.forEach((m) => {
+        FirestoreStorage.saveMovement(m).catch((e) => console.warn(e));
+      });
+
+      // Log audit trail
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'سند خروج معتمد',
+        entityId: voucherNo,
+        entityName: `سند خروج #${voucherNo} (${destinationName})`,
+        reason: dispatchData.editReason.trim(),
+        userName: OWNER_EMAIL,
+        dataBefore: existingMovements,
+        dataAfter: updatedMovementsList,
+      }).catch((e) => console.warn(e));
+
+      persistChanges(units, categories, items, nextMovementsState, branches, returns);
+
+      showToast(`تم تعديل السند المعتمد (#${voucherNo}) بنجاح وإعادة احتساب المخزون بأمان`, 'success');
+      return { success: true, voucherNumber: voucherNo, movements: updatedMovementsList };
     },
     [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast]
   );
@@ -4049,6 +4364,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     deleteCustomer,
     saveCompanySettings,
     addMultiItemDispatch,
+    updateMultiItemDispatch,
 
     addUnit,
     updateUnit,

@@ -24,8 +24,41 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
   category,
   currentStock,
 }) => {
-  const { companySettings } = useInventory();
+  const { movements, items, units, categories, companySettings } = useInventory();
   if (!isOpen || !movement || !item) return null;
+
+  const isGenericTitle = (str?: string) => {
+    if (!str) return true;
+    const s = str.trim().toLowerCase();
+    return (
+      !s ||
+      s === 'توريد مخزني' ||
+      s === 'صرف مخزني' ||
+      s === 'إذن صرف' ||
+      s === 'إذن توريد' ||
+      s === 'سند' ||
+      s === 'فاتورة' ||
+      s === '0' ||
+      s === '1'
+    );
+  };
+
+  const cleanRef = (movement.referenceNumber || '').trim().toLowerCase();
+  const cleanBatch = (movement.batchId || '').trim().toLowerCase();
+
+  const relatedMovements = movements.filter((m) => {
+    if (m.type !== movement.type) return false;
+
+    const mRef = (m.referenceNumber || '').trim().toLowerCase();
+    const mBatch = (m.batchId || '').trim().toLowerCase();
+
+    if (cleanBatch && mBatch === cleanBatch) return true;
+    if (cleanRef && !isGenericTitle(movement.referenceNumber) && mRef === cleanRef) return true;
+
+    return m.id === movement.id;
+  });
+
+  const voucherMovements = relatedMovements.length > 0 ? relatedMovements : [movement];
 
   const isEntry = movement.type === 'IN';
   const voucherTitle = isEntry ? 'سند توريد مخزني (إذن دخول رسمي)' : 'سند صرف مخزني (إذن خروج رسمي)';
@@ -128,14 +161,32 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>1</td>
-        <td><strong>${item.name}</strong></td>
-        <td>${item.code}</td>
-        <td>${category?.name || '-'}</td>
-        <td><strong>${movement.quantity} ${unit?.name || 'وحدة'}</strong></td>
-        <td><strong>${movement.baseQuantity} ${baseUnit?.name || 'وحدة'}</strong></td>
-      </tr>
+      ${voucherMovements
+        .map((m, idx) => {
+          const itm = items.find((i) => i.id === m.itemId) || item;
+          const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف مخزني');
+          const itmCode = itm?.code || m.itemCode || '-';
+          const unt = units.find((u) => u.id === m.unitId) || unit;
+          const untName = unt?.name || m.unitName || 'وحدة';
+          const bu = units.find((u) => u.id === itm?.baseUnitId) || baseUnit;
+          const buName = bu?.name || 'وحدة';
+          const cat = categories.find((c) => c.id === itm?.categoryId) || category;
+          const catName = cat?.name || 'قسم عام';
+          const qty = typeof m.quantity === 'number' && !isNaN(m.quantity) ? m.quantity : Number(m.quantity) || 0;
+          const baseQty = typeof m.baseQuantity === 'number' && !isNaN(m.baseQuantity) ? m.baseQuantity : Number(m.baseQuantity) || qty;
+
+          return `
+            <tr>
+              <td>${idx + 1}</td>
+              <td><strong>${itmName}</strong></td>
+              <td>${itmCode}</td>
+              <td>${catName}</td>
+              <td><strong>${qty} ${untName}</strong></td>
+              <td><strong>${baseQty} ${buName}</strong></td>
+            </tr>
+          `;
+        })
+        .join('')}
     </tbody>
   </table>
 
@@ -357,18 +408,34 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                <tr>
-                  <td className="py-3 px-3 text-center font-mono">1</td>
-                  <td className="py-3 px-3 font-bold text-slate-900">{item.name}</td>
-                  <td className="py-3 px-3 font-mono text-slate-600">{item.code}</td>
-                  <td className="py-3 px-3 text-slate-600">{category?.name || '-'}</td>
-                  <td className="py-3 px-3 font-bold text-slate-900 font-mono">
-                    {movement.quantity} {unit?.name || 'وحدة'}
-                  </td>
-                  <td className="py-3 px-3 font-bold font-mono text-slate-800">
-                    {movement.baseQuantity} {baseUnit?.name || 'وحدة'}
-                  </td>
-                </tr>
+                {voucherMovements.map((m, idx) => {
+                  const itm = items.find((i) => i.id === m.itemId) || item;
+                  const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف مخزني');
+                  const itmCode = itm?.code || m.itemCode || '-';
+                  const unt = units.find((u) => u.id === m.unitId) || unit;
+                  const untName = unt?.name || m.unitName || 'وحدة';
+                  const bu = units.find((u) => u.id === itm?.baseUnitId) || baseUnit;
+                  const buName = bu?.name || 'وحدة';
+                  const cat = categories.find((c) => c.id === itm?.categoryId) || category;
+                  const catName = cat?.name || 'قسم عام';
+                  const qty = typeof m.quantity === 'number' && !isNaN(m.quantity) ? m.quantity : Number(m.quantity) || 0;
+                  const baseQty = typeof m.baseQuantity === 'number' && !isNaN(m.baseQuantity) ? m.baseQuantity : Number(m.baseQuantity) || qty;
+
+                  return (
+                    <tr key={m.id || idx}>
+                      <td className="py-3 px-3 text-center font-mono">{idx + 1}</td>
+                      <td className="py-3 px-3 font-bold text-slate-900">{itmName}</td>
+                      <td className="py-3 px-3 font-mono text-slate-600">{itmCode}</td>
+                      <td className="py-3 px-3 text-slate-600">{catName}</td>
+                      <td className="py-3 px-3 font-bold text-slate-900 font-mono">
+                        {qty} {untName}
+                      </td>
+                      <td className="py-3 px-3 font-bold font-mono text-slate-800">
+                        {baseQty} {buName}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

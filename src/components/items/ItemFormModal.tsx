@@ -9,6 +9,7 @@ import {
   AlertCircle,
   HelpCircle,
   Check,
+  CheckCircle2,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { Item, UnitConversion } from '../../types/inventory';
@@ -28,12 +29,24 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     items,
     categories,
     units,
+    movements,
     addItem,
     updateItem,
     addCategory,
     addUnit,
     showToast,
   } = useInventory();
+
+  // Find live item from inventory items to ensure we always have freshest data even after updates
+  const currentItem = useMemo(() => {
+    if (!editingItem) return null;
+    return items.find((i) => i.id === editingItem.id) || editingItem;
+  }, [editingItem, items]);
+
+  const hasMovements = useMemo(() => {
+    if (!currentItem) return false;
+    return movements.some((m) => m.itemId === currentItem.id);
+  }, [currentItem, movements]);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -56,22 +69,28 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   const [showNewUnitInput, setShowNewUnitInput] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
 
-  // Real-time duplicate checks (must not duplicate across any registered active, archived, or trashed items)
+  // Real-time duplicate checks (excluding current item and deleted items)
   const isDuplicateName = useMemo(() => {
     const clean = (name || '').trim().toLowerCase();
     if (!clean) return false;
+    if (currentItem && (currentItem.name || '').trim().toLowerCase() === clean) {
+      return false;
+    }
     return items.some(
-      (i) => (!editingItem || i.id !== editingItem.id) && (i?.name || '').trim().toLowerCase() === clean
+      (i) => i.id !== currentItem?.id && !i.isDeleted && (i?.name || '').trim().toLowerCase() === clean
     );
-  }, [name, items, editingItem]);
+  }, [name, items, currentItem]);
 
   const isDuplicateCode = useMemo(() => {
     const clean = (code || '').trim().toLowerCase();
     if (!clean) return false;
+    if (currentItem && (currentItem.code || '').trim().toLowerCase() === clean) {
+      return false;
+    }
     return items.some(
-      (i) => (!editingItem || i.id !== editingItem.id) && (i?.code || '').trim().toLowerCase() === clean
+      (i) => i.id !== currentItem?.id && !i.isDeleted && (i?.code || '').trim().toLowerCase() === clean
     );
-  }, [code, items, editingItem]);
+  }, [code, items, currentItem]);
 
   // Compute next code based on all registered items in the system (including archived and trash, but excluding permanently deleted items)
   const computeNextCode = useCallback((): string => {
@@ -110,16 +129,18 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
   // Populate or reset form
   useEffect(() => {
-    if (editingItem) {
-      setName(editingItem.name || '');
-      setCode(editingItem.code || '');
-      setCategoryId(editingItem.categoryId || '');
-      setBaseUnitId(editingItem.baseUnitId || '');
-      setConversions(editingItem.conversions || []);
-      setMinStockAlert(editingItem.minStockAlert != null ? String(editingItem.minStockAlert) : '0');
-      setCostPrice(editingItem.costPrice != null ? String(editingItem.costPrice) : '');
-      setSalePrice(editingItem.salePrice != null ? String(editingItem.salePrice) : '');
-      setNotes(editingItem.notes || '');
+    if (!isOpen) return;
+
+    if (currentItem) {
+      setName(currentItem.name || '');
+      setCode(currentItem.code || '');
+      setCategoryId(currentItem.categoryId || '');
+      setBaseUnitId(currentItem.baseUnitId || '');
+      setConversions(currentItem.conversions ? JSON.parse(JSON.stringify(currentItem.conversions)) : []);
+      setMinStockAlert(currentItem.minStockAlert != null ? String(currentItem.minStockAlert) : '0');
+      setCostPrice(currentItem.costPrice != null ? String(currentItem.costPrice) : '');
+      setSalePrice(currentItem.salePrice != null ? String(currentItem.salePrice) : '');
+      setNotes(currentItem.notes || '');
       setEditReason('');
       setErrorMsg('');
     } else {
@@ -141,17 +162,17 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
     setShowNewUnitInput(false);
     setNewCatName('');
     setNewUnitName('');
-  }, [isOpen, editingItem, categories, units, computeNextCode]);
+  }, [isOpen, currentItem, categories, units, computeNextCode]);
 
   // Ensure default base unit is 'حبة' when adding a new item
   useEffect(() => {
-    if (!editingItem && isOpen && units.length > 0) {
+    if (!currentItem && isOpen && units.length > 0) {
       if (!baseUnitId || !units.some((u) => u.id === baseUnitId)) {
         const habbaUnit = units.find((u) => (u?.name || '').trim() === 'حبة');
         setBaseUnitId(habbaUnit ? habbaUnit.id : units[0].id);
       }
     }
-  }, [isOpen, editingItem, units, baseUnitId]);
+  }, [isOpen, currentItem, units, baseUnitId]);
 
   const baseUnitName = useMemo(() => {
     return units.find((u) => u.id === baseUnitId)?.name || 'الوحدة الأساسية';
@@ -324,18 +345,19 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
       categoryId,
       baseUnitId,
       conversions,
-      minStockAlert: parseFloat(minStockAlert) || 0,
+      minStockAlert: parseFloat(minStockAlert) >= 0 ? parseFloat(minStockAlert) : 0,
       costPrice: costPrice ? parseFloat(costPrice) : undefined,
       salePrice: salePrice ? parseFloat(salePrice) : undefined,
       notes: notes.trim(),
     };
 
-    if (editingItem) {
-      if (!editReason.trim()) {
-        setErrorMsg('يرجى كتابة سبب التعديل قبل حفظ التعديلات.');
+    if (currentItem) {
+      const trimmedReason = editReason.trim();
+      if (!trimmedReason) {
+        setErrorMsg('كتابة سبب التعديل إلزامية لتوثيق تعديلات الصنف (كالاسم، حد التنبيه، القسم، أو الوصف).');
         return;
       }
-      const res = updateItem(editingItem.id, payload, editReason.trim());
+      const res = updateItem(currentItem.id, payload, trimmedReason);
       if (!res.success) {
         setErrorMsg(res.error || 'حدث خطأ أثناء تعديل الصنف');
         return;
@@ -360,7 +382,7 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100 shrink-0">
           <div>
             <h3 className="text-lg font-bold text-slate-900">
-              {editingItem ? 'تعديل بيانات الصنف والتحويلات' : 'إضافة صنف جديد'}
+              {currentItem ? 'تعديل بيانات الصنف والتحويلات' : 'إضافة صنف جديد'}
             </h3>
             <p className="text-xs text-slate-500">
               حدد اسم الصنف، وقسمه، والوحدة الأساسية ومعاملات التحويل المخصصة
@@ -490,6 +512,11 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
               <option value="" disabled>
                 -- اختر القسم --
               </option>
+              {categoryId && !categories.some((c) => c.id === categoryId) && (
+                <option value={categoryId}>
+                  القسم الحالي المسجل للصنف
+                </option>
+              )}
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -514,17 +541,19 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
                   هي أصغر وحدة يعتمد عليها الرصيد وحسابات المخزون (مثل: حبة، قطعة، كيلو)
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowNewUnitInput(!showNewUnitInput)}
-                className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <Scale className="w-3.5 h-3.5" />
-                <span>{showNewUnitInput ? 'إلغاء' : '+ وحدة جديدة'}</span>
-              </button>
+              {!hasMovements && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewUnitInput(!showNewUnitInput)}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>{showNewUnitInput ? 'إلغاء' : '+ وحدة جديدة'}</span>
+                </button>
+              )}
             </div>
 
-            {showNewUnitInput ? (
+            {!hasMovements && showNewUnitInput ? (
               <div className="flex gap-2 mb-2 p-2.5 bg-white rounded-xl border border-emerald-300 shadow-xs animate-in fade-in duration-150">
                 <input
                   type="text"
@@ -548,18 +577,31 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             <select
               value={baseUnitId}
               onChange={(e) => setBaseUnitId(e.target.value)}
+              disabled={hasMovements}
               required
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-colors"
+              className={`w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-colors ${
+                hasMovements ? 'bg-slate-100 text-slate-500 cursor-not-allowed opacity-90' : ''
+              }`}
             >
               <option value="" disabled>
                 -- اختر الوحدة الأساسية --
               </option>
+              {baseUnitId && !units.some((u) => u.id === baseUnitId) && (
+                <option value={baseUnitId}>
+                  الوحدة الأساسية الحالية للصنف
+                </option>
+              )}
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} {u.symbol ? `(${u.symbol})` : ''}
                 </option>
               ))}
             </select>
+            {hasMovements && (
+              <p className="text-[11px] text-amber-800 mt-1.5 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200">
+                🔒 الوحدة الأساسية ثابتة لوجود حركات مخزنية مسجلة بهذا الصنف حفاظاً على سلامة الأرصدة. يمكنك تعديل باقي البيانات بحرية.
+              </p>
+            )}
           </div>
 
           {/* Unit Conversions - Requirement 5 */}
@@ -704,38 +746,53 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">ملاحظات الصنف</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">ملاحظات أو وصف الصنف (اختياري)</label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="وصف الصنف، مكان التخزين بالمستودع، إلخ..."
-              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-medium focus:bg-white"
+              placeholder="وصف الصنف، مكان التخزين بالمستودع، ملاحظات الجودة، إلخ..."
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs font-medium focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
             />
           </div>
 
-          {/* Mandatory Edit Reason when editing an item */}
-          {editingItem && (
-            <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-300">
-              <label className="block text-xs font-bold text-amber-950 mb-1.5">
-                سبب التعديل <span className="text-rose-600 font-extrabold">* (إلزامي ولا يقبل التعديل بدونه)</span>
-              </label>
-              <textarea
-                rows={2}
+          {/* Edit Reason when editing an item (MANDATORY) */}
+          {currentItem && (
+            <div className={`p-4 rounded-xl border transition-all ${
+              !editReason.trim()
+                ? 'bg-amber-50/70 border-amber-300'
+                : 'bg-emerald-50/50 border-emerald-300'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1.5">
+                <label className="block text-xs font-bold text-slate-800">
+                  سبب التعديل <span className="text-rose-600 font-extrabold">* (إلزامي لتوثيق سجل الرقابة)</span>
+                </label>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  يشمل تعديلات: الاسم، حد التنبيه، القسم، الوصف، والأسعار
+                </span>
+              </div>
+              <input
+                type="text"
                 required
                 value={editReason}
                 onChange={(e) => {
                   setEditReason(e.target.value);
                   if (errorMsg) setErrorMsg('');
                 }}
-                placeholder="اكتب سبب تعديل هذا الصنف هنا (مثال: تحديث سعر البيع، تصحيح حد التنبيه، ضبط وحدات التحويل)..."
-                className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-900 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                placeholder="اكتب سبب تعديل بيانات الصنف هنا (إلزامي)... مثال: تصحيح حد التنبيه / نقل لقسم جديد / تعديل الاسم التجاري"
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-2xs"
               />
               {!editReason.trim() ? (
-                <p className="text-[11px] text-rose-600 font-bold mt-1">
-                  * النظام لن يقبل حفظ التعديل حتى تقوم بكتابة السبب.
+                <p className="text-[11px] text-amber-800 font-bold mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>يجب إدخال سبب التعديل لحفظ التغييرات على هذا الصنف المسجل.</span>
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>سيتم توثيق هذا السبب مع بياناتك وتاريخ التعديل في سجل الرقابة والتدقيق.</span>
+                </p>
+              )}
             </div>
           )}
 
@@ -750,10 +807,17 @@ export const ItemFormModal: React.FC<ItemFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={Boolean(editingItem && !editReason.trim()) || isDuplicateName || isDuplicateCode}
+              disabled={
+                !name.trim() ||
+                !categoryId ||
+                !baseUnitId ||
+                isDuplicateName ||
+                isDuplicateCode ||
+                (currentItem !== null && !editReason.trim())
+              }
               className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer"
             >
-              {editingItem ? 'حفظ التعديلات' : 'إضافة الصنف'}
+              {currentItem ? 'حفظ التعديلات' : 'إضافة الصنف'}
             </button>
           </div>
         </form>

@@ -289,7 +289,10 @@ const InventoryApp: React.FC = () => {
       {/* 1. Item Form Modal */}
       <ItemFormModal
         isOpen={isItemModalOpen}
-        onClose={() => setIsItemModalOpen(false)}
+        onClose={() => {
+          setIsItemModalOpen(false);
+          setEditingItem(null);
+        }}
         editingItem={editingItem}
       />
 

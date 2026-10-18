@@ -14,9 +14,21 @@ export const FactoryVoucherModal: React.FC<FactoryVoucherModalProps> = ({
   onClose,
   movement,
 }) => {
-  const { companySettings, items, units, categories, getItemStock } = useInventory();
+  const { companySettings, items, units, categories, movements, getItemStock } = useInventory();
 
   if (!isOpen || !movement) return null;
+
+  const cleanRef = (movement.referenceNumber || '').trim().toLowerCase();
+  const cleanBatch = (movement.batchId || '').trim().toLowerCase();
+
+  const related = movements.filter((m) => {
+    if (cleanBatch && (m.batchId || '').trim().toLowerCase() === cleanBatch) return true;
+    if (cleanRef && (m.referenceNumber || '').trim().toLowerCase() === cleanRef) return true;
+    if (m.productionOrderId && m.productionOrderId === movement.productionOrderId) return true;
+    return m.id === movement.id;
+  });
+
+  const factoryMovements = related.length > 0 ? related : [movement];
 
   const item = items.find((i) => i.id === movement.itemId);
   const unit = units.find((u) => u.id === movement.unitId);
@@ -226,19 +238,37 @@ export const FactoryVoucherModal: React.FC<FactoryVoucherModalProps> = ({
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td style="text-align: center; font-weight: bold;">1</td>
-        <td style="font-family: monospace; font-weight: bold;">${item?.code || '-'}</td>
-        <td style="font-weight: 700;">${item?.name || 'صنف غير معروف'}</td>
-        <td>${category?.name || '-'}</td>
-        <td style="text-align: center; font-weight: 900; font-size: 15px; color: ${isOut ? '#b91c1c' : '#047857'};">
-          ${isOut ? '-' : '+'}${movement.quantity}
-        </td>
-        <td>${unit?.name || 'وحدة'}</td>
-        <td style="text-align: center; font-weight: bold;">
-          ${movement.baseQuantity} ${baseUnit?.name || ''}
-        </td>
-      </tr>
+      ${factoryMovements
+        .map((m, idx) => {
+          const itm = items.find((i) => i.id === m.itemId) || item;
+          const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف تصنيع');
+          const itmCode = itm?.code || m.itemCode || '-';
+          const unt = units.find((u) => u.id === m.unitId) || unit;
+          const untName = unt?.name || m.unitName || 'وحدة';
+          const bu = units.find((u) => u.id === itm?.baseUnitId) || baseUnit;
+          const buName = bu?.name || 'وحدة';
+          const cat = categories.find((c) => c.id === itm?.categoryId) || category;
+          const catName = cat?.name || '-';
+          const qty = typeof m.quantity === 'number' && !isNaN(m.quantity) ? m.quantity : Number(m.quantity) || 0;
+          const baseQty = typeof m.baseQuantity === 'number' && !isNaN(m.baseQuantity) ? m.baseQuantity : Number(m.baseQuantity) || qty;
+
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-family: monospace; font-weight: bold;">${itmCode}</td>
+              <td style="font-weight: 700;">${itmName}</td>
+              <td>${catName}</td>
+              <td style="text-align: center; font-weight: 900; font-size: 15px; color: ${isOut ? '#b91c1c' : '#047857'};">
+                ${isOut ? '-' : '+'}${qty}
+              </td>
+              <td>${untName}</td>
+              <td style="text-align: center; font-weight: bold;">
+                ${baseQty} ${buName}
+              </td>
+            </tr>
+          `;
+        })
+        .join('')}
     </tbody>
   </table>
 
@@ -400,22 +430,38 @@ export const FactoryVoucherModal: React.FC<FactoryVoucherModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                <tr className="hover:bg-slate-50/50">
-                  <td className="p-2.5 text-center font-bold text-slate-400">1</td>
-                  <td className="p-2.5 font-mono font-bold text-slate-700">{item?.code || '-'}</td>
-                  <td className="p-2.5 font-black text-slate-900">{item?.name || 'صنف غير معروف'}</td>
-                  <td className="p-2.5 text-slate-600">{category?.name || '-'}</td>
-                  <td className="p-2.5 text-center font-black text-sm">
-                    <span className={isOut ? 'text-rose-700' : 'text-emerald-700'}>
-                      {isOut ? '-' : '+'}
-                      {movement.quantity}
-                    </span>
-                  </td>
-                  <td className="p-2.5 font-bold text-slate-700">{unit?.name || 'وحدة'}</td>
-                  <td className="p-2.5 text-center font-mono font-bold text-slate-800">
-                    {movement.baseQuantity} {baseUnit?.name || ''}
-                  </td>
-                </tr>
+                {factoryMovements.map((m, idx) => {
+                  const itm = items.find((i) => i.id === m.itemId) || item;
+                  const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف تصنيع');
+                  const itmCode = itm?.code || m.itemCode || '-';
+                  const unt = units.find((u) => u.id === m.unitId) || unit;
+                  const untName = unt?.name || m.unitName || 'وحدة';
+                  const bu = units.find((u) => u.id === itm?.baseUnitId) || baseUnit;
+                  const buName = bu?.name || 'وحدة';
+                  const cat = categories.find((c) => c.id === itm?.categoryId) || category;
+                  const catName = cat?.name || '-';
+                  const qty = typeof m.quantity === 'number' && !isNaN(m.quantity) ? m.quantity : Number(m.quantity) || 0;
+                  const baseQty = typeof m.baseQuantity === 'number' && !isNaN(m.baseQuantity) ? m.baseQuantity : Number(m.baseQuantity) || qty;
+
+                  return (
+                    <tr key={m.id || idx} className="hover:bg-slate-50/50">
+                      <td className="p-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-700">{itmCode}</td>
+                      <td className="p-2.5 font-black text-slate-900">{itmName}</td>
+                      <td className="p-2.5 text-slate-600">{catName}</td>
+                      <td className="p-2.5 text-center font-black text-sm">
+                        <span className={isOut ? 'text-rose-700' : 'text-emerald-700'}>
+                          {isOut ? '-' : '+'}
+                          {qty}
+                        </span>
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-700">{untName}</td>
+                      <td className="p-2.5 text-center font-mono font-bold text-slate-800">
+                        {baseQty} {buName}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

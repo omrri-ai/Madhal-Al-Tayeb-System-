@@ -17,12 +17,14 @@ import {
   List,
   RefreshCw,
   ClipboardCheck,
+  Printer,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { Item, ItemStockSummary } from '../../types/inventory';
 import { ItemDetailModal } from './ItemDetailModal';
 import { InventoryAuditView } from './InventoryAuditView';
+import { UniversalReportModal } from '../reports/UniversalReportModal';
 
 interface ItemsViewProps {
   onOpenAddItem: () => void;
@@ -65,6 +67,7 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
   const [viewMode, setViewMode] = useState<'items' | 'audit'>(initialViewMode || 'items');
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const itemsSummaries = useMemo(() => {
     return getAllItemsSummary(false, false);
@@ -123,15 +126,28 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
           </button>
         </div>
 
-        {viewMode === 'items' && isAdmin && (
-          <button
-            onClick={onOpenAddItem}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة صنف جديد</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {viewMode === 'items' && (
+            <button
+              onClick={() => setIsReportModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+              title="معاينة وطباعة تقرير الأصناف والمخزون وتصديره PDF"
+            >
+              <Printer className="w-4 h-4 text-emerald-600" />
+              <span>تقرير وطباعة المخزون</span>
+            </button>
+          )}
+
+          {viewMode === 'items' && isAdmin && (
+            <button
+              onClick={onOpenAddItem}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة صنف جديد</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Return to Reports Banner if arrived from ReportsView in items mode */}

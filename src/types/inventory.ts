@@ -62,6 +62,7 @@ export interface Item {
   costPrice?: number; // Optional cost per base unit
   salePrice?: number; // Optional selling price per base unit
   notes?: string;
+  color?: string;
   archiveReason?: string; // Reason why item was archived
   deleteReason?: string; // Reason why item was deleted
   editReason?: string; // Last reason why item was modified
@@ -132,6 +133,11 @@ export interface StockMovement {
   date: string; // ISO date-time string
   referenceNumber?: string; // Invoice / Receipt / Doc number
   notes?: string;
+
+  // Item & Unit snapshot fields for fail-safe printing
+  itemName?: string;
+  itemCode?: string;
+  unitName?: string;
   
   // Destination / Source Snapshot metadata
   destinationType?: 'DIRECT' | 'BRANCH' | 'CUSTOMER' | 'DAMAGED' | 'TRANSFER' | 'PRODUCTION' | 'FACTORY' | 'OTHER';

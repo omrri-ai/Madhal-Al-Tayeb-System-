@@ -30,16 +30,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   onEdit,
   onRecordMovement,
 }) => {
-  const { getItemStockSummary, movements, units, categories } = useInventory();
+  const { items, getItemStockSummary, movements, units, categories } = useInventory();
   const { isAdmin } = useAuth();
 
   if (!isOpen || !item) return null;
 
-  const summary = getItemStockSummary(item.id);
-  const itemMovements = movements.filter((m) => m.itemId === item.id);
+  const currentLiveItem = items.find((i) => i.id === item.id) || item;
+  const summary = getItemStockSummary(currentLiveItem.id);
+  const itemMovements = movements.filter((m) => m.itemId === currentLiveItem.id);
 
-  const category = categories.find((c) => c.id === item.categoryId);
-  const baseUnit = units.find((u) => u.id === item.baseUnitId);
+  const category = categories.find((c) => c.id === currentLiveItem.categoryId);
+  const baseUnit = units.find((u) => u.id === currentLiveItem.baseUnitId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
@@ -52,9 +53,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-slate-900">{item.name}</h3>
+                <h3 className="text-lg font-bold text-slate-900">{currentLiveItem.name}</h3>
                 <span className="text-xs px-2 py-0.5 rounded-md font-mono bg-slate-100 text-slate-600">
-                  {item.code}
+                  {currentLiveItem.code}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -68,7 +69,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               <button
                 onClick={() => {
                   onClose();
-                  onEdit(item);
+                  onEdit(currentLiveItem);
                 }}
                 className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                 title="تعديل الصنف"
@@ -105,7 +106,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
               )}
               {summary?.status === 'LOW_STOCK' && (
                 <span className="inline-block mt-2 text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded">
-                  مخزون منخفض (أقل من {item.minStockAlert})
+                  مخزون منخفض (أقل من {currentLiveItem.minStockAlert})
                 </span>
               )}
             </div>

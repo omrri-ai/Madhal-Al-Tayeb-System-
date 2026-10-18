@@ -39,8 +39,9 @@ import { AnalyticsCharts } from './AnalyticsCharts';
 import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
 
 import { NavView } from '../common/Navigation';
-
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
+import { UniversalReportModal } from './UniversalReportModal';
+import { ReportSectionKey } from '../../utils/reportSectionGenerators';
 
 function isDateInRange(dateStr: string | undefined | null, start: Date, end: Date): boolean {
   if (!dateStr) return false;
@@ -72,14 +73,17 @@ export type ExtendedPeriod =
 
 export type ReportTab =
   | 'dashboard'
-  | 'movements'
+  | 'movement_activity'
+  | 'stagnant'
+  | 'top_selling'
+  | 'incoming'
+  | 'outgoing'
   | 'returns'
+  | 'production'
+  | 'adjustments'
+  | 'low_stock'
   | 'branches'
   | 'categories'
-  | 'stagnant'
-  | 'turnover'
-  | 'alerts'
-  | 'production'
   | 'damaged';
 
 export interface ReportsFilterState {
@@ -140,6 +144,40 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   // Full Printable Preview Modal state
   const [isReportPreviewOpen, setIsReportPreviewOpen] = useState<boolean>(false);
+
+  // Section Report Modal State (for 1-click printing/PDF of Production, Returns, Movements, etc.)
+  const [isSectionReportModalOpen, setIsSectionReportModalOpen] = useState<boolean>(false);
+  const [sectionReportConfig, setSectionReportConfig] = useState<{
+    sections: ReportSectionKey[];
+    title: string;
+    extraParams?: Record<string, any>;
+  }>({
+    sections: ['production'],
+    title: 'تقرير الإنتاج والتصنيع',
+  });
+
+  const handleOpenSectionReport = (
+    sections: ReportSectionKey[],
+    title: string,
+    extraParams?: Record<string, any>
+  ) => {
+    setSectionReportConfig({ sections, title, extraParams });
+    setIsSectionReportModalOpen(true);
+    playNotificationSound('bell');
+  };
+
+  const handleExportSectionCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [headers.join(','), ...rows.map((row) => row.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Manual refresh state for recalculating analytics
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -1154,14 +1192,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <div className="flex border-b border-slate-200 overflow-x-auto gap-2 text-xs font-bold">
         {[
           { id: 'dashboard', label: 'لوحة المؤشرات العامة', icon: Activity },
-          { id: 'movements', label: 'حركة الأصناف (الأكثر والأقل)', icon: TrendingUp },
-          { id: 'returns', label: 'تقرير المرتجعات (وارد وصادر)', icon: RotateCcw },
-          { id: 'production', label: 'حركات الإنتاج والتصنيع', icon: Factory },
-          { id: 'damaged', label: 'تحليل التالف', icon: AlertTriangle },
+          { id: 'movement_activity', label: 'حركة الأصناف (الأكثر والأقل)', icon: TrendingUp },
           { id: 'stagnant', label: 'الأصناف الراكدة', icon: Clock },
-          { id: 'branches', label: 'تحليل الفروع والمواقع', icon: Building2 },
-          { id: 'categories', label: 'تحليل الأقسام والتصنيفات', icon: Layers },
-          { id: 'alerts', label: 'تنبيهات حد الطلب والمراجعة', icon: AlertTriangle },
+          { id: 'top_selling', label: 'الأصناف الأكثر مبيعاً', icon: BarChart3 },
+          { id: 'incoming', label: 'الوارد والتوريد', icon: ArrowDownLeft },
+          { id: 'outgoing', label: 'الصادر والصرف', icon: ArrowUpRight },
+          { id: 'returns', label: 'المرتجعات', icon: RotateCcw },
+          { id: 'production', label: 'الإنتاج والتصنيع', icon: Factory },
+          { id: 'adjustments', label: 'التسويات الجردية', icon: SlidersHorizontal },
+          { id: 'low_stock', label: 'الأصناف الناقصة / رصيدها صفر', icon: AlertTriangle },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1673,7 +1712,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <span>الأصناف الأكثر صرفاً وخروجاً</span>
                 </h4>
                 <button
-                  onClick={() => setActiveTab('movements')}
+                  onClick={() => setActiveTab('movement_activity')}
                   className="text-xs text-emerald-600 hover:text-emerald-700 font-bold cursor-pointer"
                 >
                   عرض السجل الكامل ←
@@ -1720,7 +1759,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <span>الأصناف الأكثر توريداً ودخولاً</span>
                 </h4>
                 <button
-                  onClick={() => setActiveTab('movements')}
+                  onClick={() => setActiveTab('movement_activity')}
                   className="text-xs text-emerald-600 hover:text-emerald-700 font-bold cursor-pointer"
                 >
                   عرض السجل الكامل ←
@@ -1762,9 +1801,540 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       )}
 
-      {/* TAB 2: DETAILED ITEM MOVEMENTS (Fast / Slow Movers) */}
-      {activeTab === 'movements' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+      {/* TAB: TOP SELLING ITEMS */}
+      {activeTab === 'top_selling' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-black text-slate-900">تقرير الأصناف الأكثر مبيعاً وحركة</h4>
+                  <span className="text-xs bg-purple-50 text-purple-800 font-mono font-bold px-2.5 py-0.5 rounded-full border border-purple-200">
+                    {itemActivityAnalysis.topOutItems.length} صنف
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  الأصناف الأسرع سحباً وخروجاً مرتبة حسب إجمالي الكميات المنصرفة
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  const headers = ['الترتيب', 'الصنف', 'الرمز (SKU)', 'الكمية المصروفة', 'عدد الحركات'];
+                  const rows = itemActivityAnalysis.topOutItems.map((t, idx) => [
+                    idx + 1,
+                    t.item.name,
+                    t.item.code || '-',
+                    `${t.outQty} ${t.baseUnitName}`,
+                    t.outCount,
+                  ]);
+                  handleExportSectionCSV('تقرير_الأصناف_الأكثر_مبيعاً', headers, rows);
+                }}
+                disabled={itemActivityAnalysis.topOutItems.length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  itemActivityAnalysis.topOutItems.length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['items'], 'تقرير الأصناف الأكثر مبيعاً وحركة')}
+                disabled={itemActivityAnalysis.topOutItems.length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  itemActivityAnalysis.topOutItems.length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>تصدير PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['items'], 'تقرير الأصناف الأكثر مبيعاً وحركة')}
+                disabled={itemActivityAnalysis.topOutItems.length === 0}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  itemActivityAnalysis.topOutItems.length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة هذا التقرير</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            {itemActivityAnalysis.topOutItems.length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-500 font-bold">
+                لا توجد بيانات للأصناف الأكثر مبيعاً أو صرفاً خلال هذه الفترة.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4 text-center w-12">#</th>
+                      <th className="py-3 px-4">الصنف والرمز</th>
+                      <th className="py-3 px-4">إجمالي الكمية المنصرفة</th>
+                      <th className="py-3 px-4">عدد العمليات والسندات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
+                    {itemActivityAnalysis.topOutItems.map((t, idx) => (
+                      <tr key={t.item.id} className="hover:bg-slate-50/80">
+                        <td className="py-3 px-4 text-center font-bold font-mono text-slate-500">{idx + 1}</td>
+                        <td className="py-3 px-4 font-bold text-slate-900">
+                          {t.item.name} <span className="text-[10px] text-slate-400 font-mono">({t.item.code || '-'})</span>
+                        </td>
+                        <td className="py-3 px-4 font-mono font-black text-rose-700">-{t.outQty} {t.baseUnitName}</td>
+                        <td className="py-3 px-4 font-mono text-slate-600">{t.outCount} عملية</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: INCOMING SHIPMENTS */}
+      {activeTab === 'incoming' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                <ArrowDownLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-black text-slate-900">تقرير حركات الوارد والتوريد المخزني</h4>
+                  <span className="text-xs bg-emerald-50 text-emerald-800 font-mono font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    {currentMovements.filter((m) => isIncomingMovement(m.type)).length} حركة
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  عرض تفصيلي لجميع السندات والواردات المسجلة بالفترة
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  const filteredIn = currentMovements.filter((m) => isIncomingMovement(m.type));
+                  const headers = ['رقم السند', 'التاريخ والوقت', 'الصنف', 'الكمية', 'الوحدة', 'الملاحظات'];
+                  const rows = filteredIn.map((m) => {
+                    const item = items.find((i) => i.id === m.itemId);
+                    const unit = units.find((u) => u.id === m.unitId);
+                    return [
+                      m.referenceNumber || `IN-${m.id.substring(0, 6)}`,
+                      new Date(m.date).toLocaleString('ar-SA'),
+                      item?.name || 'صنف',
+                      m.quantity,
+                      unit?.name || 'وحدة',
+                      m.notes || '-',
+                    ];
+                  });
+                  handleExportSectionCSV('تقرير_الوارد_والتوريد', headers, rows);
+                }}
+                disabled={currentMovements.filter((m) => isIncomingMovement(m.type)).length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentMovements.filter((m) => isIncomingMovement(m.type)).length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير حركات الوارد والتوريد', { type: 'IN' })}
+                disabled={currentMovements.filter((m) => isIncomingMovement(m.type)).length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentMovements.filter((m) => isIncomingMovement(m.type)).length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>تصدير PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير حركات الوارد والتوريد', { type: 'IN' })}
+                disabled={currentMovements.filter((m) => isIncomingMovement(m.type)).length === 0}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  currentMovements.filter((m) => isIncomingMovement(m.type)).length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة تقرير الوارد</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            {currentMovements.filter((m) => isIncomingMovement(m.type)).length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-500 font-bold">
+                لا توجد حركات وارد أو توريد مسجلة خلال هذه الفترة.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">رقم السند</th>
+                      <th className="py-3 px-4">التاريخ والوقت</th>
+                      <th className="py-3 px-4">الصنف</th>
+                      <th className="py-3 px-4 font-center">الكمية والوحدة</th>
+                      <th className="py-3 px-4">الملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
+                    {currentMovements.filter((m) => isIncomingMovement(m.type)).map((m, idx) => {
+                      const item = items.find((i) => i.id === m.itemId);
+                      const unit = units.find((u) => u.id === m.unitId);
+                      return (
+                        <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/80">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                            <button onClick={() => setVoucherMovement(m)} className="hover:underline text-emerald-700">
+                              {m.referenceNumber || `#${m.id.substring(0, 6)}`}
+                            </button>
+                          </td>
+                          <td className="py-3 px-4 font-medium text-slate-600">{new Date(m.date).toLocaleString('ar-SA')}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{item?.name || 'صنف'}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-emerald-700">+{m.quantity} {unit?.name || 'وحدة'}</td>
+                          <td className="py-3 px-4 text-slate-600">{m.notes || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: OUTGOING DISPATCHES */}
+      {activeTab === 'outgoing' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 flex items-center justify-center shrink-0">
+                <ArrowUpRight className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-black text-slate-900">تقرير حركات الصادر والصرف</h4>
+                  <span className="text-xs bg-rose-50 text-rose-800 font-mono font-bold px-2.5 py-0.5 rounded-full border border-rose-200">
+                    {currentMovements.filter((m) => isOutgoingMovement(m.type)).length} حركة
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  تفاصيل شحنات الصرف الصادرة للعملاء والفروع والجهات المخزنية
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  const filteredOut = currentMovements.filter((m) => isOutgoingMovement(m.type));
+                  const headers = ['رقم السند', 'التاريخ والوقت', 'الصنف', 'الكمية', 'الوحدة', 'الجهة / الوجهة', 'الملاحظات'];
+                  const rows = filteredOut.map((m) => {
+                    const item = items.find((i) => i.id === m.itemId);
+                    const unit = units.find((u) => u.id === m.unitId);
+                    return [
+                      m.referenceNumber || `OUT-${m.id.substring(0, 6)}`,
+                      new Date(m.date).toLocaleString('ar-SA'),
+                      item?.name || 'صنف',
+                      m.quantity,
+                      unit?.name || 'وحدة',
+                      m.destinationName || m.branchName || m.customerName || 'صرف عام',
+                      m.notes || '-',
+                    ];
+                  });
+                  handleExportSectionCSV('تقرير_الصادر_والصرف', headers, rows);
+                }}
+                disabled={currentMovements.filter((m) => isOutgoingMovement(m.type)).length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentMovements.filter((m) => isOutgoingMovement(m.type)).length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير حركات الصادر والصرف', { type: 'OUT' })}
+                disabled={currentMovements.filter((m) => isOutgoingMovement(m.type)).length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentMovements.filter((m) => isOutgoingMovement(m.type)).length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>تصدير PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير حركات الصادر والصرف', { type: 'OUT' })}
+                disabled={currentMovements.filter((m) => isOutgoingMovement(m.type)).length === 0}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  currentMovements.filter((m) => isOutgoingMovement(m.type)).length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة تقرير الصادر</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            {currentMovements.filter((m) => isOutgoingMovement(m.type)).length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-500 font-bold">
+                لا توجد حركات صادر أو صرف مسجلة خلال هذه الفترة.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">رقم السند</th>
+                      <th className="py-3 px-4">التاريخ والوقت</th>
+                      <th className="py-3 px-4">الصنف</th>
+                      <th className="py-3 px-4">الكمية والوحدة</th>
+                      <th className="py-3 px-4">الجهة / الوجهة</th>
+                      <th className="py-3 px-4">الملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
+                    {currentMovements.filter((m) => isOutgoingMovement(m.type)).map((m, idx) => {
+                      const item = items.find((i) => i.id === m.itemId);
+                      const unit = units.find((u) => u.id === m.unitId);
+                      const dest = m.destinationName || m.branchName || m.customerName || 'صرف عام';
+                      return (
+                        <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/80">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                            <button onClick={() => setVoucherMovement(m)} className="hover:underline text-rose-700">
+                              {m.referenceNumber || `#${m.id.substring(0, 6)}`}
+                            </button>
+                          </td>
+                          <td className="py-3 px-4 font-medium text-slate-600">{new Date(m.date).toLocaleString('ar-SA')}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{item?.name || 'صنف'}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-rose-700">-{m.quantity} {unit?.name || 'وحدة'}</td>
+                          <td className="py-3 px-4 font-medium text-slate-700">{dest}</td>
+                          <td className="py-3 px-4 text-slate-600">{m.notes || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: STOCK ADJUSTMENTS */}
+      {activeTab === 'adjustments' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center shrink-0">
+                <SlidersHorizontal className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-black text-slate-900">تقرير التسويات الجردية والرقابة</h4>
+                  <span className="text-xs bg-amber-50 text-amber-800 font-mono font-bold px-2.5 py-0.5 rounded-full border border-amber-200">
+                    {currentMovements.filter((m) => m.type === 'ADJUSTMENT').length} تسوية
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  سجل تعديلات الجرد والفروقات بين الأرصدة الدفترية والأرصدة الفعلية
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  const filteredAdj = currentMovements.filter((m) => m.type === 'ADJUSTMENT');
+                  const headers = ['رقم السند', 'التاريخ والوقت', 'الصنف', 'الفارق الجردي', 'الملاحظات والسبب'];
+                  const rows = filteredAdj.map((m) => {
+                    const item = items.find((i) => i.id === m.itemId);
+                    return [
+                      m.referenceNumber || `ADJ-${m.id.substring(0, 6)}`,
+                      new Date(m.date).toLocaleString('ar-SA'),
+                      item?.name || 'صنف',
+                      m.baseQuantity,
+                      m.notes || '-',
+                    ];
+                  });
+                  handleExportSectionCSV('تقرير_التسويات_الجردية', headers, rows);
+                }}
+                disabled={currentMovements.filter((m) => m.type === 'ADJUSTMENT').length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentMovements.filter((m) => m.type === 'ADJUSTMENT').length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير التسويات الجردية', { type: 'ADJUSTMENT' })}
+                disabled={currentMovements.filter((m) => m.type === 'ADJUSTMENT').length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentMovements.filter((m) => m.type === 'ADJUSTMENT').length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>تصدير PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير التسويات الجردية', { type: 'ADJUSTMENT' })}
+                disabled={currentMovements.filter((m) => m.type === 'ADJUSTMENT').length === 0}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  currentMovements.filter((m) => m.type === 'ADJUSTMENT').length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة تقرير التسويات</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            {currentMovements.filter((m) => m.type === 'ADJUSTMENT').length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-500 font-bold">
+                لا توجد تسويات جردية مسجلة خلال هذه الفترة.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4">رقم السند</th>
+                      <th className="py-3 px-4">التاريخ والوقت</th>
+                      <th className="py-3 px-4">الصنف</th>
+                      <th className="py-3 px-4 font-center">الفرق الجردي</th>
+                      <th className="py-3 px-4">الملاحظات والسبب</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
+                    {currentMovements.filter((m) => m.type === 'ADJUSTMENT').map((m, idx) => {
+                      const item = items.find((i) => i.id === m.itemId);
+                      const isPos = m.baseQuantity >= 0;
+                      return (
+                        <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/80">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                            <button onClick={() => setVoucherMovement(m)} className="hover:underline text-amber-700">
+                              {m.referenceNumber || `#${m.id.substring(0, 6)}`}
+                            </button>
+                          </td>
+                          <td className="py-3 px-4 font-medium text-slate-600">{new Date(m.date).toLocaleString('ar-SA')}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{item?.name || 'صنف'}</td>
+                          <td className={`py-3 px-4 font-mono font-bold ${isPos ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {isPos ? `+${m.baseQuantity}` : `${m.baseQuantity}`}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">{m.notes || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: DETAILED ITEM MOVEMENTS */}
+      {activeTab === 'movement_activity' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-black text-slate-900">تقرير حركة ونشاط الأصناف التفصيلية</h4>
+                  <span className="text-xs bg-emerald-50 text-emerald-800 font-mono font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    {itemActivityAnalysis.mostActiveItems.length} صنف
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  تتبع إجمالي الوارد والصادر ومعدل النشاط والرصيد المتوفر الحالي
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  const headers = ['الصنف', 'الرمز (SKU)', 'القسم', 'إجمالي الوارد', 'إجمالي الصادر', 'صافي الحركة', 'الرصيد المتاح'];
+                  const rows = itemActivityAnalysis.mostActiveItems.map((t) => [
+                    t.item.name,
+                    t.item.code || '-',
+                    t.categoryName,
+                    `+${t.inQty}`,
+                    `-${t.outQty}`,
+                    t.inQty - t.outQty,
+                    t.currentStock,
+                  ]);
+                  handleExportSectionCSV('تقرير_حركة_الأصناف_التفصيلية', headers, rows);
+                }}
+                disabled={itemActivityAnalysis.mostActiveItems.length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  itemActivityAnalysis.mostActiveItems.length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير حركة ونشاط الأصناف التفصيلية')}
+                disabled={itemActivityAnalysis.mostActiveItems.length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  itemActivityAnalysis.mostActiveItems.length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>تصدير PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['movements'], 'تقرير حركة ونشاط الأصناف التفصيلية')}
+                disabled={itemActivityAnalysis.mostActiveItems.length === 0}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  itemActivityAnalysis.mostActiveItems.length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة هذا التقرير</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -1904,7 +2474,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
           )}
         </div>
-      )}
+      </div>
+    )}
 
       {/* TAB 3: STAGNANT ITEMS (الراكدة) */}
       {activeTab === 'stagnant' && (
@@ -2403,8 +2974,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
       )}
 
-      {/* TAB 6: ALERTS & REORDER REVIEW */}
-      {activeTab === 'alerts' && (
+      {/* TAB 10: LOW STOCK & ZERO BALANCE */}
+      {activeTab === 'low_stock' && (
         <div className="space-y-6">
           {/* Low stock alerts */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
@@ -2557,7 +3128,80 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       )}
 
       {activeTab === 'production' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="space-y-6">
+          {/* Action Toolbar for Production */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shrink-0">
+                <Factory className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-black text-slate-900">تقرير أوامر وحركات الإنتاج والتصنيع</h4>
+                  <span className="text-xs bg-indigo-50 text-indigo-800 font-mono font-bold px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    {productionReportMovements.length} حركة
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  تفاصيل كاملة عن المواد المسحوبة للتصنيع والإنتاج التام والمستلم
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  const headers = ['رقم السند', 'التاريخ والوقت', 'نوع الحركة', 'الصنف', 'الكمية والوحدة', 'الملاحظات'];
+                  const rows = productionReportMovements.map((m) => {
+                    const item = items.find((i) => i.id === m.itemId);
+                    const unit = units.find((u) => u.id === m.unitId);
+                    return [
+                      m.referenceNumber || `PROD-${m.id.substring(0, 6)}`,
+                      new Date(m.date).toLocaleString('ar-SA'),
+                      m.type,
+                      item?.name || 'صنف',
+                      `${m.quantity} ${unit?.name || 'وحدة'}`,
+                      m.notes || '-',
+                    ];
+                  });
+                  handleExportSectionCSV('تقرير_الإنتاج_والتصنيع', headers, rows);
+                }}
+                disabled={productionReportMovements.length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  productionReportMovements.length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['production'], 'تقرير أوامر حركات الإنتاج والتصنيع')}
+                disabled={productionReportMovements.length === 0}
+                className={`flex items-center gap-1.5 px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  productionReportMovements.length > 0 ? 'border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs' : 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-rose-600" />
+                <span>تصدير PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenSectionReport(['production'], 'تقرير أوامر حركات الإنتاج والتصنيع')}
+                disabled={productionReportMovements.length === 0}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  productionReportMovements.length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>طباعة تقرير الإنتاج والتصنيع</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div>
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -2630,8 +3274,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900">{item?.name || 'صنف غير معروف'}</div>
-                          <div className="text-[10px] font-mono text-slate-400">{item?.code || '-'}</div>
+                          <div className="font-bold text-slate-900">{item?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف تصنيع')}</div>
+                          <div className="text-[10px] font-mono text-slate-400">{item?.code || m.itemCode || '-'}</div>
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap font-mono font-black">
                           <span className={isOut ? 'text-rose-700' : 'text-emerald-700'}>
@@ -2652,7 +3296,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
           )}
         </div>
-      )}
+      </div>
+    )}
 
       {/* FULL PRINTABLE MODAL PREVIEW */}
       {isReportPreviewOpen && (
@@ -2844,6 +3489,26 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Universal Section Report Modal for 1-Click Print / PDF Export */}
+      {isSectionReportModalOpen && (
+        <UniversalReportModal
+          isOpen={isSectionReportModalOpen}
+          onClose={() => setIsSectionReportModalOpen(false)}
+          initialSections={sectionReportConfig.sections}
+          reportTitle={sectionReportConfig.title}
+          initialPeriod={period === 'custom' ? 'custom' : (period as any)}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          extraParams={{
+            branchId: selectedBranchId,
+            categoryId: selectedCategoryId,
+            searchQuery,
+            type: selectedMovementType,
+            ...sectionReportConfig.extraParams,
+          }}
+        />
       )}
 
       {/* Movement Voucher Modal */}
