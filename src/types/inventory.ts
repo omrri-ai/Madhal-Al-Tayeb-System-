@@ -67,6 +67,9 @@ export interface Item {
   deleteReason?: string; // Reason why item was deleted
   editReason?: string; // Last reason why item was modified
   isProductionItem?: boolean;
+  isComposite?: boolean; // New: Composite product
+  compositeName?: string; // New: Composite Name
+  components?: { itemId: string; quantity: number }[]; // New: Components
   isArchived: boolean;
   isDeleted: boolean; // Soft delete to Trash
   createdAt: string;

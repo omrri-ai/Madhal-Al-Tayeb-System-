@@ -430,8 +430,8 @@ export function generateMovementsReport(
           let subRowsHtml = sortedGrp
             .map((m, idx) => {
               const itm = data.items.find((i) => i.id === m.itemId);
-              const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف مخزني');
-              const itmCode = itm?.code || m.itemCode || '-';
+              const itmName = itm?.name || m.itemName || (m.notes ? m.notes : `صنف (ID: ${m.itemId || 'غير معروف'})`);
+              const itmCode = itm?.code || m.itemCode || '---';
               const unt = data.units.find((u) => u.id === m.unitId)?.name || m.unitName || 'وحدة';
               const cat = data.categories.find((c) => c.id === itm?.categoryId)?.name || 'قسم عام';
               const baseUnit = data.units.find((u) => u.id === itm?.baseUnitId)?.name || 'وحدة';

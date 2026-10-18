@@ -1010,6 +1010,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Calculate current stock in base units with foolproof numerical safety
   const getItemStock = useCallback(
     (itemId: string): number => {
+      const item = items.find((i) => i.id === itemId && !i.isDeleted);
+      if (item && item.isComposite && item.components && item.components.length > 0) {
+        let maxUnits = Infinity;
+        for (const comp of item.components) {
+          const compStock = getItemStock(comp.itemId);
+          if (comp.quantity <= 0) {
+            maxUnits = 0;
+            break;
+          }
+          const possible = compStock / comp.quantity;
+          if (possible < maxUnits) {
+            maxUnits = possible;
+          }
+        }
+        const rawStock = maxUnits === Infinity ? 0 : Math.max(0, Math.round(maxUnits * 1000) / 1000);
+        return rawStock;
+      }
+
       const uniqueMovements = deduplicateById(movements);
       const itemMovements = uniqueMovements.filter((m) => m && m.itemId === itemId);
       let stock = 0;
@@ -1043,7 +1061,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const rawStock = Math.round(stock * 1000) / 1000;
       return Math.max(0, rawStock);
     },
-    [movements]
+    [movements, items]
   );
 
   // Conversion factor helper
@@ -1565,6 +1583,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         costPrice: itemData.costPrice !== undefined ? Number(itemData.costPrice) : undefined,
         salePrice: itemData.salePrice !== undefined ? Number(itemData.salePrice) : undefined,
         notes: itemData.notes?.trim(),
+        isComposite: itemData.isComposite,
+        components: itemData.components,
         isArchived: false,
         isDeleted: false,
         createdAt: new Date().toISOString(),
@@ -1913,12 +1933,30 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       const baseQuantity = Math.round(data.quantity * factor * 1000) / 1000;
+      
+      // Handle Composite Product Components Check & Reservation
+      let componentsToDispatch: { itemId: string; baseQuantity: number }[] = [];
+      if (item.isComposite && item.components) {
+        for (const comp of item.components) {
+          const compItem = items.find(i => i.id === comp.itemId && !i.isDeleted);
+          if (!compItem) return { success: false, error: `مكوّن المنتج المركب "${comp.itemId}" غير موجود.` };
+          
+          const totalCompBaseQty = comp.quantity * baseQuantity; // Assuming component quantity is per base unit
+          const compStock = getItemStock(comp.itemId);
+          
+          if (compStock < totalCompBaseQty) {
+            return { success: false, error: `عفواً، لا يتوفر رصيد كافٍ للمكوّن "${compItem.name}". الرصيد الحالي: ${compStock}.` };
+          }
+          componentsToDispatch.push({ itemId: comp.itemId, baseQuantity: totalCompBaseQty });
+        }
+      }
+
       const currentStock = getItemStock(data.itemId);
       const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
       const movementUnit = units.find((u) => u.id === data.unitId)?.name || 'وحدة';
 
       // Negative balance guard for OUT
-      if (data.type === 'OUT') {
+      if (data.type === 'OUT' && !item.isComposite) {
         if (currentStock < baseQuantity || currentStock <= 0) {
           const errMsg = `عفواً، لا يمكن إتمام عملية الخروج: الكمية المطلوبة (${data.quantity} ${movementUnit} = ${baseQuantity} ${baseUnit}) تتجاوز الرصيد المتوفر حالياً (${currentStock} ${baseUnit}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
           showToast(errMsg, 'error');
@@ -1929,39 +1967,76 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      const newMovement: StockMovement = {
-        id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-        itemId: data.itemId,
-        type: data.type,
-        unitId: data.unitId,
-        quantity: Number(data.quantity),
-        factorApplied: factor,
-        baseQuantity,
-        date: data.date || new Date().toISOString(),
-        referenceNumber: data.referenceNumber?.trim(),
-        notes: data.notes?.trim(),
-        itemName: item.name,
-        itemCode: item.code,
-        unitName: movementUnit,
-        destinationType: data.destinationType,
-        branchId: data.branchId,
-        branchName: data.branchName,
-        customerName: data.customerName?.trim(),
-        customerPhone: data.customerPhone?.trim(),
-        customerCity: data.customerCity?.trim(),
-        shippingCompany: data.shippingCompany,
-        shippingTrackingNumber: data.shippingTrackingNumber?.trim(),
-        batchId: data.batchId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const movementId = 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      
+      // If Composite, we will NOT add the main product movement, but rather its components movements.
+      // Or we can add it as a record for audit trail. Let's add it with 0 quantity if composite?
+      // Actually, per requirement 6, we don't track main product balance. 
+      // Requirement 6: "لا تنشئ له رصيدًا مستقلًا؛ المخزون الفعلي هو مخزون مكوناته الأصلية."
+      
+      const newMovements: StockMovement[] = [];
+      
+      if (item.isComposite) {
+        // Create movements for each component
+        for (const comp of componentsToDispatch) {
+          const compItem = items.find(i => i.id === comp.itemId)!;
+          newMovements.push({
+            id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            itemId: comp.itemId,
+            type: data.type,
+            unitId: compItem.baseUnitId, // Using base unit for components for simplicity
+            quantity: comp.baseQuantity,
+            factorApplied: 1,
+            baseQuantity: comp.baseQuantity,
+            date: data.date || new Date().toISOString(),
+            referenceNumber: data.referenceNumber?.trim(),
+            notes: `مكوّن للمنتج المركّب: ${item.name}`,
+            itemName: compItem.name,
+            itemCode: compItem.code,
+            unitName: units.find(u => u.id === compItem.baseUnitId)?.name || 'وحدة',
+            destinationType: data.destinationType,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            batchId: movementId, // Linked to the main requested product movement
+          });
+        }
+      } else {
+        newMovements.push({
+          id: movementId,
+          itemId: data.itemId,
+          type: data.type,
+          unitId: data.unitId,
+          quantity: Number(data.quantity),
+          factorApplied: factor,
+          baseQuantity,
+          date: data.date || new Date().toISOString(),
+          referenceNumber: data.referenceNumber?.trim(),
+          notes: data.notes?.trim(),
+          itemName: item.name,
+          itemCode: item.code,
+          unitName: movementUnit,
+          destinationType: data.destinationType,
+          branchId: data.branchId,
+          branchName: data.branchName,
+          customerName: data.customerName?.trim(),
+          customerPhone: data.customerPhone?.trim(),
+          customerCity: data.customerCity?.trim(),
+          shippingCompany: data.shippingCompany,
+          shippingTrackingNumber: data.shippingTrackingNumber?.trim(),
+          batchId: data.batchId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
-      const updatedMovements = [newMovement, ...movements];
+      const updatedMovements = [...newMovements, ...movements];
       setMovements(updatedMovements);
       movementsRef.current = updatedMovements;
-      // Auto-save movement directly to Cloud Firestore immediately
-      FirestoreStorage.saveMovement(newMovement).catch((err) => {
-        console.warn('Auto-save movement to Firestore deferred:', err);
+      // Auto-save movements directly to Cloud Firestore immediately
+      newMovements.forEach((m) => {
+        FirestoreStorage.saveMovement(m).catch((err) => {
+          console.warn('Auto-save movement to Firestore deferred:', err);
+        });
       });
       persistChanges(units, categories, items, updatedMovements, branches, returns);
 
@@ -2020,6 +2095,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         factor: number;
         baseQuantity: number;
         notes?: string;
+        componentsToDispatch?: { itemId: string; baseQuantity: number }[];
       }[] = [];
 
       const cumulativePerItem: Record<string, number> = {};
@@ -2044,27 +2120,43 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const u = units.find((un) => un.id === entry.unitId);
             const errMsg = `الوحدة (${u?.name || 'المختارة'}) ليس لها معامل تحويل معتمد للصنف "${item.name}"`;
             showToast(errMsg, 'error');
-            return {
-              success: false,
-              error: errMsg,
-            };
+            return { success: false, error: errMsg };
           }
           factor = conv.factorToBase;
         }
 
         const baseQuantity = Math.round(entry.quantity * factor * 1000) / 1000;
-        cumulativePerItem[item.id] = Math.round(((cumulativePerItem[item.id] || 0) + baseQuantity) * 1000) / 1000;
 
-        const currentStock = getItemStock(item.id);
-        const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
-        
-        if (currentStock < cumulativePerItem[item.id] || currentStock <= 0) {
-          const errMsg = `عفواً، لا يمكن إتمام التصدير: إجمالي الكمية المطلوبة للصنف "${item.name}" (${cumulativePerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتوفر (${currentStock} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
-          showToast(errMsg, 'error');
-          return {
-            success: false,
-            error: errMsg,
-          };
+        let compEntries: { itemId: string; baseQuantity: number }[] = [];
+        if (item.isComposite && item.components) {
+          for (const comp of item.components) {
+            const compItem = items.find(i => i.id === comp.itemId && !i.isDeleted);
+            if (!compItem) return { success: false, error: `مكوّن المنتج المركب "${comp.itemId}" غير موجود.` };
+            const totalCompBaseQty = comp.quantity * baseQuantity;
+            cumulativePerItem[comp.itemId] = Math.round(((cumulativePerItem[comp.itemId] || 0) + totalCompBaseQty) * 1000) / 1000;
+            const compStock = getItemStock(comp.itemId);
+            const compBaseUnitName = units.find(u => u.id === compItem.baseUnitId)?.name || 'وحدة';
+
+            if (compStock < cumulativePerItem[comp.itemId]) {
+              const errMsg = `عفواً، لا يتوفر رصيد كافٍ للمكوّن "${compItem.name}" (المطلوب: ${cumulativePerItem[comp.itemId]} ${compBaseUnitName}، المتوفر: ${compStock} ${compBaseUnitName}).`;
+              showToast(errMsg, 'error');
+              return { success: false, error: errMsg };
+            }
+            compEntries.push({ itemId: comp.itemId, baseQuantity: totalCompBaseQty });
+          }
+        } else {
+          cumulativePerItem[item.id] = Math.round(((cumulativePerItem[item.id] || 0) + baseQuantity) * 1000) / 1000;
+          const currentStock = getItemStock(item.id);
+          const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+          
+          if (currentStock < cumulativePerItem[item.id] || currentStock <= 0) {
+            const errMsg = `عفواً، لا يمكن إتمام التصدير: إجمالي الكمية المطلوبة للصنف "${item.name}" (${cumulativePerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتوفر (${currentStock} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
+            showToast(errMsg, 'error');
+            return {
+              success: false,
+              error: errMsg,
+            };
+          }
         }
 
         calculatedEntries.push({
@@ -2074,6 +2166,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           factor,
           baseQuantity,
           notes: entry.notes,
+          componentsToDispatch: compEntries,
         });
       }
 
@@ -2104,37 +2197,77 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? (dispatchData.branchName || targetBranch?.name)
         : dispatchData.customerName?.trim();
 
-      const newMovements: StockMovement[] = calculatedEntries.map((e) => ({
-        id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-        itemId: e.item.id,
-        type: 'OUT',
-        unitId: e.unitId,
-        quantity: e.quantity,
-        factorApplied: e.factor,
-        baseQuantity: e.baseQuantity,
-        date: dispatchData.date || nowIso,
-        referenceNumber: voucherNo,
-        notes: e.notes || dispatchData.notes?.trim(),
-        itemName: e.item.name,
-        itemCode: e.item.code,
-        unitName: units.find((u) => u.id === e.unitId)?.name || 'وحدة',
-        destinationType: dispatchData.destinationType,
-        destinationName,
-        destinationContactName: destinationContact,
-        destinationPhone,
-        destinationAddress,
-        branchId: dispatchData.branchId,
-        branchName: destinationName,
-        customerName: dispatchData.customerName?.trim(),
-        customerPhone: destinationPhone,
-        customerCity: destinationAddress,
-        shippingCompany: dispatchData.shippingCompany,
-        customShippingCompany: dispatchData.customShippingCompany?.trim(),
-        shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
-        batchId,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      }));
+      const newMovements: StockMovement[] = [];
+      for (const e of calculatedEntries) {
+        if (e.item.isComposite && e.componentsToDispatch) {
+          for (const comp of e.componentsToDispatch) {
+            const compItem = items.find(i => i.id === comp.itemId)!;
+            newMovements.push({
+              id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+              itemId: comp.itemId,
+              type: 'OUT',
+              unitId: compItem.baseUnitId,
+              quantity: comp.baseQuantity,
+              factorApplied: 1,
+              baseQuantity: comp.baseQuantity,
+              date: dispatchData.date || nowIso,
+              referenceNumber: voucherNo,
+              notes: `مكوّن للمنتج المركّب: ${e.item.name} (${e.notes || dispatchData.notes?.trim() || ''})`,
+              itemName: compItem.name,
+              itemCode: compItem.code,
+              unitName: units.find((u) => u.id === compItem.baseUnitId)?.name || 'وحدة',
+              destinationType: dispatchData.destinationType,
+              destinationName,
+              destinationContactName: destinationContact,
+              destinationPhone,
+              destinationAddress,
+              branchId: dispatchData.branchId,
+              branchName: destinationName,
+              customerName: dispatchData.customerName?.trim(),
+              customerPhone: destinationPhone,
+              customerCity: destinationAddress,
+              shippingCompany: dispatchData.shippingCompany,
+              customShippingCompany: dispatchData.customShippingCompany?.trim(),
+              shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
+              batchId,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+            });
+          }
+        } else {
+          newMovements.push({
+            id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            itemId: e.item.id,
+            type: 'OUT',
+            unitId: e.unitId,
+            quantity: e.quantity,
+            factorApplied: e.factor,
+            baseQuantity: e.baseQuantity,
+            date: dispatchData.date || nowIso,
+            referenceNumber: voucherNo,
+            notes: e.notes || dispatchData.notes?.trim(),
+            itemName: e.item.name,
+            itemCode: e.item.code,
+            unitName: units.find((u) => u.id === e.unitId)?.name || 'وحدة',
+            destinationType: dispatchData.destinationType,
+            destinationName,
+            destinationContactName: destinationContact,
+            destinationPhone,
+            destinationAddress,
+            branchId: dispatchData.branchId,
+            branchName: destinationName,
+            customerName: dispatchData.customerName?.trim(),
+            customerPhone: destinationPhone,
+            customerCity: destinationAddress,
+            shippingCompany: dispatchData.shippingCompany,
+            customShippingCompany: dispatchData.customShippingCompany?.trim(),
+            shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
+            batchId,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          });
+        }
+      }
 
       const updatedMovements = [...newMovements, ...movements];
       setMovements(updatedMovements);
@@ -2148,7 +2281,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         dispatchData.destinationType === 'BRANCH'
           ? `الفرع (${dispatchData.branchName})`
           : `العميل (${dispatchData.customerName})`;
-      showToast(`تم تصدير ${calculatedEntries.length} أصناف بنجاح إلى ${targetDesc} (رقم السند: ${voucherNo})`, 'success');
+      showToast(`تم تصدير الأصناف بنجاح إلى ${targetDesc} (رقم السند: ${voucherNo})`, 'success');
 
       return { success: true, voucherNumber: voucherNo, movements: newMovements };
     },
@@ -2250,6 +2383,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         factor: number;
         baseQuantity: number;
         notes?: string;
+        componentsToDispatch?: { itemId: string; baseQuantity: number }[];
       }[] = [];
 
       const newRequiredPerItem: Record<string, number> = {};
@@ -2281,15 +2415,34 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
 
         const baseQuantity = Math.round(entry.quantity * factor * 1000) / 1000;
-        newRequiredPerItem[item.id] = Math.round(((newRequiredPerItem[item.id] || 0) + baseQuantity) * 1000) / 1000;
+        let compEntries: { itemId: string; baseQuantity: number }[] = [];
 
-        const availableVirtual = virtualStockMap[item.id] ?? getItemStock(item.id);
-        const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+        if (item.isComposite && item.components) {
+          for (const comp of item.components) {
+            const compItem = items.find(i => i.id === comp.itemId && !i.isDeleted);
+            if (!compItem) return { success: false, error: `مكوّن المنتج المركب "${comp.itemId}" غير موجود.` };
+            const totalCompBaseQty = comp.quantity * baseQuantity;
+            newRequiredPerItem[comp.itemId] = Math.round(((newRequiredPerItem[comp.itemId] || 0) + totalCompBaseQty) * 1000) / 1000;
+            const availableVirtual = virtualStockMap[comp.itemId] ?? getItemStock(comp.itemId);
+            const compBaseUnitName = units.find(u => u.id === compItem.baseUnitId)?.name || 'وحدة';
 
-        if (availableVirtual < newRequiredPerItem[item.id] || availableVirtual <= 0) {
-          const errMsg = `عفواً، لا يمكن إتمام التعديل: الكمية المعدلة المطلوبة للصنف "${item.name}" (${newRequiredPerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتاح عند إرجاع الكمية السابقة (${availableVirtual} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
-          showToast(errMsg, 'error');
-          return { success: false, error: errMsg };
+            if (availableVirtual < newRequiredPerItem[comp.itemId]) {
+              const errMsg = `عفواً، لا يمكن إتمام التعديل: المكوّن "${compItem.name}" يتطلب (${newRequiredPerItem[comp.itemId]} ${compBaseUnitName}) بينما المتاح افتراضياً (${availableVirtual} ${compBaseUnitName}).`;
+              showToast(errMsg, 'error');
+              return { success: false, error: errMsg };
+            }
+            compEntries.push({ itemId: comp.itemId, baseQuantity: totalCompBaseQty });
+          }
+        } else {
+          newRequiredPerItem[item.id] = Math.round(((newRequiredPerItem[item.id] || 0) + baseQuantity) * 1000) / 1000;
+          const availableVirtual = virtualStockMap[item.id] ?? getItemStock(item.id);
+          const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+
+          if (availableVirtual < newRequiredPerItem[item.id] || availableVirtual <= 0) {
+            const errMsg = `عفواً، لا يمكن إتمام التعديل: الكمية المعدلة المطلوبة للصنف "${item.name}" (${newRequiredPerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتاح عند إرجاع الكمية السابقة (${availableVirtual} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
+            showToast(errMsg, 'error');
+            return { success: false, error: errMsg };
+          }
         }
 
         calculatedEntries.push({
@@ -2299,6 +2452,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           factor,
           baseQuantity,
           notes: entry.notes,
+          componentsToDispatch: compEntries,
         });
       }
 
@@ -2329,42 +2483,81 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? (dispatchData.branchName || targetBranch?.name)
         : dispatchData.customerName?.trim();
 
-      const updatedMovementsList: StockMovement[] = calculatedEntries.map((e, idx) => {
-        const oldMatch = existingMovements[idx];
-        return {
-          id: oldMatch ? oldMatch.id : 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-          itemId: e.item.id,
-          itemName: e.item.name,
-          itemCode: e.item.code,
-          type: 'OUT',
-          unitId: e.unitId,
-          unitName: units.find((u) => u.id === e.unitId)?.name || 'وحدة',
-          quantity: e.quantity,
-          factorApplied: e.factor,
-          baseQuantity: e.baseQuantity,
-          date: dispatchData.date || firstOld.date || nowIso,
-          referenceNumber: voucherNo,
-          notes: e.notes || dispatchData.notes?.trim(),
-          destinationType: dispatchData.destinationType,
-          destinationName,
-          destinationContactName: destinationContact,
-          destinationPhone,
-          destinationAddress,
-          branchId: dispatchData.branchId,
-          branchName: destinationName,
-          customerName: dispatchData.customerName?.trim(),
-          customerPhone: destinationPhone,
-          customerCity: destinationAddress,
-          shippingCompany: dispatchData.shippingCompany,
-          customShippingCompany: dispatchData.customShippingCompany?.trim(),
-          shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
-          batchId,
-          createdByName: firstOld.createdByName || OWNER_EMAIL,
-          status: 'APPROVED',
-          createdAt: originalCreatedAt,
-          updatedAt: nowIso,
-        };
-      });
+      const updatedMovementsList: StockMovement[] = [];
+      for (const e of calculatedEntries) {
+        if (e.item.isComposite && e.componentsToDispatch) {
+          for (const comp of e.componentsToDispatch) {
+            const compItem = items.find(i => i.id === comp.itemId)!;
+            updatedMovementsList.push({
+              id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+              itemId: comp.itemId,
+              itemName: compItem.name,
+              itemCode: compItem.code,
+              type: 'OUT',
+              unitId: compItem.baseUnitId,
+              unitName: units.find((u) => u.id === compItem.baseUnitId)?.name || 'وحدة',
+              quantity: comp.baseQuantity,
+              factorApplied: 1,
+              baseQuantity: comp.baseQuantity,
+              date: dispatchData.date || firstOld.date || nowIso,
+              referenceNumber: voucherNo,
+              notes: `مكوّن للمنتج المركّب: ${e.item.name} (${e.notes || dispatchData.notes?.trim() || ''})`,
+              destinationType: dispatchData.destinationType,
+              destinationName,
+              destinationContactName: destinationContact,
+              destinationPhone,
+              destinationAddress,
+              branchId: dispatchData.branchId,
+              branchName: destinationName,
+              customerName: dispatchData.customerName?.trim(),
+              customerPhone: destinationPhone,
+              customerCity: destinationAddress,
+              shippingCompany: dispatchData.shippingCompany,
+              customShippingCompany: dispatchData.customShippingCompany?.trim(),
+              shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
+              batchId,
+              createdByName: firstOld.createdByName || OWNER_EMAIL,
+              status: 'APPROVED',
+              createdAt: originalCreatedAt,
+              updatedAt: nowIso,
+            });
+          }
+        } else {
+          updatedMovementsList.push({
+            id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            itemId: e.item.id,
+            itemName: e.item.name,
+            itemCode: e.item.code,
+            type: 'OUT',
+            unitId: e.unitId,
+            unitName: units.find((u) => u.id === e.unitId)?.name || 'وحدة',
+            quantity: e.quantity,
+            factorApplied: e.factor,
+            baseQuantity: e.baseQuantity,
+            date: dispatchData.date || firstOld.date || nowIso,
+            referenceNumber: voucherNo,
+            notes: e.notes || dispatchData.notes?.trim(),
+            destinationType: dispatchData.destinationType,
+            destinationName,
+            destinationContactName: destinationContact,
+            destinationPhone,
+            destinationAddress,
+            branchId: dispatchData.branchId,
+            branchName: destinationName,
+            customerName: dispatchData.customerName?.trim(),
+            customerPhone: destinationPhone,
+            customerCity: destinationAddress,
+            shippingCompany: dispatchData.shippingCompany,
+            customShippingCompany: dispatchData.customShippingCompany?.trim(),
+            shippingTrackingNumber: dispatchData.shippingTrackingNumber?.trim(),
+            batchId,
+            createdByName: firstOld.createdByName || OWNER_EMAIL,
+            status: 'APPROVED',
+            createdAt: originalCreatedAt,
+            updatedAt: nowIso,
+          });
+        }
+      }
 
       // Filter out old movements of this batch/reference and append updated ones
       const oldIdsSet = new Set(existingMovements.map((m) => m.id));

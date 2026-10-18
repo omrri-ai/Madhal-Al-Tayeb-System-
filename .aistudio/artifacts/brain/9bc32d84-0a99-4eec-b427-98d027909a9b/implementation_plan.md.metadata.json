@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for adding Damaged Items (التالف) feature supporting General Inventory and Production & Manufacturing with logging, analytics, and permission controls.",
-  "updatedAt": "2026-10-16T13:45:20.251083540Z",
+  "summary": "خطة تنفيذ ميزة المنتجات المركبة في نظام مدهال الطيب. تتضمن تعديلات على الأنواع، واجهة المستخدم، التخزين، ومنطق الصرف.",
+  "updatedAt": "2026-10-18T06:13:02.695811088Z",
   "requestFeedback": true,
   "userFacing": true
 }

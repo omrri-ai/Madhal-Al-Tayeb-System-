@@ -409,10 +409,10 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {voucherMovements.map((m, idx) => {
-                  const itm = items.find((i) => i.id === m.itemId) || item;
-                  const itmName = itm?.name || m.itemName || (m.notes && m.notes.length < 30 ? m.notes : 'صنف مخزني');
-                  const itmCode = itm?.code || m.itemCode || '-';
-                  const unt = units.find((u) => u.id === m.unitId) || unit;
+                  const itm = items.find((i) => i.id === m.itemId);
+                  const itmName = itm?.name || m.itemName || (m.notes ? m.notes : `صنف (ID: ${m.itemId || 'غير معروف'})`);
+                  const itmCode = itm?.code || m.itemCode || '---';
+                  const unt = units.find((u) => u.id === m.unitId);
                   const untName = unt?.name || m.unitName || 'وحدة';
                   const bu = units.find((u) => u.id === itm?.baseUnitId) || baseUnit;
                   const buName = bu?.name || 'وحدة';
