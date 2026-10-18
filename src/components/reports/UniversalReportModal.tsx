@@ -35,6 +35,7 @@ import {
   buildReportHtmlDocument,
   printReportHtml,
   exportElementToPdfFile,
+  exportReportHtmlToPdf,
 } from '../../utils/reportPdfExport';
 
 interface UniversalReportModalProps {
@@ -207,15 +208,29 @@ export const UniversalReportModal: React.FC<UniversalReportModalProps> = ({
     }
   };
 
-  // Trigger PDF Export (Download .pdf file)
+  // Trigger PDF Export (Download .pdf file matching preview/print layout)
   const handleExportPdf = async () => {
-    if (!printContentRef.current) return;
     setIsExportingPdf(true);
     showToast('جارٍ إنشاء ملف PDF وتنسيق الصفحات...', 'info');
 
     try {
       const cleanFileName = `${displayTitle.replace(/[\s/\\:]+/g, '_')}_${dateRange.startDateStr || 'كامل'}`;
-      await exportElementToPdfFile(printContentRef.current, cleanFileName);
+      const sectionsHtml = generatedSections.map((s) => s.toHtml()).join('');
+      const fullDoc = buildReportHtmlDocument({
+        title: displayTitle,
+        subtitle: `يشمل (${selectedSections.length}) أقسام بعدد (${totalRecordsCount.toLocaleString('ar-SA')}) سجلاً مطابقاً`,
+        companyName: companySettings?.name || 'مخزون مدهال الطيب',
+        companyAddress: companySettings?.address,
+        companyPhone: companySettings?.phone,
+        commercialRegister: companySettings?.commercialRegister,
+        taxId: companySettings?.taxId,
+        managerName: companySettings?.managerName,
+        periodLabel: dateRange.label,
+        inclusiveNote: dateRange.inclusiveNote,
+        sectionsHtml,
+      });
+
+      await exportReportHtmlToPdf(fullDoc, cleanFileName);
       showToast('تم تصدير وتنزيل ملف PDF بنجاح!', 'success');
     } catch (err) {
       console.error('PDF export error:', err);
@@ -446,47 +461,51 @@ export const UniversalReportModal: React.FC<UniversalReportModalProps> = ({
                       ))}
                     </div>
 
-                    {/* Table */}
-                    <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                      <table className="w-full text-xs text-right border-collapse">
-                        <thead>
-                          <tr className="bg-slate-100 border-b border-slate-200 text-slate-700">
-                            {sec.columns.map((col, cIdx) => (
-                              <th key={cIdx} className="p-2 font-bold whitespace-nowrap">
-                                {col}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {sec.rows.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={sec.columns.length}
-                                className="p-4 text-center text-slate-400"
-                              >
-                                لا توجد سجلات مطابقة في هذا القسم للفترة المحددة
-                              </td>
+                    {/* Content / Table */}
+                    {sec.key === 'movements' ? (
+                      <div className="report-root bg-white p-2 rounded-lg border border-slate-200 overflow-x-auto" dangerouslySetInnerHTML={{ __html: sec.toHtml() }} />
+                    ) : (
+                      <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                        <table className="w-full text-xs text-right border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-200 text-slate-700">
+                              {sec.columns.map((col, cIdx) => (
+                                <th key={cIdx} className="p-2 font-bold whitespace-normal break-words">
+                                  {col}
+                                </th>
+                              ))}
                             </tr>
-                          ) : (
-                            sec.rows.map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-slate-50 transition-colors">
-                                {row.map((cell, cellIdx) => (
-                                  <td
-                                    key={cellIdx}
-                                    className={`p-2 text-slate-800 ${
-                                      cellIdx === 0 ? 'text-center font-bold font-mono text-slate-400' : ''
-                                    }`}
-                                  >
-                                    {cell}
-                                  </td>
-                                ))}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {sec.rows.length === 0 ? (
+                              <tr>
+                                <td
+                                  colSpan={sec.columns.length}
+                                  className="p-4 text-center text-slate-400"
+                                >
+                                  لا توجد سجلات مطابقة في هذا القسم للفترة المحددة
+                                </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                            ) : (
+                              sec.rows.map((row, rIdx) => (
+                                <tr key={rIdx} className="hover:bg-slate-50 transition-colors">
+                                  {row.map((cell, cellIdx) => (
+                                    <td
+                                      key={cellIdx}
+                                      className={`p-2 text-slate-800 whitespace-normal break-words ${
+                                        cellIdx === 0 ? 'text-center font-bold font-mono text-slate-400' : ''
+                                      }`}
+                                    >
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

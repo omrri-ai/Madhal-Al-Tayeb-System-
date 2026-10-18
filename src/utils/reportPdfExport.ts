@@ -17,44 +17,14 @@ export interface ReportPrintOptions {
   sectionsHtml: string;
 }
 
-// Build standard, high-fidelity Arabic print document HTML
-export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
-  const company = opts.companyName || 'مخزون مدهال الطيب';
-  const genDate = opts.generatedDate || new Date().toLocaleString('ar-SA', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const refNum = 'REP-' + Date.now().toString(36).toUpperCase();
-
-  return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <title>${opts.title} - ${company}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800;900&display=swap');
-
-    @page {
-      size: A4 portrait;
-      margin: 12mm 10mm 15mm 10mm;
-      @bottom-center {
-        content: "صفحة " counter(page) " من " counter(pages);
-        font-family: 'Tajawal', sans-serif;
-        font-size: 9pt;
-        color: #64748b;
-      }
-    }
-
-    * {
+// CSS الخاص بالتقرير، كل القواعد مقيّدة بـ .report-root عشان ما تتعارض مع تنسيق التطبيق
+// ويُستخدم بنفس الشكل في: المعاينة، الطباعة، وتصدير PDF (فتطلع النتيجة متطابقة)
+export const REPORT_CSS = `.report-root, .report-root * {
       box-sizing: border-box;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-
-    body {
+.report-root {
       font-family: 'Tajawal', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
       margin: 0;
       padding: 16px;
@@ -64,14 +34,13 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
       font-size: 11pt;
       direction: rtl;
     }
-
-    .report-container {
+.report-root .report-container {
       width: 100%;
       max-width: 100%;
     }
 
     /* Header styling */
-    .report-header {
+.report-root .report-header {
       border-bottom: 2px solid #0f172a;
       padding-bottom: 12px;
       margin-bottom: 16px;
@@ -79,33 +48,28 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
       justify-content: space-between;
       align-items: flex-start;
     }
-
-    .brand-title {
+.report-root .brand-title {
       font-size: 18pt;
       font-weight: 900;
       color: #047857;
       margin: 0;
     }
-
-    .brand-subtitle {
+.report-root .brand-subtitle {
       font-size: 10pt;
       color: #475569;
       margin-top: 2px;
       font-weight: 600;
     }
-
-    .report-title-box {
+.report-root .report-title-box {
       text-align: left;
     }
-
-    .report-main-title {
+.report-root .report-main-title {
       font-size: 15pt;
       font-weight: 800;
       color: #0f172a;
       margin: 0;
     }
-
-    .report-ref-badge {
+.report-root .report-ref-badge {
       font-size: 8.5pt;
       color: #64748b;
       font-family: monospace;
@@ -113,7 +77,7 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
     }
 
     /* Meta bar */
-    .report-meta-grid {
+.report-root .report-meta-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 8px;
@@ -124,31 +88,27 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
       margin-bottom: 18px;
       font-size: 9pt;
     }
-
-    .meta-item {
+.report-root .meta-item {
       display: flex;
       flex-direction: column;
     }
-
-    .meta-label {
+.report-root .meta-label {
       color: #64748b;
       font-size: 8pt;
       font-weight: 700;
       margin-bottom: 2px;
     }
-
-    .meta-val {
+.report-root .meta-val {
       color: #0f172a;
       font-weight: 700;
     }
 
     /* Section block */
-    .section-block {
+.report-root .section-block {
       margin-bottom: 22px;
       page-break-inside: auto;
     }
-
-    .section-header {
+.report-root .section-header {
       background: #0f172a;
       color: #ffffff;
       padding: 6px 12px;
@@ -159,14 +119,12 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
       align-items: center;
       page-break-after: avoid;
     }
-
-    .section-title {
+.report-root .section-title {
       font-size: 11pt;
       font-weight: 800;
       margin: 0;
     }
-
-    .section-badge {
+.report-root .section-badge {
       font-size: 8.5pt;
       background: rgba(255, 255, 255, 0.18);
       padding: 2px 8px;
@@ -175,29 +133,26 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
     }
 
     /* KPI Summary strip */
-    .kpi-strip {
+.report-root .kpi-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
       gap: 8px;
       margin-bottom: 12px;
       page-break-inside: avoid;
     }
-
-    .kpi-box {
+.report-root .kpi-box {
       background: #f8fafc;
       border: 1px solid #cbd5e1;
       border-radius: 4px;
       padding: 6px 10px;
       text-align: right;
     }
-
-    .kpi-box-label {
+.report-root .kpi-box-label {
       font-size: 7.5pt;
       color: #64748b;
       font-weight: 700;
     }
-
-    .kpi-box-value {
+.report-root .kpi-box-value {
       font-size: 12pt;
       font-weight: 900;
       color: #0f172a;
@@ -206,71 +161,66 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
     }
 
     /* Tables */
-    table {
+.report-root table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 14px;
       font-size: 9pt;
       text-align: right;
     }
-
-    thead {
+.report-root thead {
       display: table-header-group;
     }
-
-    tr {
+.report-root tr {
       page-break-inside: avoid;
     }
-
-    th {
+.report-root th {
       background: #f1f5f9;
       color: #1e293b;
       font-weight: 800;
       border: 1px solid #cbd5e1;
       padding: 6px 8px;
       font-size: 8.5pt;
-      white-space: nowrap;
+      white-space: normal !important;
+      word-break: break-word !important;
+      overflow-wrap: break-word !important;
     }
-
-    td {
+.report-root td {
       border: 1px solid #e2e8f0;
       padding: 5px 8px;
       font-size: 8.5pt;
       color: #1e293b;
       vertical-align: middle;
+      white-space: normal !important;
+      word-break: break-word !important;
+      overflow-wrap: break-word !important;
     }
-
-    tr:nth-child(even) td {
+.report-root tr:nth-child(even) td {
       background: #fcfdfe;
     }
-
-    .num-cell {
+.report-root .num-cell {
       font-family: 'Tajawal', sans-serif;
       font-weight: 700;
       text-align: center;
     }
-
-    .text-cell {
+.report-root .text-cell {
       text-align: right;
     }
-
-    .badge-in {
+.report-root .badge-in {
       color: #065f46;
       font-weight: 700;
     }
-
-    .badge-out {
+.report-root .badge-out {
       color: #991b1b;
       font-weight: 700;
     }
-
-    .badge-neutral {
+.report-root .badge-neutral {
       color: #1e40af;
       font-weight: 700;
     }
 
     /* Signatures block */
-    .signatures-block {
+.report-root .signatures-block {
       margin-top: 24px;
       padding-top: 14px;
       border-top: 1px solid #cbd5e1;
@@ -280,28 +230,25 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
       text-align: center;
       page-break-inside: avoid;
     }
-
-    .sig-role {
+.report-root .sig-role {
       font-size: 9pt;
       font-weight: 800;
       color: #1e293b;
       margin-bottom: 24px;
     }
-
-    .sig-line {
+.report-root .sig-line {
       border-bottom: 1px dashed #94a3b8;
       width: 70%;
       margin: 0 auto;
     }
-
-    .sig-sub {
+.report-root .sig-sub {
       font-size: 7.5pt;
       color: #64748b;
       margin-top: 4px;
     }
 
     /* Footer */
-    .report-footer {
+.report-root .report-footer {
       margin-top: 14px;
       text-align: center;
       font-size: 8pt;
@@ -312,17 +259,35 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
     }
 
     @media print {
-      body {
-        padding: 0;
-      }
-      .no-print {
-        display: none !important;
-      }
+      .report-root { padding: 0; }
+      .report-root .no-print { display: none !important; }
     }
-  </style>
-</head>
-<body>
-  <div class="report-container">
+
+    /* أسماء الأصناف تظهر كاملة بدون قص */
+    .report-root table { table-layout: auto; }
+    .report-root td, .report-root th, .report-root strong {
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+`;
+
+// محتوى التقرير (الترويسة + الأقسام + التواقيع) بدون وسوم html/head
+export function buildReportBodyHtml(opts: ReportPrintOptions): string {
+  const company = opts.companyName || 'مخزون مدهال الطيب';
+  const genDate = opts.generatedDate || new Date().toLocaleString('ar-SA', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const refNum = 'REP-' + Date.now().toString(36).toUpperCase();
+
+  return `
+    <div class="report-container">
     <!-- Official Header -->
     <div class="report-header">
       <div>
@@ -385,6 +350,30 @@ export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
     <div class="report-footer">
       نظام مخزون مدهال الطيب — تقرير موثق مستخرج تلقائيًا من قاعدة البيانات السحابية المعتمدة
     </div>
+    </div>`;
+}
+
+// وثيقة الطباعة الكاملة
+export function buildReportHtmlDocument(opts: ReportPrintOptions): string {
+  const company = opts.companyName || 'مخزون مدهال الطيب';
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>${opts.title} - ${company}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800;900&display=swap');
+    @page {
+      size: A4 portrait;
+      margin: 12mm 10mm 15mm 10mm;
+    }
+    body { margin: 0; background: #ffffff; }
+    ${REPORT_CSS}
+  </style>
+</head>
+<body>
+  <div class="report-root" dir="rtl">
+    ${buildReportBodyHtml(opts)}
   </div>
 </body>
 </html>`;
@@ -532,7 +521,6 @@ export async function exportElementToPdfFile(
     html2canvas: {
       scale: 2,
       useCORS: true,
-      letterRendering: true,
       logging: false,
       onclone: (clonedDoc: Document) => {
         sanitizeOklchInDocument(clonedDoc);
@@ -556,5 +544,44 @@ export async function exportElementToPdfFile(
   } catch (err) {
     console.error('html2pdf export error:', err);
     throw err;
+  }
+}
+
+
+// تصدير التقرير إلى PDF من نسخة مستقلة بعرض ثابت خارج الشاشة.
+// هذا يمنع القص الناتج من التمرير داخل نافذة المعاينة أو من overflow الجداول،
+// ويضمن إن أسماء الأصناف والجداول تطلع كاملة ونفس شكل الطباعة.
+export async function exportReportHtmlToPdf(bodyHtml: string, filename: string): Promise<void> {
+  const style = document.createElement('style');
+  style.setAttribute('data-report-pdf-style', '1');
+  style.textContent = REPORT_CSS;
+  document.head.appendChild(style);
+
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-10000px;top:0;background:#fff;z-index:-1;';
+
+  const root = document.createElement('div');
+  root.className = 'report-root';
+  root.setAttribute('dir', 'rtl');
+  root.style.width = '760px';
+  root.style.padding = '0';
+  root.innerHTML = bodyHtml;
+
+  host.appendChild(root);
+  document.body.appendChild(host);
+
+  try {
+    try {
+      await Promise.race([
+        (document as any).fonts?.ready,
+        new Promise((resolve) => setTimeout(resolve, 2500)),
+      ]);
+    } catch {
+      /* تجاهل */
+    }
+    await exportElementToPdfFile(root, filename);
+  } finally {
+    document.body.removeChild(host);
+    document.head.removeChild(style);
   }
 }

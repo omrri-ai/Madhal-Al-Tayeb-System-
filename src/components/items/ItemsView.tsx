@@ -18,6 +18,7 @@ import {
   RefreshCw,
   ClipboardCheck,
   Printer,
+  FileText,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
@@ -127,16 +128,25 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {viewMode === 'items' && (
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setIsReportModalOpen(true)}
               className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
-              title="معاينة وطباعة تقرير الأصناف والمخزون وتصديره PDF"
+              title="معاينة وطباعة تقرير الأصناف والمخزون"
             >
               <Printer className="w-4 h-4 text-emerald-600" />
-              <span>تقرير وطباعة المخزون</span>
+              <span>طباعة ومعاينة</span>
             </button>
-          )}
+
+            <button
+              onClick={() => setIsReportModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+              title="تصدير تقرير الأصناف والمخزون إلى PDF"
+            >
+              <FileText className="w-4 h-4 text-rose-600" />
+              <span>تصدير PDF</span>
+            </button>
+          </div>
 
           {viewMode === 'items' && isAdmin && (
             <button
@@ -686,6 +696,14 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
       />
         </>
       )}
+
+      {/* Universal Report Modal for PDF Export & Print */}
+      <UniversalReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        initialSections={['items']}
+        reportTitle={viewMode === 'audit' ? 'تقرير جرد المخزون الرسمي' : 'تقرير الأصناف والمخزون الشامل'}
+      />
     </div>
   );
 };

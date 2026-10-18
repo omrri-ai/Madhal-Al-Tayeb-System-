@@ -132,19 +132,23 @@ export interface InventoryContextData {
 export function generateItemsReport(
   data: InventoryContextData,
   dateRange: DateRangeResult,
-  extraFilter?: { categoryId?: string; statusFilter?: string }
+  extraFilter?: { categoryId?: string; statusFilter?: string; customData?: Item[] }
 ): GeneratedSectionData {
-  let filtered = data.items.filter((i) => !i.isDeleted);
+  let filtered = extraFilter?.customData && Array.isArray(extraFilter.customData)
+    ? extraFilter.customData
+    : data.items.filter((i) => !i.isDeleted);
 
-  if (extraFilter?.categoryId && extraFilter.categoryId !== 'ALL' && extraFilter.categoryId !== 'all') {
-    filtered = filtered.filter((i) => i.categoryId === extraFilter.categoryId);
-  }
+  if (!extraFilter?.customData) {
+    if (extraFilter?.categoryId && extraFilter.categoryId !== 'ALL' && extraFilter.categoryId !== 'all') {
+      filtered = filtered.filter((i) => i.categoryId === extraFilter.categoryId);
+    }
 
-  // If date filter is not 'all', check createdAt or updatedAt
-  if (dateRange.period !== 'all') {
-    filtered = filtered.filter((i) =>
-      isRecordInDateRange(i.createdAt || i.updatedAt, dateRange)
-    );
+    // If date filter is not 'all', check createdAt or updatedAt
+    if (dateRange.period !== 'all') {
+      filtered = filtered.filter((i) =>
+        isRecordInDateRange(i.createdAt || i.updatedAt, dateRange)
+      );
+    }
   }
 
   let totalStockCount = 0;
@@ -221,16 +225,28 @@ export function generateItemsReport(
 export function generateMovementsReport(
   data: InventoryContextData,
   dateRange: DateRangeResult,
-  extraFilter?: { branchId?: string; type?: string; searchQuery?: string }
+  extraFilter?: { branchId?: string; type?: string; searchQuery?: string; customData?: StockMovement[] }
 ): GeneratedSectionData {
-  let filtered = data.movements.filter((m) => isRecordInDateRange(m.date, dateRange));
+  let filtered: StockMovement[] = [];
+
+  if (extraFilter?.customData && Array.isArray(extraFilter.customData) && extraFilter.customData.length > 0) {
+    filtered = extraFilter.customData;
+  } else {
+    filtered = data.movements.filter((m) => isRecordInDateRange(m.date, dateRange));
+  }
 
   if (extraFilter?.branchId && extraFilter.branchId !== 'all') {
     filtered = filtered.filter((m) => m.branchId === extraFilter.branchId);
   }
 
   if (extraFilter?.type && extraFilter.type !== 'all' && extraFilter.type !== 'ALL') {
-    filtered = filtered.filter((m) => m.type === extraFilter.type);
+    if (extraFilter.type === 'IN') {
+      filtered = filtered.filter((m) => isIncomingMovement(m.type));
+    } else if (extraFilter.type === 'OUT') {
+      filtered = filtered.filter((m) => isOutgoingMovement(m.type));
+    } else {
+      filtered = filtered.filter((m) => m.type === extraFilter.type);
+    }
   }
 
   if (extraFilter?.searchQuery?.trim()) {
@@ -318,6 +334,16 @@ export function generateMovementsReport(
     { label: 'التحويلات بين الفروع', value: counts.transfers.toLocaleString('ar-SA') },
   ];
 
+  let targetSectionKey: string | null = null;
+  if (extraFilter?.type && extraFilter.type !== 'all' && extraFilter.type !== 'ALL') {
+    if (extraFilter.type === 'IN') targetSectionKey = 'incoming';
+    else if (extraFilter.type === 'OUT') targetSectionKey = 'outgoing';
+    else if (extraFilter.type === 'ADJUSTMENT') targetSectionKey = 'adjustments';
+    else if (extraFilter.type === 'RETURN_IN' || extraFilter.type === 'RETURN_OUT') targetSectionKey = 'returns';
+    else if (extraFilter.type.startsWith('MFG_') || extraFilter.type.startsWith('PRODUCTION_')) targetSectionKey = 'production';
+    else if (extraFilter.type === 'BRANCH') targetSectionKey = 'transfers';
+  }
+
   const sectionConfigs = [
     { key: 'incoming', title: '1. الوارد / التوريد', color: '#059669', bg: '#ecfdf5', groups: categoriesMap.incoming },
     { key: 'outgoing', title: '2. الصادر / الصرف', color: '#e11d48', bg: '#fff1f2', groups: categoriesMap.outgoing },
@@ -325,7 +351,7 @@ export function generateMovementsReport(
     { key: 'adjustments', title: '4. التسويات الجردية', color: '#d97706', bg: '#fffbeb', groups: categoriesMap.adjustments },
     { key: 'production', title: '5. الإضافة للإنتاج والتصنيع', color: '#7c3aed', bg: '#f5f3ff', groups: categoriesMap.production },
     { key: 'transfers', title: '6. التحويلات بين الفروع', color: '#4f46e5', bg: '#eef2ff', groups: categoriesMap.transfers },
-  ];
+  ].filter((sec) => (targetSectionKey ? sec.key === targetSectionKey : sec.groups.length > 0));
 
   const activeSectionsHtml = sectionConfigs
     .filter((sec) => sec.groups.length > 0)
@@ -413,8 +439,8 @@ export function generateMovementsReport(
 
           // Sort items alphabetically by item name
           const sortedGrp = [...grp].sort((a, b) => {
-            const nameA = data.items.find((i) => i.id === a.itemId)?.name || '';
-            const nameB = data.items.find((i) => i.id === b.itemId)?.name || '';
+            const nameA = data.items.find((i) => i.id === a.itemId)?.name || a.itemName || '';
+            const nameB = data.items.find((i) => i.id === b.itemId)?.name || b.itemName || '';
             return nameA.localeCompare(nameB);
           });
 
@@ -429,8 +455,8 @@ export function generateMovementsReport(
 
           let subRowsHtml = sortedGrp
             .map((m, idx) => {
-              const itm = data.items.find((i) => i.id === m.itemId);
-              const itmName = itm?.name || m.itemName || (m.notes ? m.notes : `صنف (ID: ${m.itemId || 'غير معروف'})`);
+              const itm = data.items.find((i) => i.id === m.itemId || i.code === m.itemCode);
+              const itmName = itm?.name || m.itemName || 'صنف مخزني';
               const itmCode = itm?.code || m.itemCode || '---';
               const unt = data.units.find((u) => u.id === m.unitId)?.name || m.unitName || 'وحدة';
               const cat = data.categories.find((c) => c.id === itm?.categoryId)?.name || 'قسم عام';
@@ -543,11 +569,79 @@ function classifyMovementCategory(m: StockMovement): 'incoming' | 'outgoing' | '
 // 3. GENERATOR: Production & Manufacturing
 export function generateProductionReport(
   data: InventoryContextData,
-  dateRange: DateRangeResult
+  dateRange: DateRangeResult,
+  extraFilter?: { customData?: ProductionOrder[] }
 ): GeneratedSectionData {
-  let filtered = data.productionOrders.filter((p) =>
-    isRecordInDateRange(p.date || p.createdAt, dateRange)
-  );
+  let filtered = extraFilter?.customData && Array.isArray(extraFilter.customData) && extraFilter.customData.length > 0
+    ? extraFilter.customData
+    : data.productionOrders.filter((p) =>
+        isRecordInDateRange(p.date || p.createdAt, dateRange)
+      );
+
+  let prodMovements: StockMovement[] = [];
+  if (filtered.length === 0 && data.movements) {
+    prodMovements = data.movements.filter((m) => {
+      if (!m || !isRecordInDateRange(m.date || m.createdAt, dateRange)) return false;
+      const item = data.items.find((i) => i.id === m.itemId);
+      return (
+        m.type === 'MFG_OUT' ||
+        m.type === 'MFG_IN' ||
+        (m.type as string) === 'خروج للمصنع' ||
+        (m.type as string) === 'وارد من المصنع' ||
+        (m.referenceNumber && (m.referenceNumber.startsWith('MFG-OUT-') || m.referenceNumber.startsWith('MFG-IN-'))) ||
+        (m.destinationType as string) === 'PRODUCTION' ||
+        (m.destinationType as string) === 'FACTORY' ||
+        (m.notes || '').toLowerCase().includes('إنتاج') ||
+        (m.notes || '').toLowerCase().includes('مصنع')
+      );
+    });
+  }
+
+  if (filtered.length === 0 && prodMovements.length > 0) {
+    const rows = prodMovements.map((m, index) => {
+      const item = data.items.find((i) => i.id === m.itemId);
+      const unit = data.units.find((u) => u.id === m.unitId)?.name || 'وحدة';
+      const baseUnit = data.units.find((u) => u.id === item?.baseUnitId)?.name || 'وحدة';
+      const isOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع';
+
+      return [
+        index + 1,
+        m.referenceNumber || `MFG-${m.id.substring(0, 6)}`,
+        formatArabicDate(m.date || m.createdAt),
+        isOut ? 'خروج مواد للمصنع' : 'وارد من المصنع / الإنتاج',
+        item ? `${item.name} (${item.code || '-'})` : (m.itemName || 'صنف تصنيع'),
+        `${(m.quantity || 0).toLocaleString('ar-SA')} ${unit}`,
+        `${(m.baseQuantity || m.quantity || 0).toLocaleString('ar-SA')} ${baseUnit}`,
+        m.notes || '-',
+      ];
+    });
+
+    const columns = [
+      '#',
+      'رقم السند / المرجع',
+      'التاريخ والوقت',
+      'نوع الحركة',
+      'الصنف',
+      'الكمية والوحدة',
+      'المعادل بالأساسية',
+      'الملاحظات',
+    ];
+
+    const kpis = [
+      { label: 'إجمالي حركات الإنتاج والمصنع', value: prodMovements.length.toLocaleString('ar-SA') },
+      { label: 'الوارد والصادر للإنتاج', value: prodMovements.length.toLocaleString('ar-SA') },
+    ];
+
+    return {
+      key: 'production',
+      title: 'قسم الإنتاج والتصنيع',
+      totalCount: prodMovements.length,
+      kpis,
+      columns,
+      rows,
+      toHtml: () => renderSectionHtml('قسم الإنتاج والتصنيع', prodMovements.length, kpis, columns, rows),
+    };
+  }
 
   filtered.sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
 
@@ -625,9 +719,12 @@ export function generateProductionReport(
 // 4. GENERATOR: Returns
 export function generateReturnsReport(
   data: InventoryContextData,
-  dateRange: DateRangeResult
+  dateRange: DateRangeResult,
+  extraFilter?: { customData?: ReturnRecord[] }
 ): GeneratedSectionData {
-  let filtered = data.returns.filter((r) => isRecordInDateRange(r.date, dateRange));
+  let filtered = extraFilter?.customData && Array.isArray(extraFilter.customData) && extraFilter.customData.length > 0
+    ? extraFilter.customData
+    : data.returns.filter((r) => isRecordInDateRange(r.date, dateRange));
   filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   let totalItemsReturned = 0;
@@ -641,7 +738,15 @@ export function generateReturnsReport(
       }
     }
 
-    const itemCount = r.items?.length || 0;
+    const itemsDetailStr = (r.items || [])
+      .map((it) => {
+        const itm = data.items.find((i) => i.id === it.itemId);
+        const cat = data.categories.find((c) => c.id === itm?.categoryId)?.name || 'عام';
+        const unit = data.units.find((u) => u.id === it.unitId)?.name || 'وحدة';
+        return `• ${itm?.name || 'صنف'} (${cat}): ${it.quantity} ${unit}`;
+      })
+      .join('<br>');
+
     const qtySum = (r.items || []).reduce((acc, it) => acc + (it.quantity || 0), 0);
     totalItemsReturned += qtySum;
 
@@ -662,7 +767,7 @@ export function generateReturnsReport(
       formatArabicDate(r.date),
       typeLabel,
       sourceName,
-      `${itemCount.toLocaleString('ar-SA')} أصناف (${qtySum.toLocaleString('ar-SA')} قطعة)`,
+      itemsDetailStr || 'لا توجد أصناف',
       r.reason || '-',
       statusLabel,
       r.notes || '-',
@@ -675,7 +780,7 @@ export function generateReturnsReport(
     'التاريخ',
     'نوع المصدر',
     'الجهة / العميل',
-    'عدد البنود والكمية',
+    'تفاصيل الأصناف والكميات الكاملة',
     'سبب الإرجاع',
     'حالة السند',
     'الملاحظات',
@@ -701,11 +806,14 @@ export function generateReturnsReport(
 // 5. GENERATOR: Damaged Records
 export function generateDamagedReport(
   data: InventoryContextData,
-  dateRange: DateRangeResult
+  dateRange: DateRangeResult,
+  extraFilter?: { customData?: DamagedRecord[] }
 ): GeneratedSectionData {
-  let filtered = data.damagedRecords.filter((d) =>
-    isRecordInDateRange(d.date || d.createdAt, dateRange)
-  );
+  let filtered = extraFilter?.customData && Array.isArray(extraFilter.customData) && extraFilter.customData.length > 0
+    ? extraFilter.customData
+    : data.damagedRecords.filter((d) =>
+        isRecordInDateRange(d.date || d.createdAt, dateRange)
+      );
 
   filtered.sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
 
@@ -1027,13 +1135,13 @@ export function generateReportsForSelection(
         results.push(generateMovementsReport(data, dateRange, extraParams));
         break;
       case 'production':
-        results.push(generateProductionReport(data, dateRange));
+        results.push(generateProductionReport(data, dateRange, extraParams));
         break;
       case 'returns':
-        results.push(generateReturnsReport(data, dateRange));
+        results.push(generateReturnsReport(data, dateRange, extraParams));
         break;
       case 'damaged':
-        results.push(generateDamagedReport(data, dateRange));
+        results.push(generateDamagedReport(data, dateRange, extraParams));
         break;
       case 'branches':
         results.push(generateBranchesReport(data));

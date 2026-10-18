@@ -440,9 +440,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
   const handleProceedToReview = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
-    playNotificationSound('bell');
-    setStep('REVIEW');
+    handleApproveDispatch();
   };
 
   const handleSaveDraft = () => {
@@ -577,6 +575,8 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+
 
   // Print Preview Modal
   if (isPreviewModalOpen) {
@@ -905,7 +905,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {savedDrafts.length > 0 && !isEditMode && (
+            {!isEditMode && (
               <button
                 type="button"
                 onClick={() => setIsDraftsModalOpen(true)}
@@ -1412,6 +1412,58 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
         items={rows as any}
         allowZeroStockSelection={true}
       />
+
+      {/* Drafts Modal */}
+      {isDraftsModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 text-right space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-amber-600" />
+                <span>مسودات سندات الخروج المحفوظة</span>
+              </h3>
+              <button onClick={() => setIsDraftsModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
+              {savedDrafts.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs">لا توجد مسودات محفوظة حالياً</div>
+              ) : (
+                savedDrafts.map((draft) => (
+                  <div key={draft.id} className="p-3.5 bg-amber-50/50 rounded-2xl border border-amber-200 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-black text-slate-900 text-xs font-mono">#{draft.referenceNumber}</div>
+                      <div className="text-[11px] text-slate-600 mt-0.5">
+                        {draft.destinationType === 'BRANCH' ? 'فرع' : 'عميل'}: {draft.destinationType === 'BRANCH' ? branches.find(b => b.id === draft.branchId)?.name : draft.customerName}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-1">{new Date(draft.savedAt).toLocaleString('ar-SA')}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleResumeDraft(draft)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                      >
+                        استئناف
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDraft(draft.id)}
+                        className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                        title="حذف المسودة"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

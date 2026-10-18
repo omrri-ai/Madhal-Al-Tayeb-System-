@@ -3505,8 +3505,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             branchId: selectedBranchId,
             categoryId: selectedCategoryId,
             searchQuery,
-            type: selectedMovementType,
             ...sectionReportConfig.extraParams,
+            type: sectionReportConfig.extraParams?.type || selectedMovementType,
           }}
         />
       )}

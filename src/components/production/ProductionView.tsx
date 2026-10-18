@@ -23,6 +23,7 @@ import { StockMovement, Item, Unit, Category } from '../../types/inventory';
 import { FactoryMovementModal } from './FactoryMovementModal';
 import { FactoryVoucherModal } from './FactoryVoucherModal';
 import { deduplicateById } from '../../utils/arabicSearch';
+import { UniversalReportModal } from '../reports/UniversalReportModal';
 
 interface ProductionViewProps {
   onOpenAddItem?: () => void;
@@ -38,6 +39,7 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
   // Modals state
   const [modalType, setModalType] = useState<'MFG_OUT' | 'MFG_IN' | null>(null);
   const [voucherMovement, setVoucherMovement] = useState<StockMovement | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -411,6 +413,15 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
               <Download className="w-3.5 h-3.5" />
               <span>تصدير CSV</span>
             </button>
+
+            <button
+              onClick={() => setIsReportModalOpen(true)}
+              disabled={filteredMovements.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileText className="w-3.5 h-3.5 text-rose-600" />
+              <span>تصدير PDF</span>
+            </button>
           </div>
         </div>
 
@@ -698,6 +709,18 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
           onClose={() => setVoucherMovement(null)}
         />
       )}
+
+      {/* Universal Report Modal for PDF Export & Print */}
+      <UniversalReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        initialSections={['production']}
+        reportTitle="تقرير حركات الإنتاج والتصنيع (حسب التاريخ والفلاتر المحددة)"
+        initialPeriod={periodFilter === 'TODAY' ? 'today' : periodFilter === 'WEEK' ? 'last_7_days' : periodFilter === 'MONTH' ? 'this_month' : periodFilter === 'CUSTOM' ? 'custom' : 'all'}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
+        extraParams={{ customData: filteredMovements }}
+      />
     </div>
   );
 };
