@@ -27,6 +27,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { useAuth, DEFAULT_MASTER_KEY } from '../../context/AuthContext';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { playNotificationSound } from '../../services/sound';
+import { checkStockHealth, StockHealthReport } from '../../utils/stockRules';
 
 export const BackupSettingsView: React.FC = () => {
   const {
@@ -36,6 +37,7 @@ export const BackupSettingsView: React.FC = () => {
     movements,
     branches,
     returns,
+    getItemStock,
     exportDataJSON,
     importDataJSON,
     clearDatabase,
@@ -105,6 +107,74 @@ export const BackupSettingsView: React.FC = () => {
       showToast('تم تصدير النسخة الاحتياطية بنجاح بصيغة JSON', 'success');
     } catch (err: any) {
       showToast('تعذر تصدير البيانات، يرجى المحاولة مرة أخرى', 'error');
+    }
+  };
+
+  // Step 0: Export current stock balances snapshot (Manager only)
+  const handleExportStockSnapshot = () => {
+    try {
+      playNotificationSound('bell');
+      const snapshot = items
+        .filter((it) => !it.isDeleted)
+        .map((it) => ({
+          id: it.id,
+          code: it.code,
+          name: it.name,
+          balance: getItemStock(it.id),
+        }));
+      const json = JSON.stringify(snapshot, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `لقطة_ارصدة_المخزون_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('تم تصدير لقطة أرصدة الأصناف الحالية بنجاح للمقارنة', 'success');
+    } catch (err: any) {
+      showToast('تعذر تصدير لقطة الأرصدة', 'error');
+    }
+  };
+
+  // Task 5: Stock Health Check (زر الفحص)
+  const [healthReport, setHealthReport] = useState<StockHealthReport | null>(null);
+  const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
+
+  const handleRunHealthCheck = () => {
+    try {
+      playNotificationSound('bell');
+      const report = checkStockHealth(items, movements, units);
+      setHealthReport(report);
+      setIsHealthModalOpen(true);
+      if (report.issues.length === 0) {
+        showToast('فحص سلامة الأرصدة مكتمل: لا توجد أي أخطاء أو تعارضات في الأرصدة!', 'success');
+      } else {
+        showToast(`اكتمل الفحص: تم رصد ${report.issues.length} مسألة أو تنبيه تحتاج للمراجعة`, 'info');
+      }
+    } catch (err: any) {
+      showToast('تعذر إجراء فحص السلامة', 'error');
+    }
+  };
+
+  const handleExportHealthReport = () => {
+    if (!healthReport) return;
+    try {
+      playNotificationSound('bell');
+      const json = JSON.stringify(healthReport, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `تقرير_سلامة_المخزون_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('تم تصدير تقرير فحص السلامة بنجاح', 'success');
+    } catch {
+      showToast('تعذر تصدير التقرير', 'error');
     }
   };
 
@@ -489,6 +559,52 @@ export const BackupSettingsView: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* Export Stock Balances Snapshot (Manager Only - Step 0) */}
+          <div className="bg-white p-5 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-2xs flex flex-col justify-between sm:col-span-2">
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-3">
+                <FileText className="w-5 h-5" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900 mb-1">
+                لقطة أرصدة الأصناف للمقارنة (Stock Balances Snapshot)
+              </h4>
+              <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                تصدير ملف JSON يحتوي على المعرف (id)، الكود، الاسم، والرصيد المحتسب لكل صنف حالياً. دالة مخصصة للمدير لمقارنة لقطة الأرصدة قبل التعديل وبعده.
+              </p>
+            </div>
+            <button
+              onClick={handleExportStockSnapshot}
+              className="w-full sm:w-auto self-start flex items-center justify-center gap-2 py-2.5 px-5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+            >
+              <Download className="w-4 h-4" />
+              <span>تصدير لقطة الأرصدة الحالية (JSON)</span>
+            </button>
+          </div>
+
+          {/* Stock Health Check Card (Manager Only - Task 5 / زر الفحص) */}
+          <div className="bg-white p-5 rounded-2xl border border-indigo-200 bg-indigo-50/20 shadow-2xs flex flex-col justify-between sm:col-span-2">
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center mb-3">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900 mb-1">
+                فحص وتدقيق سلامة المخزون والحركات (زر الفحص - المهمة 5)
+              </h4>
+              <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                زر الفحص الشامل للمدير: يحلل جميع حركات المخزون، يكتشف الأرصدة السالبة، المعرفات المكررة، الأنواع غير المعروفة، والكميات غير المتطابقة وفق قواعد stockRules الموحدة بدون تعديل أي بيانات.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleRunHealthCheck}
+                className="w-full sm:w-auto self-start flex items-center justify-center gap-2 py-2.5 px-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>تشغيل فحص سلامة الأرصدة الآن (زر الفحص)</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -849,6 +965,134 @@ export const BackupSettingsView: React.FC = () => {
         }}
         onCancel={() => setIsResetConfirmOpen(false)}
       />
+
+      {/* 4. Task 5: Stock Health Check Result Modal */}
+      {isHealthModalOpen && healthReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden text-right">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${healthReport.issues.length === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    تقرير فحص سلامة المخزون والحركات (زر الفحص - المهمة 5)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    تاريخ ووقت الفحص: {new Date(healthReport.generatedAt).toLocaleString('ar-SA')}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsHealthModalOpen(false)}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 flex items-center justify-center text-sm font-bold cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Metrics Grid */}
+            <div className="p-5 overflow-y-auto space-y-5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[11px] text-slate-500 block font-medium">الأصناف المفحوصة</span>
+                  <span className="text-lg font-black text-slate-900 font-mono">{healthReport.totalItemsScanned}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[11px] text-slate-500 block font-medium">الحركات المفحوصة</span>
+                  <span className="text-lg font-black text-slate-900 font-mono">{healthReport.totalMovementsScanned}</span>
+                </div>
+                <div className={`p-3 rounded-xl border ${healthReport.negativeStockCount > 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[11px] block font-medium ${healthReport.negativeStockCount > 0 ? 'text-red-700 font-bold' : 'text-slate-500'}`}>أرصدة سالبة</span>
+                  <span className={`text-lg font-black font-mono ${healthReport.negativeStockCount > 0 ? 'text-red-700' : 'text-slate-900'}`}>{healthReport.negativeStockCount}</span>
+                </div>
+                <div className={`p-3 rounded-xl border ${healthReport.duplicateIdCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`text-[11px] block font-medium ${healthReport.duplicateIdCount > 0 ? 'text-amber-700 font-bold' : 'text-slate-500'}`}>معرفات مكررة</span>
+                  <span className={`text-lg font-black font-mono ${healthReport.duplicateIdCount > 0 ? 'text-amber-700' : 'text-slate-900'}`}>{healthReport.duplicateIdCount}</span>
+                </div>
+              </div>
+
+              {/* Status Message */}
+              {healthReport.issues.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
+                  <h4 className="text-sm font-bold text-emerald-900 mb-1">
+                    المخزون سليم 100% ولا توجد أي مشاكل
+                  </h4>
+                  <p className="text-xs text-emerald-700 max-w-lg mx-auto">
+                    جميع الحركات مطابقة للكميات الأساسية، لا توجد أرصدة سالبة، وجميع المعرفات والوحدات متطابقة تماماً مع قواعد stockRules.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span>قائمة الملاحظات والمشكلات المكتشفة ({healthReport.issues.length}):</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {healthReport.unknownTypeMovementsCount} نوع مجهول · {healthReport.invalidBaseQtyCount} كمية غير مطابقة · {healthReport.orphanedMovementsCount} حركات يتيمة
+                    </span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3">الخطورة</th>
+                          <th className="py-2.5 px-3">نوع المشكلة</th>
+                          <th className="py-2.5 px-3">المعرف / الصنف</th>
+                          <th className="py-2.5 px-3">التفاصيل التشخيصية</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {healthReport.issues.map((iss, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/60">
+                            <td className="py-2.5 px-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${iss.severity === 'ERROR' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                                {iss.severity === 'ERROR' ? 'خطأ' : 'تنبيه'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                              {iss.type}
+                            </td>
+                            <td className="py-2.5 px-3 font-bold text-slate-900 text-xs">
+                              {iss.entityName || iss.entityId}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600 text-xs font-mono">
+                              {iss.details}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <button
+                onClick={handleExportHealthReport}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>تصدير تقرير الفحص (JSON)</span>
+              </button>
+
+              <button
+                onClick={() => setIsHealthModalOpen(false)}
+                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

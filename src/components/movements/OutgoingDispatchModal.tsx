@@ -25,6 +25,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { ShippingCarrier, StockMovement } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 import { ItemPickerBottomSheet } from '../common/ItemPickerBottomSheet';
+import { canWithdraw } from '../../utils/stockRules';
 
 export interface OutgoingDispatchDraft {
   id: string;
@@ -345,7 +346,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       const totalRequestedForThisItem = itemTotalRequestedBase[item.id] || baseQty;
       
       // In Edit mode, virtual stock accounts for restored previous dispatch qty
-      const isExceeded = numQty > 0 && !isEditMode && (totalRequestedForThisItem > currentStock || currentStock <= 0);
+      const isExceeded = numQty > 0 && !isEditMode && !canWithdraw(currentStock, totalRequestedForThisItem);
 
       return {
         item,
@@ -502,7 +503,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
     showToast('تم حذف المسودة من القائمة', 'info');
   };
 
-  const handleApproveDispatch = () => {
+  const handleApproveDispatch = async () => {
     if (isSubmitting) return;
     if (!validateForm()) return;
 
@@ -542,12 +543,12 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
     let result;
     if (isEditMode && editVoucherNoOrBatch) {
-      result = updateMultiItemDispatch(editVoucherNoOrBatch, {
+      result = await updateMultiItemDispatch(editVoucherNoOrBatch, {
         ...payload,
         editReason: editReason.trim(),
       });
     } else {
-      result = addMultiItemDispatch(payload);
+      result = await addMultiItemDispatch(payload);
     }
 
     if (result.success && result.voucherNumber) {

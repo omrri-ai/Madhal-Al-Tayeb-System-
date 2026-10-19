@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { Item, StockMovement } from '../../types/inventory';
+import { canWithdraw } from '../../utils/stockRules';
 
 interface FactoryMovementModalProps {
   isOpen: boolean;
@@ -152,7 +153,7 @@ export const FactoryMovementModal: React.FC<FactoryMovementModalProps> = ({
 
   // Validation
   const isOutOfStock = isOut && selectedItem && currentStock <= 0;
-  const isExceedingStock = isOut && selectedItem && numQty > 0 && baseQty > currentStock;
+  const isExceedingStock = isOut && selectedItem && numQty > 0 && !canWithdraw(currentStock, baseQty);
   const remainingStockAfterOperation = isOut ? currentStock - baseQty : currentStock + baseQty;
 
   // Preview reference number

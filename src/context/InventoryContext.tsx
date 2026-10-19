@@ -35,6 +35,14 @@ import {
 import { OWNER_EMAIL } from '../services/firebase';
 import { useAuth } from './AuthContext';
 import { deduplicateById } from '../utils/arabicSearch';
+import {
+  computeAllBalances,
+  canWithdraw,
+  signedBaseQty,
+  getMovementStockEffect,
+  getUnsignedBaseQuantity,
+  normalizeMovementType,
+} from '../utils/stockRules';
 
 
 interface InventoryContextType {
@@ -136,7 +144,7 @@ interface InventoryContextType {
     shippingCompany?: ShippingCarrier;
     shippingTrackingNumber?: string;
     batchId?: string;
-  }) => { success: boolean; error?: string };
+  }) => Promise<{ success: boolean; error?: string }>;
   
   addMultiItemDispatch: (dispatchData: {
     destinationType: 'BRANCH' | 'CUSTOMER';
@@ -160,7 +168,7 @@ interface InventoryContextType {
       quantity: number;
       notes?: string;
     }[];
-  }) => { success: boolean; error?: string; voucherNumber?: string; movements?: StockMovement[] };
+  }) => Promise<{ success: boolean; error?: string; voucherNumber?: string; movements?: StockMovement[] }>;
 
   updateMultiItemDispatch: (
     voucherRefOrBatch: string,
@@ -1007,61 +1015,51 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     showToast('تم تصفير وحذف جميع الفروع بنجاح', 'info');
   }, [branches, units, categories, items, movements, returns, persistChanges, showToast, ensureAdmin]);
 
-  // Calculate current stock in base units with foolproof numerical safety
+  // ---------------------------------------------------------------------------
+  // Task 2: Pure Stock Rules Integration & Single-Pass Balances Pre-computation
+  // ---------------------------------------------------------------------------
+
+  // Pre-compute stock balances map for all items once using pure stockRules
+  const stockBalancesMap = useMemo(() => {
+    return computeAllBalances(movements, items);
+  }, [movements, items]);
+
+  // Pre-compute cumulative totalIn and totalOut map for all items once using pure stockRules
+  const stockTotalsMap = useMemo(() => {
+    const totals = new Map<string, { totalIn: number; totalOut: number }>();
+    const uniqueMovements = deduplicateById(movements || []);
+
+    for (let i = 0; i < uniqueMovements.length; i++) {
+      const m = uniqueMovements[i];
+      if (!m || !m.itemId) continue;
+
+      const effect = getMovementStockEffect(m.type);
+      const baseQty = getUnsignedBaseQuantity(m);
+      const curr = totals.get(m.itemId) || { totalIn: 0, totalOut: 0 };
+
+      if (effect === 'INCREASE') {
+        curr.totalIn += baseQty;
+      } else if (effect === 'DECREASE') {
+        // DAMAGED is classified as DECREASE, so it is accurately counted in totalOut!
+        curr.totalOut += baseQty;
+      } else if (effect === 'ADJUSTMENT') {
+        const signed = signedBaseQty(m);
+        if (signed > 0) curr.totalIn += signed;
+        else curr.totalOut += Math.abs(signed);
+      }
+      totals.set(m.itemId, curr);
+    }
+
+    return totals;
+  }, [movements]);
+
+  // Calculate current stock in base units with stockRules:
+  // Returns true signed balance (negative allowed) for regular items, and min 0 for composites.
   const getItemStock = useCallback(
     (itemId: string): number => {
-      const item = items.find((i) => i.id === itemId && !i.isDeleted);
-      if (item && item.isComposite && item.components && item.components.length > 0) {
-        let maxUnits = Infinity;
-        for (const comp of item.components) {
-          const compStock = getItemStock(comp.itemId);
-          if (comp.quantity <= 0) {
-            maxUnits = 0;
-            break;
-          }
-          const possible = compStock / comp.quantity;
-          if (possible < maxUnits) {
-            maxUnits = possible;
-          }
-        }
-        const rawStock = maxUnits === Infinity ? 0 : Math.max(0, Math.round(maxUnits * 1000) / 1000);
-        return rawStock;
-      }
-
-      const uniqueMovements = deduplicateById(movements);
-      const itemMovements = uniqueMovements.filter((m) => m && m.itemId === itemId);
-      let stock = 0;
-      for (const m of itemMovements) {
-        const factor = Number(m.factorApplied) > 0 ? Number(m.factorApplied) : 1;
-        const baseQty =
-          m.baseQuantity !== undefined && m.baseQuantity !== null && !isNaN(Number(m.baseQuantity))
-            ? Number(m.baseQuantity)
-            : (Number(m.quantity) || 0) * factor;
-
-        if (
-          m.type === 'IN' ||
-          m.type === 'PRODUCTION_RECEIPT' ||
-          m.type === 'PRODUCTION_RETURN' ||
-          m.type === 'MFG_IN' ||
-          (m.type as string) === 'وارد من المصنع'
-        ) {
-          stock += baseQty;
-        } else if (
-          m.type === 'OUT' ||
-          m.type === 'PRODUCTION_DISPATCH' ||
-          m.type === 'MFG_OUT' ||
-          m.type === 'DAMAGED' ||
-          (m.type as string) === 'خروج للمصنع'
-        ) {
-          stock -= baseQty;
-        } else if (m.type === 'ADJUSTMENT') {
-          stock += baseQty;
-        }
-      }
-      const rawStock = Math.round(stock * 1000) / 1000;
-      return Math.max(0, rawStock);
+      return stockBalancesMap.get(itemId) ?? 0;
     },
-    [movements, items]
+    [stockBalancesMap]
   );
 
   // Conversion factor helper
@@ -1076,7 +1074,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [items]
   );
 
-  // Detailed Summary for an item
+  // Detailed Summary for an item (Unified with stockRules and DAMAGED included in totalOut)
   const getItemStockSummary = useCallback(
     (itemId: string): ItemStockSummary | null => {
       const item = items.find((i) => i.id === itemId);
@@ -1085,42 +1083,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const category = categories.find((c) => c.id === item.categoryId);
       const baseUnit = units.find((u) => u.id === item.baseUnitId);
       const stock = getItemStock(itemId);
-
-      let totalIn = 0;
-      let totalOut = 0;
-      const uniqueMovements = deduplicateById(movements);
-      for (const m of uniqueMovements.filter((m) => m && m.itemId === itemId)) {
-        const factor = Number(m.factorApplied) > 0 ? Number(m.factorApplied) : 1;
-        const baseQty =
-          m.baseQuantity !== undefined && m.baseQuantity !== null && !isNaN(Number(m.baseQuantity))
-            ? Number(m.baseQuantity)
-            : (Number(m.quantity) || 0) * factor;
-
-        if (
-          m.type === 'IN' ||
-          m.type === 'PRODUCTION_RECEIPT' ||
-          m.type === 'PRODUCTION_RETURN' ||
-          m.type === 'MFG_IN' ||
-          (m.type as string) === 'وارد من المصنع'
-        ) {
-          totalIn += baseQty;
-        } else if (
-          m.type === 'OUT' ||
-          m.type === 'PRODUCTION_DISPATCH' ||
-          m.type === 'MFG_OUT' ||
-          (m.type as string) === 'خروج للمصنع'
-        ) {
-          totalOut += baseQty;
-        } else if (m.type === 'ADJUSTMENT') {
-          if (baseQty > 0) totalIn += baseQty;
-          else totalOut += Math.abs(baseQty);
-        }
-      }
-
+      const totals = stockTotalsMap.get(itemId) || { totalIn: 0, totalOut: 0 };
 
       // Format equivalents in all configured units
       const formattedBalances: ItemStockSummary['formattedBalances'] = [];
-      
+
       // Base unit entry
       formattedBalances.push({
         unitName: baseUnit?.name || 'وحدة',
@@ -1129,7 +1096,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
 
       // Conversions entries
-      for (const conv of (item.conversions || [])) {
+      for (const conv of item.conversions || []) {
         const u = units.find((u) => u.id === conv.unitId);
         const factor = Number(conv.factorToBase);
         if (u && factor > 0) {
@@ -1154,13 +1121,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         categoryName: category?.name || 'غير محدد',
         baseUnitName: baseUnit?.name || 'وحدة',
         currentStock: stock,
-        totalIn: Math.round(totalIn * 1000) / 1000,
-        totalOut: Math.round(totalOut * 1000) / 1000,
+        totalIn: Math.round(totals.totalIn * 1000) / 1000,
+        totalOut: Math.round(totals.totalOut * 1000) / 1000,
         formattedBalances,
         status,
       };
     },
-    [items, categories, units, getItemStock, movements]
+    [items, categories, units, getItemStock, stockTotalsMap]
   );
 
   // Get summary for all items
@@ -1888,9 +1855,54 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [items, movements, units, categories, branches, returns, persistChanges, showToast]
   );
 
+  // Helper to verify stock availability with canWithdraw and fresh Firestore lookup
+  const verifyFreshStockAvailable = useCallback(
+    async (
+      targetItemId: string,
+      requiredBaseQty: number
+    ): Promise<{ allowed: boolean; currentBalance: number; error?: string }> => {
+      const localBalance = getItemStock(targetItemId);
+      if (!canWithdraw(localBalance, requiredBaseQty)) {
+        return {
+          allowed: false,
+          currentBalance: localBalance,
+          error: `الكمية المطلوبة (${requiredBaseQty}) تتجاوز الرصيد المتوفر محلياً (${localBalance}).`,
+        };
+      }
+
+      // If online, re-fetch movements for this itemId from Firestore to prevent double-spending across devices
+      if (!isOffline && typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          const freshMovements = await FirestoreStorage.fetchItemMovements(targetItemId);
+          if (freshMovements && freshMovements.length > 0) {
+            const mergedItemMovements = deduplicateById([
+              ...freshMovements,
+              ...movements.filter((m) => m && m.itemId === targetItemId),
+            ]);
+            const freshBalances = computeAllBalances(mergedItemMovements, items);
+            const freshBalance = freshBalances.get(targetItemId) ?? localBalance;
+            if (!canWithdraw(freshBalance, requiredBaseQty)) {
+              return {
+                allowed: false,
+                currentBalance: freshBalance,
+                error: `عفواً، تم تحديث رصيد هذا الصنف من جهاز آخر ولم يعد كافياً لإتمام العملية. الرصيد المحدث بالسحابة: ${freshBalance}.`,
+              };
+            }
+            return { allowed: true, currentBalance: freshBalance };
+          }
+        } catch (err) {
+          console.warn('[InventoryContext] Could not re-verify fresh stock from Firestore, proceeding with local check:', err);
+        }
+      }
+
+      return { allowed: true, currentBalance: localBalance };
+    },
+    [getItemStock, isOffline, movements, items]
+  );
+
   // STOCK MOVEMENTS
   const addMovement = useCallback(
-    (data: {
+    async (data: {
       itemId: string;
       type: MovementType;
       unitId: string;
@@ -1941,11 +1953,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const compItem = items.find(i => i.id === comp.itemId && !i.isDeleted);
           if (!compItem) return { success: false, error: `مكوّن المنتج المركب "${comp.itemId}" غير موجود.` };
           
-          const totalCompBaseQty = comp.quantity * baseQuantity; // Assuming component quantity is per base unit
-          const compStock = getItemStock(comp.itemId);
-          
-          if (compStock < totalCompBaseQty) {
-            return { success: false, error: `عفواً، لا يتوفر رصيد كافٍ للمكوّن "${compItem.name}". الرصيد الحالي: ${compStock}.` };
+          const totalCompBaseQty = comp.quantity * baseQuantity;
+          const verify = await verifyFreshStockAvailable(comp.itemId, totalCompBaseQty);
+          if (!verify.allowed) {
+            const compBaseUnit = units.find((u) => u.id === compItem.baseUnitId)?.name || 'وحدة';
+            const errMsg = `عفواً، لا يتوفر رصيد كافٍ للمكوّن "${compItem.name}" (المطلوب: ${totalCompBaseQty} ${compBaseUnit}، المتوفر: ${verify.currentBalance} ${compBaseUnit}).`;
+            showToast(errMsg, 'error');
+            return { success: false, error: errMsg };
           }
           componentsToDispatch.push({ itemId: comp.itemId, baseQuantity: totalCompBaseQty });
         }
@@ -1957,8 +1971,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       // Negative balance guard for OUT
       if (data.type === 'OUT' && !item.isComposite) {
-        if (currentStock < baseQuantity || currentStock <= 0) {
-          const errMsg = `عفواً، لا يمكن إتمام عملية الخروج: الكمية المطلوبة (${data.quantity} ${movementUnit} = ${baseQuantity} ${baseUnit}) تتجاوز الرصيد المتوفر حالياً (${currentStock} ${baseUnit}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
+        const verify = await verifyFreshStockAvailable(data.itemId, baseQuantity);
+        if (!verify.allowed) {
+          const errMsg = `عفواً، لا يمكن إتمام عملية الخروج: الكمية المطلوبة (${data.quantity} ${movementUnit} = ${baseQuantity} ${baseUnit}) تتجاوز الرصيد المتوفر حالياً (${verify.currentBalance} ${baseUnit}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
           showToast(errMsg, 'error');
           return {
             success: false,
@@ -1968,11 +1983,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       const movementId = 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-      
-      // If Composite, we will NOT add the main product movement, but rather its components movements.
-      // Or we can add it as a record for audit trail. Let's add it with 0 quantity if composite?
-      // Actually, per requirement 6, we don't track main product balance. 
-      // Requirement 6: "لا تنشئ له رصيدًا مستقلًا؛ المخزون الفعلي هو مخزون مكوناته الأصلية."
       
       const newMovements: StockMovement[] = [];
       
@@ -2044,12 +2054,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم ${actionText} ${data.quantity} ${movementUnit} للصنف "${item.name}" بنجاح`, 'success');
       return { success: true };
     },
-    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast, verifyFreshStockAvailable, ensureAdmin]
   );
 
   // Multi-item Outgoing Dispatch (Export to branch or Customer with SMSA / Fastlo / Aramex)
   const addMultiItemDispatch = useCallback(
-    (dispatchData: {
+    async (dispatchData: {
       destinationType: 'BRANCH' | 'CUSTOMER';
       branchId?: string;
       branchName?: string;
@@ -2137,7 +2147,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const compStock = getItemStock(comp.itemId);
             const compBaseUnitName = units.find(u => u.id === compItem.baseUnitId)?.name || 'وحدة';
 
-            if (compStock < cumulativePerItem[comp.itemId]) {
+            if (!canWithdraw(compStock, cumulativePerItem[comp.itemId])) {
               const errMsg = `عفواً، لا يتوفر رصيد كافٍ للمكوّن "${compItem.name}" (المطلوب: ${cumulativePerItem[comp.itemId]} ${compBaseUnitName}، المتوفر: ${compStock} ${compBaseUnitName}).`;
               showToast(errMsg, 'error');
               return { success: false, error: errMsg };
@@ -2149,7 +2159,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const currentStock = getItemStock(item.id);
           const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
           
-          if (currentStock < cumulativePerItem[item.id] || currentStock <= 0) {
+          if (!canWithdraw(currentStock, cumulativePerItem[item.id])) {
             const errMsg = `عفواً، لا يمكن إتمام التصدير: إجمالي الكمية المطلوبة للصنف "${item.name}" (${cumulativePerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتوفر (${currentStock} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
             showToast(errMsg, 'error');
             return {
@@ -2168,6 +2178,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           notes: entry.notes,
           componentsToDispatch: compEntries,
         });
+      }
+
+      // Re-verify against fresh Firestore movements to ensure no concurrent device over-withdrew
+      for (const [targetId, requiredQty] of Object.entries(cumulativePerItem)) {
+        const verify = await verifyFreshStockAvailable(targetId, requiredQty);
+        if (!verify.allowed) {
+          const targetItem = items.find((i) => i.id === targetId);
+          const errMsg = `عفواً، تم تحديث رصيد الصنف "${targetItem?.name || targetId}" من جهاز آخر: ${verify.error}`;
+          showToast(errMsg, 'error');
+          return { success: false, error: errMsg };
+        }
       }
 
       // All verified! Generate voucher and batch
@@ -2285,7 +2306,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       return { success: true, voucherNumber: voucherNo, movements: newMovements };
     },
-    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast, verifyFreshStockAvailable, ensureAdmin]
   );
 
   const updateMultiItemDispatch = useCallback(
@@ -2426,7 +2447,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const availableVirtual = virtualStockMap[comp.itemId] ?? getItemStock(comp.itemId);
             const compBaseUnitName = units.find(u => u.id === compItem.baseUnitId)?.name || 'وحدة';
 
-            if (availableVirtual < newRequiredPerItem[comp.itemId]) {
+            if (!canWithdraw(availableVirtual, newRequiredPerItem[comp.itemId])) {
               const errMsg = `عفواً، لا يمكن إتمام التعديل: المكوّن "${compItem.name}" يتطلب (${newRequiredPerItem[comp.itemId]} ${compBaseUnitName}) بينما المتاح افتراضياً (${availableVirtual} ${compBaseUnitName}).`;
               showToast(errMsg, 'error');
               return { success: false, error: errMsg };
@@ -2438,7 +2459,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const availableVirtual = virtualStockMap[item.id] ?? getItemStock(item.id);
           const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
 
-          if (availableVirtual < newRequiredPerItem[item.id] || availableVirtual <= 0) {
+          if (!canWithdraw(availableVirtual, newRequiredPerItem[item.id])) {
             const errMsg = `عفواً، لا يمكن إتمام التعديل: الكمية المعدلة المطلوبة للصنف "${item.name}" (${newRequiredPerItem[item.id]} ${baseUnit}) تتجاوز الرصيد المتاح عند إرجاع الكمية السابقة (${availableVirtual} ${baseUnit}). يمنع النظام تماماً الأرصدة السالبة!`;
             showToast(errMsg, 'error');
             return { success: false, error: errMsg };
@@ -2719,9 +2740,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // If deleting an IN movement, stock will decrease. Verify it doesn't cause negative stock!
       if (existing.type === 'IN') {
         const currentStock = getItemStock(item.id);
-        const resultingStock = Math.round((currentStock - existing.baseQuantity) * 1000) / 1000;
-        if (resultingStock < 0) {
+        if (!canWithdraw(currentStock, existing.baseQuantity)) {
           const baseUnit = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+          const resultingStock = Math.round((currentStock - existing.baseQuantity) * 1000) / 1000;
           return {
             success: false,
             error: `لا يمكن حذف حركة الدخول: الكمية تم صرفها بالفعل في حركات لاحقة، وحذفها سيؤدي إلى رصيد سالب (${resultingStock} ${baseUnit}).`,
@@ -2896,7 +2917,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         if (returnData.status === 'APPROVED' && returnData.type === 'RETURN_OUT') {
           const currentStock = getItemStock(entry.itemId);
-          if (currentStock < baseQuantity) {
+          if (!canWithdraw(currentStock, baseQuantity)) {
             const baseUnitName = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
             const msg = `عفواً، لا يمكن إتمام المرتجع الصادر: الكمية المطلوبة للصنف "${item.name}" تتجاوز الرصيد المتوفر (${currentStock} ${baseUnitName}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
             showToast(msg, 'error');
@@ -3004,7 +3025,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         if (target.type === 'RETURN_OUT') {
           const currentStock = getItemStock(entry.itemId);
-          if (currentStock < entry.baseQuantity) {
+          if (!canWithdraw(currentStock, entry.baseQuantity)) {
             return {
               success: false,
               error: `تعذر الاعتماد: الكمية المطلوبة للصنف "${item.name}" تتجاوز الرصيد المتوفر (${currentStock}).`,
@@ -3081,7 +3102,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           if (counterType === 'OUT') {
             const currentStock = getItemStock(entry.itemId);
-            if (currentStock < entry.baseQuantity) {
+            if (!canWithdraw(currentStock, entry.baseQuantity)) {
               return {
                 success: false,
                 error: `تعذر الإلغاء: الكمية المراد سحبها عكسياً للصنف "${item.name}" غير متوفرة حالياً في الرصيد (${currentStock}).`,
@@ -3198,7 +3219,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const baseQuantity = Math.round(data.quantity * factor * 1000) / 1000;
 
       const currentStock = getItemStock(data.itemId);
-      if (baseQuantity > currentStock) {
+      if (!canWithdraw(currentStock, baseQuantity)) {
         return {
           success: false,
           error: `عفواً، الكمية التالفة المطلوبة (${data.quantity} ${unit.name} = ${baseQuantity} وحدة أساسية) تتجاوز الرصيد المتوفر حالياً (${currentStock}).`,
@@ -3513,7 +3534,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const movementUnitName = units.find((u) => u.id === entry.unitId)?.name || 'وحدة';
 
         // Negative stock prevention guard
-        if (currentStock < baseQuantity || currentStock <= 0) {
+        if (!canWithdraw(currentStock, baseQuantity)) {
           const errMsg = `عفواً، لا يمكن إتمام الصرف للإنتاج: الكمية المطلوبة للصنف "${item.name}" (${entry.quantity} ${movementUnitName} = ${baseQuantity} ${baseUnitName}) تتجاوز رصيد المستودع الحالي (${currentStock} ${baseUnitName}). يمنع النظام تماماً الرصيد السالب!`;
           showToast(errMsg, 'error');
           return { success: false, error: errMsg };
@@ -4273,7 +4294,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const movementUnit = units.find((u) => u.id === data.unitId)?.name || 'وحدة';
 
       if (data.type === 'MFG_OUT') {
-        if (currentStock < baseQuantity || currentStock <= 0) {
+        if (!canWithdraw(currentStock, baseQuantity)) {
           const err = `عفواً، لا يمكن إتمام عملية الخروج للمصنع: الكمية المطلوبة (${numQty} ${movementUnit} = ${baseQuantity} ${baseUnit}) تتجاوز الرصيد المتوفر حالياً (${currentStock} ${baseUnit}). نظام مدهال الطيب يمنع الرصيد السالب نهائياً!`;
           showToast(err, 'error');
           return { success: false, error: err };

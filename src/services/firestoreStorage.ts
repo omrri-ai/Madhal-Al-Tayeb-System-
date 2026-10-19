@@ -9,6 +9,7 @@ import {
   writeBatch,
   runTransaction,
   query,
+  where,
   orderBy,
   limit,
 } from 'firebase/firestore';
@@ -235,6 +236,21 @@ export const FirestoreStorage = {
     } catch (err) {
       console.error('Error saving item to Firestore:', err);
       throw err;
+    }
+  },
+
+  // Fetch fresh movements for a specific item from Firestore (itemId query)
+  async fetchItemMovements(itemId: string): Promise<StockMovement[]> {
+    try {
+      const q = query(collection(db, 'movements'), where('itemId', '==', itemId));
+      const snap = await getDocs(q);
+      if (!snap || snap.empty) return [];
+      return snap.docs
+        .map((d) => d.data() as StockMovement)
+        .filter((m) => m && m.id && m.itemId);
+    } catch (err) {
+      console.warn(`[FirestoreStorage] Could not fetch fresh movements for item ${itemId}:`, err);
+      return [];
     }
   },
 

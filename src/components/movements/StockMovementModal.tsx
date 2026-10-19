@@ -3,6 +3,7 @@ import { X, ArrowDownLeft, ArrowUpRight, AlertCircle, CheckCircle2, Calculator, 
 import { useInventory } from '../../context/InventoryContext';
 import { MovementType, StockMovement } from '../../types/inventory';
 import { ItemPickerBottomSheet } from '../common/ItemPickerBottomSheet';
+import { canWithdraw } from '../../utils/stockRules';
 
 interface StockMovementModalProps {
   isOpen: boolean;
@@ -142,7 +143,11 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
     return currentStock - baseQuantity;
   }, [selectedItem, editingMovement, currentStock, type, baseQuantity]);
 
-  const isInsufficientStock = type === 'OUT' && resultingStock < 0;
+  const isInsufficientStock =
+    type === 'OUT' &&
+    (editingMovement
+      ? resultingStock < 0
+      : !canWithdraw(currentStock, baseQuantity));
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -177,7 +182,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
 
     try {
       if (editingMovement) {
-        const res = updateMovement(editingMovement.id, {
+        const res = await updateMovement(editingMovement.id, {
           unitId,
           quantity: numQuantity,
           type,
@@ -192,7 +197,7 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
           return;
         }
       } else {
-        const res = addMovement({
+        const res = await addMovement({
           itemId,
           type,
           unitId,

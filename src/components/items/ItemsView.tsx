@@ -435,7 +435,7 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
 
                       {/* Balance in Base Unit & Equivalent */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-baseline gap-1.5 font-bold font-mono text-base text-slate-900">
+                        <div className={`flex items-baseline gap-1.5 font-bold font-mono text-base ${s.currentStock < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                           <span>{s.currentStock.toLocaleString('ar-SA')}</span>
                           <span className="text-xs text-slate-500 font-sans font-medium">
                             {s.baseUnitName}
@@ -451,17 +451,19 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
 
                       {/* Status */}
                       <td className="py-3.5 px-4">
-                        {s.status === 'OUT_OF_STOCK' && (
+                        {s.currentStock < 0 ? (
+                          <span className="text-[11px] font-bold text-red-700 bg-red-50 border border-red-300 px-2.5 py-1 rounded-full inline-block animate-pulse">
+                            رصيد سالب: يحتاج مراجعة
+                          </span>
+                        ) : s.status === 'OUT_OF_STOCK' ? (
                           <span className="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full inline-block">
                             نفد المخزون
                           </span>
-                        )}
-                        {s.status === 'LOW_STOCK' && (
+                        ) : s.status === 'LOW_STOCK' ? (
                           <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full inline-block">
                             منخفض ({s.currentStock})
                           </span>
-                        )}
-                        {s.status === 'IN_STOCK' && (
+                        ) : (
                           <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full inline-block">
                             متوفر
                           </span>
@@ -571,26 +573,28 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
                 </div>
 
                 {/* Stock Display */}
-                <div className="my-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div className={`my-4 p-3 rounded-xl border flex items-center justify-between ${s.currentStock < 0 ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-100'}`}>
                   <div>
                     <span className="text-[11px] text-slate-400 block">الرصيد الفعلي:</span>
-                    <div className="flex items-baseline gap-1 font-bold font-mono text-lg text-slate-900">
+                    <div className={`flex items-baseline gap-1 font-bold font-mono text-lg ${s.currentStock < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                       <span>{s.currentStock.toLocaleString('ar-SA')}</span>
                       <span className="text-xs font-sans text-slate-500">{s.baseUnitName}</span>
                     </div>
                   </div>
                   <div>
-                    {s.status === 'OUT_OF_STOCK' && (
+                    {s.currentStock < 0 ? (
+                      <span className="text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-lg border border-red-300">
+                        رصيد سالب: يحتاج مراجعة
+                      </span>
+                    ) : s.status === 'OUT_OF_STOCK' ? (
                       <span className="text-xs font-bold text-rose-700 bg-rose-100/70 px-2.5 py-1 rounded-lg">
                         نفد المخزون
                       </span>
-                    )}
-                    {s.status === 'LOW_STOCK' && (
+                    ) : s.status === 'LOW_STOCK' ? (
                       <span className="text-xs font-bold text-amber-700 bg-amber-100/70 px-2.5 py-1 rounded-lg">
                         منخفض
                       </span>
-                    )}
-                    {s.status === 'IN_STOCK' && (
+                    ) : (
                       <span className="text-xs font-bold text-emerald-700 bg-emerald-100/70 px-2.5 py-1 rounded-lg">
                         متوفر
                       </span>
