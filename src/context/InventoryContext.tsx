@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Branch,
   Category,
@@ -412,6 +412,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [returns]);
 
   const { role, isOwner, user } = useAuth();
+  const roleRef = useRef(role);
+  const isOwnerRef = useRef(isOwner);
+  roleRef.current = role;
+  isOwnerRef.current = isOwner;
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -420,7 +424,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Strict role security guard: blocks any write operation when user is in View-Only mode
   const ensureAdmin = useCallback(
     (actionName: string): boolean => {
-      if (role !== 'ADMIN' && !isOwner) {
+      let sessionIsAdmin = false;
+      try {
+        const sRole = sessionStorage.getItem('makhzouni_active_role_session_v1');
+        const lRole = localStorage.getItem('userRole');
+        sessionIsAdmin = sRole === 'ADMIN' || (sRole !== 'FACTORY_VIEWER' && lRole === 'ADMIN');
+      } catch {}
+
+      const effectiveIsAdmin =
+        role === 'ADMIN' ||
+        isOwner ||
+        roleRef.current === 'ADMIN' ||
+        isOwnerRef.current ||
+        sessionIsAdmin;
+
+      if (!effectiveIsAdmin) {
         const errorMsg = `عفواً، لا تملك الصلاحية لتنفيذ (${actionName}). حساب مسؤول المصنع مخصص للمشاهدة فقط؛ يرجى التبديل لوضع المدير للمتابعة.`;
         showToast(errorMsg, 'error');
         return false;
@@ -1575,7 +1593,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       return { success: true, item: newItem };
     },
-    [items, units, categories, movements, branches, returns, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const updateItem = useCallback(
@@ -1741,7 +1759,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم أرشفة الصنف "${item.name}" (السبب: ${cleanReason})`, 'info');
       return { success: true };
     },
-    [items, units, categories, movements, branches, returns, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const restoreItem = useCallback(
@@ -1759,7 +1777,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم استعادة الصنف "${item.name}" من الأرشيف`, 'success');
       return { success: true };
     },
-    [items, units, categories, movements, branches, returns, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const softDeleteItem = useCallback(
@@ -1792,7 +1810,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم نقل الصنف "${item.name}" إلى سلة المحذوفات (السبب: ${cleanReason})`, 'info');
       return { success: true };
     },
-    [items, units, categories, movements, branches, returns, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const restoreFromTrash = useCallback(
@@ -1810,7 +1828,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تمت استعادة الصنف "${item.name}" بنجاح`, 'success');
       return { success: true };
     },
-    [items, units, categories, movements, branches, returns, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   const permanentDeleteItem = useCallback(
@@ -1852,7 +1870,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم الحذف النهائي للصنف "${item.name}"`, 'success');
       return { success: true };
     },
-    [items, movements, units, categories, branches, returns, persistChanges, showToast]
+    [items, movements, units, categories, branches, returns, persistChanges, showToast, ensureAdmin]
   );
 
   // Helper to verify stock availability with canWithdraw and fresh Firestore lookup
@@ -2617,7 +2635,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم تعديل السند المعتمد (#${voucherNo}) بنجاح وإعادة احتساب المخزون بأمان`, 'success');
       return { success: true, voucherNumber: voucherNo, movements: updatedMovementsList };
     },
-    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast]
+    [items, units, categories, movements, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
   );
 
   const updateMovement = useCallback(
@@ -2723,7 +2741,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم تعديل الحركة بنجاح`, 'success');
       return { success: true };
     },
-    [movements, items, units, categories, branches, returns, getItemStock, persistChanges, showToast]
+    [movements, items, units, categories, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
   );
 
   const deleteMovement = useCallback(
@@ -2769,7 +2787,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم حذف الحركة بنجاح مع تحديث الرصيد`, 'success');
       return { success: true };
     },
-    [movements, items, units, categories, branches, returns, getItemStock, persistChanges, showToast]
+    [movements, items, units, categories, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
   );
 
   const adjustItemStock = useCallback(
@@ -3002,7 +3020,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم تسجيل سند المرتجع #${returnNumber} بنجاح`, 'success');
       return { success: true, returnId, returnNumber };
     },
-    [items, units, movements, branches, returns, getItemStock, persistChanges, showToast]
+    [items, units, movements, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
   );
 
   const approveReturn = useCallback(
@@ -3160,7 +3178,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم إلغاء سند المرتجع #${target.returnNumber} بنجاح وتطبيق الحركة العكسية`, 'success');
       return { success: true };
     },
-    [returns, items, units, movements, branches, getItemStock, persistChanges, showToast]
+    [returns, items, units, movements, branches, getItemStock, persistChanges, showToast, ensureAdmin]
   );
 
   const deleteReturnRecord = useCallback(
@@ -3472,7 +3490,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, error: err?.message || 'تعذر الحفظ' };
       }
     },
-    [productionOrders, items, showToast]
+    [productionOrders, items, showToast, ensureAdmin]
   );
 
   const dispatchMaterialToProduction = useCallback(
@@ -4224,7 +4242,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       showToast(`تم حذف أمر الإنتاج (${order.orderNumber}) بنجاح`, 'info');
       return { success: true };
     },
-    [productionOrders, showToast]
+    [productionOrders, showToast, ensureAdmin]
   );
 
   const generateFactoryReferenceNumber = useCallback(
@@ -4368,6 +4386,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       generateFactoryReferenceNumber,
       persistChanges,
       showToast,
+      ensureAdmin,
     ]
   );
 

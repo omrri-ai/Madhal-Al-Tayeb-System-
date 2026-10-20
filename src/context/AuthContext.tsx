@@ -76,6 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           uid: 'owner_' + OWNER_EMAIL,
         });
         setRole('ADMIN');
+        try {
+          localStorage.setItem('userRole', 'ADMIN');
+        } catch {}
       } else if (sessionRole === 'FACTORY_VIEWER') {
         setUser({
           email: 'factory_supervisor@medhal.local',
@@ -120,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRole('ADMIN');
           try {
             sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
+            localStorage.setItem('userRole', 'ADMIN');
           } catch {}
           setAuthError(null);
         } else {
@@ -281,6 +285,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRole('ADMIN');
       try {
         sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
+        localStorage.setItem('userRole', 'ADMIN');
       } catch {}
       return { success: true };
     } catch (error: any) {
