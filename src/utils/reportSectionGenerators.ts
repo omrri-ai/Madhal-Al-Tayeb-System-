@@ -292,20 +292,22 @@ export function generateMovementsReport(
   // Sort groups descending by date/time (newest first)
   allGroups.sort((a, b) => new Date(b[0].createdAt || b[0].date).getTime() - new Date(a[0].createdAt || a[0].date).getTime());
 
-  // Classify and group into 6 categories in precise order
+  // Classify and group into 7 categories in precise order
   const categoriesMap: {
     incoming: StockMovement[][];
     outgoing: StockMovement[][];
+    factory_out: StockMovement[][];
+    factory_in: StockMovement[][];
     returns: StockMovement[][];
     adjustments: StockMovement[][];
-    production: StockMovement[][];
     transfers: StockMovement[][];
   } = {
     incoming: [],
     outgoing: [],
+    factory_out: [],
+    factory_in: [],
     returns: [],
     adjustments: [],
-    production: [],
     transfers: [],
   };
 
@@ -318,40 +320,51 @@ export function generateMovementsReport(
   const counts = {
     incoming: categoriesMap.incoming.reduce((acc, g) => acc + g.length, 0),
     outgoing: categoriesMap.outgoing.reduce((acc, g) => acc + g.length, 0),
+    factory_out: categoriesMap.factory_out.reduce((acc, g) => acc + g.length, 0),
+    factory_in: categoriesMap.factory_in.reduce((acc, g) => acc + g.length, 0),
     returns: categoriesMap.returns.reduce((acc, g) => acc + g.length, 0),
     adjustments: categoriesMap.adjustments.reduce((acc, g) => acc + g.length, 0),
-    production: categoriesMap.production.reduce((acc, g) => acc + g.length, 0),
     transfers: categoriesMap.transfers.reduce((acc, g) => acc + g.length, 0),
   };
 
+  const totalOutgoingDispatches = counts.outgoing + counts.factory_out + counts.transfers;
+  const totalIncomingReceipts = counts.incoming + counts.factory_in;
+
   const kpis = [
     { label: 'إجمالي الحركات', value: filtered.length.toLocaleString('ar-SA') },
-    { label: 'الوارد / التوريد', value: counts.incoming.toLocaleString('ar-SA') },
-    { label: 'الصادر / الصرف', value: counts.outgoing.toLocaleString('ar-SA') },
+    { label: 'إجمالي الصادر / الصرف', value: totalOutgoingDispatches.toLocaleString('ar-SA') },
+    { label: 'أوامر صرف للمصنع', value: counts.factory_out.toLocaleString('ar-SA') },
+    { label: 'الوارد / التوريد', value: totalIncomingReceipts.toLocaleString('ar-SA') },
+    { label: 'وارد من المصنع', value: counts.factory_in.toLocaleString('ar-SA') },
     { label: 'المرتجعات', value: counts.returns.toLocaleString('ar-SA') },
     { label: 'التسويات الجردية', value: counts.adjustments.toLocaleString('ar-SA') },
-    { label: 'الإنتاج والتصنيع', value: counts.production.toLocaleString('ar-SA') },
-    { label: 'التحويلات بين الفروع', value: counts.transfers.toLocaleString('ar-SA') },
   ];
 
-  let targetSectionKey: string | null = null;
-  if (extraFilter?.type && extraFilter.type !== 'all' && extraFilter.type !== 'ALL') {
-    if (extraFilter.type === 'IN') targetSectionKey = 'incoming';
-    else if (extraFilter.type === 'OUT') targetSectionKey = 'outgoing';
-    else if (extraFilter.type === 'ADJUSTMENT') targetSectionKey = 'adjustments';
-    else if (extraFilter.type === 'RETURN_IN' || extraFilter.type === 'RETURN_OUT') targetSectionKey = 'returns';
-    else if (extraFilter.type.startsWith('MFG_') || extraFilter.type.startsWith('PRODUCTION_')) targetSectionKey = 'production';
-    else if (extraFilter.type === 'BRANCH') targetSectionKey = 'transfers';
-  }
-
   const sectionConfigs = [
-    { key: 'incoming', title: '1. الوارد / التوريد', color: '#059669', bg: '#ecfdf5', groups: categoriesMap.incoming },
-    { key: 'outgoing', title: '2. الصادر / الصرف', color: '#e11d48', bg: '#fff1f2', groups: categoriesMap.outgoing },
-    { key: 'returns', title: '3. المرتجعات', color: '#0284c7', bg: '#eff6ff', groups: categoriesMap.returns },
-    { key: 'adjustments', title: '4. التسويات الجردية', color: '#d97706', bg: '#fffbeb', groups: categoriesMap.adjustments },
-    { key: 'production', title: '5. الإضافة للإنتاج والتصنيع', color: '#7c3aed', bg: '#f5f3ff', groups: categoriesMap.production },
-    { key: 'transfers', title: '6. التحويلات بين الفروع', color: '#4f46e5', bg: '#eef2ff', groups: categoriesMap.transfers },
-  ].filter((sec) => (targetSectionKey ? sec.key === targetSectionKey : sec.groups.length > 0));
+    { key: 'incoming', title: '1. الوارد / التوريد العام (سندات توريد)', color: '#059669', bg: '#ecfdf5', groups: categoriesMap.incoming },
+    { key: 'outgoing', title: '2. الصادر / أوامر الصرف المباشر (سندات صرف)', color: '#e11d48', bg: '#fff1f2', groups: categoriesMap.outgoing },
+    { key: 'factory_out', title: '3. أوامر صرف وخروج مواد للمصنع (إذن صرف وتشغيل)', color: '#be123c', bg: '#ffe4e6', groups: categoriesMap.factory_out },
+    { key: 'factory_in', title: '4. وارد واستلام البضاعة من المصنع (إذن توريد إنتاج)', color: '#047857', bg: '#f0fdf4', groups: categoriesMap.factory_in },
+    { key: 'returns', title: '5. المرتجعات', color: '#0284c7', bg: '#eff6ff', groups: categoriesMap.returns },
+    { key: 'adjustments', title: '6. التسويات الجردية', color: '#d97706', bg: '#fffbeb', groups: categoriesMap.adjustments },
+    { key: 'transfers', title: '7. التحويلات بين الفروع', color: '#4f46e5', bg: '#eef2ff', groups: categoriesMap.transfers },
+  ].filter((sec) => {
+    if (sec.groups.length === 0) return false;
+    if (!extraFilter?.type || extraFilter.type === 'all' || extraFilter.type === 'ALL') return true;
+    if (extraFilter.type === 'OUT') {
+      return sec.key === 'outgoing' || sec.key === 'factory_out' || sec.key === 'transfers';
+    }
+    if (extraFilter.type === 'IN') {
+      return sec.key === 'incoming' || sec.key === 'factory_in';
+    }
+    if (extraFilter.type === 'ADJUSTMENT') return sec.key === 'adjustments';
+    if (extraFilter.type === 'RETURN_IN' || extraFilter.type === 'RETURN_OUT') return sec.key === 'returns';
+    if (extraFilter.type.startsWith('MFG_') || extraFilter.type.startsWith('PRODUCTION_')) {
+      return sec.key === 'factory_out' || sec.key === 'factory_in';
+    }
+    if (extraFilter.type === 'BRANCH') return sec.key === 'transfers';
+    return true;
+  });
 
   const activeSectionsHtml = sectionConfigs
     .filter((sec) => sec.groups.length > 0)
@@ -477,13 +490,29 @@ export function generateMovementsReport(
             })
             .join('');
 
+          const badge = getMovementVoucherBadge(first);
+
           cardsHtml += `
             <div style="border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 16px; background: #fff; page-break-inside: avoid; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
-              <div style="background: #f8fafc; padding: 12px 16px; border-bottom: 1px solid #cbd5e1; font-size: 14px; font-weight: 900; color: #0f172a; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
-                <div><span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">رقم السند</span> #${refNo}</div>
-                <div><span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">التاريخ والوقت</span> ${timeStr}</div>
-                <div><span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">نوع الحركة</span> ${first.type === 'IN' ? 'وارد / توريد' : first.type === 'OUT' ? 'صادر / صرف' : first.type}</div>
-                <div><span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">الجهة / الوجهة</span> ${dest}</div>
+              <div style="background: #f8fafc; padding: 12px 16px; border-bottom: 1px solid #cbd5e1; font-size: 13px; font-weight: 900; color: #0f172a; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: center;">
+                <div>
+                  <span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">رقم السند</span>
+                  <span style="font-family: monospace; font-size: 14px;">#${refNo}</span>
+                </div>
+                <div>
+                  <span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">التاريخ والوقت</span>
+                  <span>${timeStr}</span>
+                </div>
+                <div>
+                  <span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">نوع الحركة والسند</span>
+                  <span style="display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; background: ${badge.bg}; color: ${badge.color}; border: 1px solid ${badge.border};">
+                    ${badge.label}
+                  </span>
+                </div>
+                <div>
+                  <span style="font-size: 10px; color: #64748b; display: block; font-weight: normal;">الجهة / الوجهة</span>
+                  <span>${dest}</span>
+                </div>
               </div>
               ${notes && notes !== '-' ? `<div style="padding: 8px 16px; background: #fffbeb; font-size: 12px; color: #92400e; border-bottom: 1px solid #fef3c7;"><strong>ملاحظات:</strong> ${notes}</div>` : ''}
               <table style="width: 100%; border-collapse: collapse; margin: 0; font-size: 11px;">
@@ -554,12 +583,140 @@ export function generateMovementsReport(
   };
 }
 
-function classifyMovementCategory(m: StockMovement): 'incoming' | 'outgoing' | 'returns' | 'adjustments' | 'production' | 'transfers' {
+export function getMovementVoucherBadge(m: StockMovement): {
+  label: string;
+  subLabel?: string;
+  color: string;
+  bg: string;
+  border: string;
+} {
+  const t = (m.type as string) || '';
+  const notes = (m.notes || '').toLowerCase();
+  const destName = (m.destinationName || '').toLowerCase();
+  const refNo = (m.referenceNumber || '').toLowerCase();
+
+  // 1. Factory Out / Production Dispatch (أمر صرف مواد للمصنع)
+  if (
+    t === 'MFG_OUT' ||
+    t === 'PRODUCTION_DISPATCH' ||
+    t === 'خروج للمصنع' ||
+    refNo.startsWith('mfg-out') ||
+    ((destName.includes('مصنع') || notes.includes('صرف لمصنع') || notes.includes('خروج لمصنع') || notes.includes('للمصنع')) && isOutgoingMovement(t))
+  ) {
+    return {
+      label: 'أمر صرف مواد للمصنع',
+      subLabel: 'إذن صرف وتشغيل رسمي',
+      color: '#be123c',
+      bg: '#ffe4e6',
+      border: '#fecdd3',
+    };
+  }
+
+  // 2. Factory In / Production Receipt (وارد من المصنع)
+  if (
+    t === 'MFG_IN' ||
+    t === 'PRODUCTION_RECEIPT' ||
+    t === 'وارد من المصنع' ||
+    refNo.startsWith('mfg-in') ||
+    ((destName.includes('مصنع') || notes.includes('استلام من مصنع') || notes.includes('وارد من مصنع')) && isIncomingMovement(t))
+  ) {
+    return {
+      label: 'سند استلام من المصنع',
+      subLabel: 'إذن توريد منتج مصنّع',
+      color: '#047857',
+      bg: '#d1fae5',
+      border: '#a7f3d0',
+    };
+  }
+
+  // 3. Adjustments (تسوية جردية)
+  if (t === 'ADJUSTMENT' || notes.includes('تسوية') || refNo.startsWith('adj-')) {
+    return {
+      label: 'تسوية جردية',
+      subLabel: 'تعديل رصيد مخزني',
+      color: '#b45309',
+      bg: '#fef3c7',
+      border: '#fde68a',
+    };
+  }
+
+  // 4. Returns (مرتجعات)
+  if (t === 'RETURN_IN' || t === 'RETURN_OUT' || notes.includes('مرتجع') || refNo.startsWith('ret-')) {
+    const isRetIn = t === 'RETURN_IN' || isIncomingMovement(t);
+    return {
+      label: isRetIn ? 'سند مرتجع وارد' : 'سند مرتجع صادر',
+      subLabel: 'إرجاع بضاعة',
+      color: '#0369a1',
+      bg: '#e0f2fe',
+      border: '#bae6fd',
+    };
+  }
+
+  // 5. Branch Transfers (تحويل فرع)
+  if (m.destinationType === 'BRANCH' || t === 'BRANCH' || notes.includes('تحويل فرع') || notes.includes('إلى فرع')) {
+    return {
+      label: 'أمر صرف وتحويل فرع',
+      subLabel: 'نقل بين المستودعات',
+      color: '#4338ca',
+      bg: '#e0e7ff',
+      border: '#c7d2fe',
+    };
+  }
+
+  // 6. Regular Outgoing / Customer Dispatch (أمر صرف مخزني)
+  if (t === 'OUT' || isOutgoingMovement(t)) {
+    return {
+      label: 'أمر صرف مخزني',
+      subLabel: 'إذن خروج وتصدير',
+      color: '#be123c',
+      bg: '#ffe4e6',
+      border: '#fecdd3',
+    };
+  }
+
+  // 7. Regular Incoming (سند توريد مخزني)
+  return {
+    label: 'سند توريد مخزني',
+    subLabel: 'إذن دخول بضاعة',
+    color: '#047857',
+    bg: '#d1fae5',
+    border: '#a7f3d0',
+  };
+}
+
+function classifyMovementCategory(
+  m: StockMovement
+): 'incoming' | 'outgoing' | 'factory_out' | 'factory_in' | 'returns' | 'adjustments' | 'transfers' {
   const t = m.type as string;
   const notes = (m.notes || '').toLowerCase();
-  if (t === 'ADJUSTMENT' || notes.includes('تسوية')) return 'adjustments';
-  if (t === 'RETURN_IN' || t === 'RETURN_OUT' || notes.includes('مرتجع')) return 'returns';
-  if (t === 'MFG_IN' || t === 'MFG_OUT' || t === 'PRODUCTION_RECEIPT' || t === 'PRODUCTION_DISPATCH' || t === 'PRODUCTION_RETURN' || notes.includes('إنتاج') || notes.includes('مصنع')) return 'production';
+  const destName = (m.destinationName || '').toLowerCase();
+  const refNo = (m.referenceNumber || '').toLowerCase();
+
+  if (t === 'ADJUSTMENT' || notes.includes('تسوية') || refNo.startsWith('adj-')) return 'adjustments';
+  if (t === 'RETURN_IN' || t === 'RETURN_OUT' || notes.includes('مرتجع') || refNo.startsWith('ret-')) return 'returns';
+
+  // Factory Out: أمر صرف مواد للمصنع
+  if (
+    t === 'MFG_OUT' ||
+    t === 'PRODUCTION_DISPATCH' ||
+    t === 'خروج للمصنع' ||
+    refNo.startsWith('mfg-out') ||
+    ((destName.includes('مصنع') || notes.includes('صرف لمصنع') || notes.includes('خروج لمصنع') || notes.includes('للمصنع')) && isOutgoingMovement(t))
+  ) {
+    return 'factory_out';
+  }
+
+  // Factory In: وارد من المصنع
+  if (
+    t === 'MFG_IN' ||
+    t === 'PRODUCTION_RECEIPT' ||
+    t === 'وارد من المصنع' ||
+    refNo.startsWith('mfg-in') ||
+    ((destName.includes('مصنع') || notes.includes('استلام من مصنع') || notes.includes('وارد من مصنع')) && isIncomingMovement(t))
+  ) {
+    return 'factory_in';
+  }
+
   if (m.destinationType === 'BRANCH' || t === 'BRANCH' || notes.includes('تحويل فرع') || notes.includes('إلى فرع')) return 'transfers';
   if (t === 'IN' || isIncomingMovement(t as MovementType)) return 'incoming';
   if (t === 'OUT' || isOutgoingMovement(t as MovementType)) return 'outgoing';
@@ -608,7 +765,7 @@ export function generateProductionReport(
         index + 1,
         m.referenceNumber || `MFG-${m.id.substring(0, 6)}`,
         formatArabicDate(m.date || m.createdAt),
-        isOut ? 'خروج مواد للمصنع' : 'وارد من المصنع / الإنتاج',
+        isOut ? 'أمر صرف مواد للمصنع (إذن صرف وتشغيل)' : 'وارد من المصنع / استلام إنتاج',
         item ? `${item.name} (${item.code || '-'})` : (m.itemName || 'صنف تصنيع'),
         `${(m.quantity || 0).toLocaleString('ar-SA')} ${unit}`,
         `${(m.baseQuantity || m.quantity || 0).toLocaleString('ar-SA')} ${baseUnit}`,

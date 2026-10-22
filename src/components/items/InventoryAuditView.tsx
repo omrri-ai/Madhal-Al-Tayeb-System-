@@ -55,6 +55,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
     getItemStockSummary,
     getAllItemsSummary,
     adjustItemStock,
+    adjustStockSilently,
   } = useInventory();
   const { isAdmin } = useAuth();
 
@@ -74,6 +75,8 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
   const [adjustmentReason, setAdjustmentReason] = useState<string>('');
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
 
+  const [isSilentAdjustment, setIsSilentAdjustment] = useState(false);
+
   const handleSaveAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustingItem) return;
@@ -89,18 +92,21 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
 
     setIsSubmittingAdjustment(true);
     playNotificationSound('bell');
-    const res = adjustItemStock({
-      itemId: adjustingItem.id,
-      newStock: num,
-      reason: adjustmentReason,
-      unitId: adjustingItem.baseUnitId,
-    });
+    const res = isSilentAdjustment
+      ? adjustStockSilently(adjustingItem.id, num, adjustmentReason)
+      : adjustItemStock({
+          itemId: adjustingItem.id,
+          newStock: num,
+          reason: adjustmentReason,
+          unitId: adjustingItem.baseUnitId,
+        });
     setIsSubmittingAdjustment(false);
 
     if (res.success) {
       setAdjustingItem(null);
       setNewStockInput('');
       setAdjustmentReason('');
+      setIsSilentAdjustment(false);
     }
   };
 
@@ -1172,6 +1178,19 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                   rows={3}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl text-xs text-slate-900 outline-hidden transition-colors resize-none"
                 />
+              </div>
+
+              <div className="flex items-center gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="silentAdjCheck"
+                  checked={isSilentAdjustment}
+                  onChange={(e) => setIsSilentAdjustment(e.target.checked)}
+                  className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 cursor-pointer"
+                />
+                <label htmlFor="silentAdjCheck" className="text-xs font-bold text-slate-700 cursor-pointer">
+                  تعديل صامت (تحديث الرصيد مباشرة بدون إظهار حركة جديدة بسجل الحركات)
+                </label>
               </div>
 
               <div className="flex items-center gap-2 pt-2">

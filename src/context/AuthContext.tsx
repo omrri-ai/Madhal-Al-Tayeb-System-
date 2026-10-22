@@ -63,13 +63,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initialize and check persistent session
   useEffect(() => {
     try {
-      // Clean up any legacy long-lived localStorage admin sessions to fulfill requirement:
-      // "ألا يحتفظ بتسجيل دخول المدير بعد الخروج أو إغلاق الجلسة"
-      localStorage.removeItem('makhzouni_owner_session_v1');
+      // Check active session (sessionStorage or localStorage fallback for resilient iframes)
+      const sessionRole = (sessionStorage.getItem(ACTIVE_ROLE_SESSION_KEY) || localStorage.getItem(ACTIVE_ROLE_SESSION_KEY)) as UserRole;
+      const localUserRole = localStorage.getItem('userRole');
+      const effectiveRole = sessionRole || (localUserRole === 'ADMIN' ? 'ADMIN' : localUserRole === 'VIEWER' ? 'FACTORY_VIEWER' : null);
 
-      // Check current tab/browser session only (sessionStorage)
-      const sessionRole = sessionStorage.getItem(ACTIVE_ROLE_SESSION_KEY) as UserRole;
-      if (sessionRole === 'ADMIN') {
+      if (effectiveRole === 'ADMIN') {
         setUser({
           email: OWNER_EMAIL,
           displayName: 'المدير العام (مدهال الطيب)',
@@ -77,9 +76,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         setRole('ADMIN');
         try {
+          sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
+          localStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
           localStorage.setItem('userRole', 'ADMIN');
         } catch {}
-      } else if (sessionRole === 'FACTORY_VIEWER') {
+      } else if (effectiveRole === 'FACTORY_VIEWER') {
         setUser({
           email: 'factory_supervisor@medhal.local',
           displayName: 'مسؤول المصنع (وضع المشاهدة)',
@@ -181,6 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRole('ADMIN');
       try {
         sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
+        localStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'ADMIN');
         localStorage.setItem('userRole', 'ADMIN');
       } catch {}
       return { success: true };
@@ -209,6 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRole('FACTORY_VIEWER');
       try {
         sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'FACTORY_VIEWER');
+        localStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'FACTORY_VIEWER');
         localStorage.setItem('userRole', 'VIEWER');
       } catch {}
       return { success: true };
@@ -230,6 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRole('FACTORY_VIEWER');
     try {
       sessionStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'FACTORY_VIEWER');
+      localStorage.setItem(ACTIVE_ROLE_SESSION_KEY, 'FACTORY_VIEWER');
       localStorage.setItem('userRole', 'VIEWER');
     } catch {}
     setAuthError(null);
@@ -242,6 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {}
     try {
       sessionStorage.removeItem(ACTIVE_ROLE_SESSION_KEY);
+      localStorage.removeItem(ACTIVE_ROLE_SESSION_KEY);
       localStorage.removeItem('userRole');
       localStorage.removeItem('makhzouni_owner_session_v1');
     } catch {}

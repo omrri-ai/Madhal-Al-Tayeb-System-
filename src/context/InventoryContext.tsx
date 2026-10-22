@@ -213,6 +213,7 @@ interface InventoryContextType {
     reason: string;
     unitId?: string;
   }) => { success: boolean; error?: string };
+  adjustStockSilently: (itemId: string, newTargetStock: number, reason?: string) => { success: boolean; error?: string };
 
   // Returns actions
   addReturn: (returnData: {
@@ -426,7 +427,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     (actionName: string): boolean => {
       let sessionIsAdmin = false;
       try {
-        const sRole = sessionStorage.getItem('makhzouni_active_role_session_v1');
+        const sRole =
+          sessionStorage.getItem('makhzouni_active_role_session_v1') ||
+          localStorage.getItem('makhzouni_active_role_session_v1');
         const lRole = localStorage.getItem('userRole');
         sessionIsAdmin = sRole === 'ADMIN' || (sRole !== 'FACTORY_VIEWER' && lRole === 'ADMIN');
       } catch {}
@@ -1842,32 +1845,36 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, error: 'يرجى كتابة سبب الحذف النهائي للمتابعة.' };
       }
 
-      // Protection: movements can be kept or removed if zero stock, but keeping historical integrity is safer
-      const itemMovements = movements.filter((m) => m.itemId === id);
-      if (itemMovements.length > 0) {
-        return {
-          success: false,
-          error: `لا يمكن الحذف النهائي للصنف "${item.name}" لوجود ${itemMovements.length} حركة مخزنية سابقة مرتبطة به لضمان سلامة السجلات المالية والمخزنية. يمكنك إبقاؤه في الأرشيف أو المحذوفات.`,
-        };
-      }
-
+      // Remove item and its associated movements completely so it doesn't appear in movements or trash
       const updatedItems = items.filter((i) => i.id !== id);
+      const updatedMovements = movements.filter((m) => m.itemId !== id);
+
       setItems(updatedItems);
+      setMovements(updatedMovements);
+      movementsRef.current = updatedMovements;
+
       try {
         FirestoreStorage.deleteItem(id, item.name).catch((e) => console.warn(e));
+        for (const mov of movements.filter((m) => m.itemId === id)) {
+          if (mov.id) {
+            FirestoreStorage.deleteMovement(mov.id).catch((e) => console.warn(e));
+          }
+        }
       } catch {}
+
       FirestoreStorage.recordAuditLog({
         operationType: 'حذف',
         entityType: 'صنف',
         entityId: id,
         entityName: item.name,
-        reason: cleanReason,
+        reason: `حذف نهائي شامل بدون آثار (مع الحركات المرتبطة): ${cleanReason}`,
         userName: OWNER_EMAIL,
         dataBefore: item,
         dataAfter: null,
       }).catch((e) => console.warn(e));
-      persistChanges(units, categories, updatedItems, movements, branches, returns);
-      showToast(`تم الحذف النهائي للصنف "${item.name}"`, 'success');
+
+      persistChanges(units, categories, updatedItems, updatedMovements, branches, returns);
+      showToast(`تم الحذف النهائي الشامل للصنف "${item.name}" وإزالة كافة حركاته المرتبطة بنجاح`, 'success');
       return { success: true };
     },
     [items, movements, units, categories, branches, returns, persistChanges, showToast, ensureAdmin]
@@ -2871,6 +2878,110 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       persistChanges(units, categories, items, updatedMovements, branches, returns);
       showToast(`تم تنفيذ التسوية الجردية للصنف "${item.name}" بنجاح (الفرق: ${diffBase > 0 ? '+' : ''}${diffBase})`, 'success');
+      return { success: true };
+    },
+    [items, movements, units, categories, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
+  );
+
+  const adjustStockSilently = useCallback(
+    (itemId: string, newTargetStock: number, reason?: string): { success: boolean; error?: string } => {
+      if (!ensureAdmin('تعديل الرصيد الصامت')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+      const item = items.find((i) => i.id === itemId && !i.isDeleted);
+      if (!item) return { success: false, error: 'الصنف غير موجود' };
+
+      const currentStockBase = getItemStock(item.id);
+      const targetStock = Number(newTargetStock);
+      if (isNaN(targetStock) || targetStock < 0) {
+        return { success: false, error: 'يرجى إدخال رصيد صحيح' };
+      }
+
+      const diff = targetStock - currentStockBase;
+      if (diff === 0) {
+        return { success: false, error: 'الرصيد الجديد مطابق للرصيد الحالي' };
+      }
+
+      let adjusted = false;
+      const updatedMovements = movements.map((m) => {
+        if (!adjusted && m.itemId === itemId && (m.type === 'IN' || m.type === 'MFG_IN' || m.type === 'PRODUCTION_RECEIPT' || m.type === 'ADJUSTMENT')) {
+          const currentBase = Number(m.baseQuantity ?? m.quantity);
+          const newBase = currentBase + diff;
+          if (newBase >= 0) {
+            adjusted = true;
+            return {
+              ...m,
+              quantity: m.factorApplied ? newBase / m.factorApplied : newBase,
+              baseQuantity: newBase,
+              notes: (m.notes ? m.notes + ' | ' : '') + `تعديل صامت: ${reason || 'تعديل إلى ' + targetStock}`,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+        }
+        return m;
+      });
+
+      let finalMovements = updatedMovements;
+      if (!adjusted) {
+        const itemMovs = updatedMovements.filter((m) => m.itemId === itemId);
+        if (itemMovs.length > 0) {
+          const firstMov = itemMovs[0];
+          finalMovements = updatedMovements.map((m) => {
+            if (m.id === firstMov.id) {
+              const currentBase = Number(m.baseQuantity ?? m.quantity);
+              const newBase = Math.max(0, currentBase + diff);
+              return {
+                ...m,
+                quantity: m.factorApplied ? newBase / m.factorApplied : newBase,
+                baseQuantity: newBase,
+                notes: (m.notes ? m.notes + ' | ' : '') + `تعديل صامت: ${reason || 'تعديل إلى ' + targetStock}`,
+                updatedAt: new Date().toISOString(),
+              };
+            }
+            return m;
+          });
+        } else {
+          const nowIso = new Date().toISOString();
+          const silentMov: StockMovement = {
+            id: 'mov_silent_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            itemId: item.id,
+            type: 'IN',
+            unitId: item.baseUnitId,
+            quantity: targetStock,
+            factorApplied: 1,
+            baseQuantity: targetStock,
+            date: nowIso,
+            notes: `رصيد افتتاحي / تعديل صامت: ${reason || 'ضبط الرصيد إلى ' + targetStock}`,
+            destinationType: 'DIRECT',
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          };
+          finalMovements = [silentMov, ...movements];
+        }
+      }
+
+      setMovements(finalMovements);
+      movementsRef.current = finalMovements;
+
+      finalMovements.filter((m) => m.itemId === itemId).forEach((m) => {
+        if (m.id) {
+          FirestoreStorage.saveMovement(m).catch((e) => console.warn(e));
+        }
+      });
+
+      FirestoreStorage.recordAuditLog({
+        operationType: 'تعديل',
+        entityType: 'صنف',
+        entityId: itemId,
+        entityName: item.name,
+        reason: `تعديل صامت للرصيد من ${currentStockBase} إلى ${targetStock} بدون إظهار حركة جديدة. السبب: ${reason || 'تصحيح الفارق الواقعي'}`,
+        userName: OWNER_EMAIL,
+        dataBefore: { stock: currentStockBase },
+        dataAfter: { stock: targetStock },
+      }).catch((e) => console.warn(e));
+
+      persistChanges(units, categories, items, finalMovements, branches, returns);
+      showToast(`تم تعديل رصيد الصنف "${item.name}" صامتًا إلى ${targetStock} (بدون إنشاء حركة مخزنية جديدة)`, 'success');
       return { success: true };
     },
     [items, movements, units, categories, branches, returns, getItemStock, persistChanges, showToast, ensureAdmin]
@@ -4620,6 +4731,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     updateMovement,
     deleteMovement,
     adjustItemStock,
+    adjustStockSilently,
 
     addReturn,
     approveReturn,

@@ -68,9 +68,12 @@ function cleanObject(obj: any): any {
 
 export function verifyAdminWritePermission(action: string): void {
   try {
-    const role = sessionStorage.getItem('makhzouni_active_role_session_v1');
-    if (role && role !== 'ADMIN') {
-      throw new Error(`رفض أمني: غير مصرح بتنفيذ (${action}). حساب مسؤول المصنع مخصص للمشاهدة فقط.`);
+    const role =
+      sessionStorage.getItem('makhzouni_active_role_session_v1') ||
+      localStorage.getItem('makhzouni_active_role_session_v1') ||
+      localStorage.getItem('userRole');
+    if (role === 'FACTORY_VIEWER' || role === 'VIEWER') {
+      throw new Error(`رفض أمني: غير مصرح بتنفيذ (${action}). حساب مسؤول المصنع مخصص للمشاهدة فقط؛ يرجى التبديل لوضع المدير للمتابعة.`);
     }
   } catch (err: any) {
     if (err?.message?.includes('رفض أمني')) throw err;

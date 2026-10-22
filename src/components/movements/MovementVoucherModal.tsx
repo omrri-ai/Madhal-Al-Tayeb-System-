@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Printer, ArrowRight, Boxes, Download, FileText, CheckCircle2 } from 'lucide-react';
 import { StockMovement, Item, Unit, Category } from '../../types/inventory';
 import { useInventory } from '../../context/InventoryContext';
+import { isIncomingMovement } from '../../utils/arabicSearch';
 
 interface MovementVoucherModalProps {
   isOpen: boolean;
@@ -60,8 +61,24 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
 
   const voucherMovements = relatedMovements.length > 0 ? relatedMovements : [movement];
 
-  const isEntry = movement.type === 'IN';
-  const voucherTitle = isEntry ? 'سند توريد مخزني (إذن دخول رسمي)' : 'سند صرف مخزني (إذن خروج رسمي)';
+  const isEntry = isIncomingMovement(movement.type);
+  const isMfgOut =
+    movement.type === 'MFG_OUT' ||
+    (movement.type as string) === 'خروج للمصنع' ||
+    (movement.referenceNumber && movement.referenceNumber.startsWith('MFG-OUT-')) ||
+    ((movement.destinationName || '').includes('مصنع') && !isEntry);
+  const isMfgIn =
+    movement.type === 'MFG_IN' ||
+    (movement.type as string) === 'وارد من المصنع' ||
+    (movement.referenceNumber && movement.referenceNumber.startsWith('MFG-IN-')) ||
+    ((movement.destinationName || '').includes('مصنع') && isEntry);
+
+  let voucherTitle = isEntry ? 'سند توريد مخزني (إذن دخول رسمي)' : 'سند صرف مخزني (إذن خروج رسمي)';
+  if (isMfgOut) {
+    voucherTitle = 'سند خروج مواد للمصنع (أمر صرف وتشغيل رسمي)';
+  } else if (isMfgIn) {
+    voucherTitle = 'سند استلام بضاعة من المصنع (إذن توريد إنتاج رسمي)';
+  }
   const invoiceNumber = movement.referenceNumber || movement.id.replace('mov_', 'INV-');
 
   const handlePrint = () => {
@@ -117,36 +134,53 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
   <div class="title">${voucherTitle}</div>
 
   ${
-    isEntry
+    isMfgOut
+      ? `<div class="dest-card" style="background: #fff1f2; border: 1px solid #fecdd3;">
+          <div><strong>نوع السند:</strong> أمر صرف وتشغيل رسمي للمصنع</div>
+          <div><strong>الجهة المستلمة:</strong> مصنع مدهال الطيب للإنتاج</div>
+          <div><strong>المستلم / المشرف:</strong> ${movement.destinationContactName || movement.destinationName || 'مشرف خط التصنيع والإنتاج'}</div>
+          <div><strong>رقم الجوال:</strong> ${movement.destinationPhone || 'غير متوفر'}</div>
+          <div><strong>البيان / الغرض:</strong> صرف مواد خام وتشغيلية للمصنع</div>
+          <div><strong>حالة الصرف:</strong> معتمد ومخصوم من رصيد المستودع</div>
+        </div>`
+      : isMfgIn
+      ? `<div class="dest-card" style="background: #ecfdf5; border: 1px solid #a7f3d0;">
+          <div><strong>نوع السند:</strong> إذن توريد واستلام من المصنع</div>
+          <div><strong>المصدر / المورّد:</strong> مصنع مدهال الطيب للإنتاج</div>
+          <div><strong>المسلّم / المشرف:</strong> ${movement.supplierName || movement.destinationContactName || 'مسؤول الإنتاج بالمصنع'}</div>
+          <div><strong>رقم الجوال:</strong> ${movement.supplierPhone || 'غير متوفر'}</div>
+          <div><strong>البيان:</strong> استلام بضاعة مصنّعة جاهزة وإضافتها للرصيد</div>
+        </div>`
+      : isEntry
       ? `<div class="dest-card">
-         <div><strong>المورد / الجهة الموردة:</strong> ${movement.supplierName || 'مورد عام'}</div>
-         <div><strong>جوال المورد:</strong> ${movement.supplierPhone || 'غير متوفر'}</div>
-         <div><strong>العنوان:</strong> ${movement.supplierAddress || 'غير متوفر'}</div>
-         <div><strong>الرقم الضريبي:</strong> ${movement.supplierTaxId || 'غير متوفر'}</div>
-       </div>`
+          <div><strong>المورد / الجهة الموردة:</strong> ${movement.supplierName || 'مورد عام'}</div>
+          <div><strong>جوال المورد:</strong> ${movement.supplierPhone || 'غير متوفر'}</div>
+          <div><strong>العنوان:</strong> ${movement.supplierAddress || 'غير متوفر'}</div>
+          <div><strong>الرقم الضريبي:</strong> ${movement.supplierTaxId || 'غير متوفر'}</div>
+        </div>`
       : movement.destinationType === 'BRANCH'
       ? `<div class="dest-card">
-         <div><strong>نوع الوجهة:</strong> فرع تابع</div>
-         <div><strong>اسم الفرع:</strong> ${movement.branchName || movement.destinationName || 'غير متوفر'}</div>
-         <div><strong>اسم المسؤول / المستلم:</strong> ${movement.destinationContactName || movement.destinationName || 'غير متوفر'}</div>
-         <div><strong>رقم جوال المسؤول:</strong> ${movement.destinationPhone || 'غير متوفر'}</div>
-         <div><strong>المدينة:</strong> ${movement.destinationAddress || 'غير متوفر'}</div>
-       </div>`
+          <div><strong>نوع الوجهة:</strong> فرع تابع</div>
+          <div><strong>اسم الفرع:</strong> ${movement.branchName || movement.destinationName || 'غير متوفر'}</div>
+          <div><strong>اسم المسؤول / المستلم:</strong> ${movement.destinationContactName || movement.destinationName || 'غير متوفر'}</div>
+          <div><strong>رقم جوال المسؤول:</strong> ${movement.destinationPhone || 'غير متوفر'}</div>
+          <div><strong>المدينة:</strong> ${movement.destinationAddress || 'غير متوفر'}</div>
+        </div>`
       : `<div class="dest-card">
-         <div><strong>نوع الوجهة:</strong> شحن لعميل</div>
-         <div><strong>اسم العميل:</strong> ${movement.customerName || movement.destinationName || 'غير متوفر'}</div>
-         <div><strong>رقم الجوال:</strong> ${movement.destinationPhone || movement.customerPhone || 'غير متوفر'}</div>
-         <div><strong>المدينة / العنوان:</strong> ${movement.destinationAddress || movement.customerCity || 'غير متوفر'}</div>
-         <div><strong>شركة الشحن المحددة:</strong> ${
-           movement.shippingCompany === 'SMSA'
-             ? 'سمسا (SMSA)'
-             : movement.shippingCompany === 'FASTLO'
-             ? 'فاستلو (Fastlo)'
-             : movement.shippingCompany === 'ARAMEX'
-             ? 'أرامكس دولي (Aramex International)'
-             : movement.customShippingCompany || movement.shippingCompany || 'أخرى'
-         }</div>
-       </div>`
+          <div><strong>نوع الوجهة:</strong> شحن لعميل</div>
+          <div><strong>اسم العميل:</strong> ${movement.customerName || movement.destinationName || 'غير متوفر'}</div>
+          <div><strong>رقم الجوال:</strong> ${movement.destinationPhone || movement.customerPhone || 'غير متوفر'}</div>
+          <div><strong>المدينة / العنوان:</strong> ${movement.destinationAddress || movement.customerCity || 'غير متوفر'}</div>
+          <div><strong>شركة الشحن المحددة:</strong> ${
+            movement.shippingCompany === 'SMSA'
+              ? 'سمسا (SMSA)'
+              : movement.shippingCompany === 'FASTLO'
+              ? 'فاستلو (Fastlo)'
+              : movement.shippingCompany === 'ARAMEX'
+              ? 'أرامكس دولي (Aramex International)'
+              : movement.customShippingCompany || movement.shippingCompany || 'أخرى'
+          }</div>
+        </div>`
   }
 
   <table>
@@ -336,6 +370,52 @@ export const MovementVoucherModal: React.FC<MovementVoucherModalProps> = ({
               <div>
                 <span className="text-slate-500 block mb-0.5">الرقم الضريبي للمورد:</span>
                 <span className="font-mono font-medium text-slate-800">{movement.supplierTaxId || 'غير متوفر'}</span>
+              </div>
+            </div>
+          ) : isMfgOut ? (
+            <div className="mb-6 p-4 bg-rose-50/80 rounded-xl border border-rose-200 text-xs grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <span className="text-rose-600 block mb-0.5">نوع السند:</span>
+                <span className="font-bold text-rose-950">أمر صرف وتشغيل رسمي للمصنع</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">الجهة المستلمة:</span>
+                <span className="font-bold text-slate-900 text-sm">مصنع مدهال الطيب للإنتاج</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">المستلم / المشرف:</span>
+                <span className="font-bold text-slate-900">{movement.destinationContactName || movement.destinationName || 'مشرف خط التصنيع'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">رقم الجوال:</span>
+                <span className="font-bold font-mono text-slate-900">{movement.destinationPhone || 'غير متوفر'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">البيان / الغرض:</span>
+                <span className="font-medium text-slate-800">صرف مواد خام وتشغيلية للمصنع</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">حالة السند:</span>
+                <span className="font-bold text-rose-700">معتمد ومخصوم من رصيد المستودع</span>
+              </div>
+            </div>
+          ) : isMfgIn ? (
+            <div className="mb-6 p-4 bg-emerald-50/80 rounded-xl border border-emerald-200 text-xs grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <span className="text-emerald-600 block mb-0.5">نوع السند:</span>
+                <span className="font-bold text-emerald-950">إذن توريد واستلام من المصنع</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">المصدر / المورّد:</span>
+                <span className="font-bold text-slate-900 text-sm">مصنع مدهال الطيب للإنتاج</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">المسلّم / المشرف:</span>
+                <span className="font-bold text-slate-900">{movement.supplierName || movement.destinationContactName || 'مسؤول الإنتاج بالمصنع'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block mb-0.5">البيان:</span>
+                <span className="font-medium text-slate-800">استلام بضاعة مصنّعة جاهزة وإضافتها للرصيد</span>
               </div>
             </div>
           ) : movement.destinationType === 'BRANCH' ? (

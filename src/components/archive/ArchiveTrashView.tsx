@@ -101,9 +101,9 @@ export const ArchiveTrashView: React.FC = () => {
   const handlePermanentDelete = (item: Item) => {
     setConfirmState({
       isOpen: true,
-      title: 'الحذف النهائي للصنف',
-      message: `تحذير: الحذف النهائي للصنف "${item.name}" لا يمكن التراجع عنه وسيزيله تماماً من قاعدة البيانات.`,
-      confirmLabel: 'تأكيد الحذف النهائي',
+      title: 'الحذف النهائي الشامل للصنف',
+      message: `تحذير: الحذف النهائي للصنف "${item.name}" سيزيله نهائياً من المستودع ومن سجل الحركات وسلة المحذوفات بحيث لا يظهر بأي تقرير أو حركة بعد الآن.`,
+      confirmLabel: 'تأكيد الحذف النهائي الشامل',
       requiresReason: true,
       reasonLabel: 'سبب الحذف النهائي',
       reasonPlaceholder: 'اكتب سبب الحذف النهائي لهذا الصنف (إلزامي)...',

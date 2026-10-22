@@ -341,7 +341,39 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                 const refKey = first.referenceNumber || first.batchId || `ref-${first.id}`;
                 const isExpanded = expandedVouchers[refKey];
                 const isFirstIn = isIncomingMovement(first.type);
-                const displayRef = first.referenceNumber || (isFirstIn ? 'توريد مخزني' : 'صرف مخزني');
+                const isMfgOut =
+                  first.type === 'MFG_OUT' ||
+                  (first.type as string) === 'خروج للمصنع' ||
+                  (first.referenceNumber && first.referenceNumber.startsWith('MFG-OUT-')) ||
+                  ((first.destinationName || '').includes('مصنع') && !isFirstIn);
+                const isMfgIn =
+                  first.type === 'MFG_IN' ||
+                  (first.type as string) === 'وارد من المصنع' ||
+                  (first.referenceNumber && first.referenceNumber.startsWith('MFG-IN-')) ||
+                  ((first.destinationName || '').includes('مصنع') && isFirstIn);
+                const isAdjustment = first.type === 'ADJUSTMENT' || (first.notes || '').includes('تسوية');
+                const isReturn = (first.type as string) === 'RETURN_IN' || (first.type as string) === 'RETURN_OUT' || (first.notes || '').includes('مرتجع');
+
+                let orderBadgeText = 'أمر صرف مخزني';
+                let orderBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-200';
+                if (isMfgOut) {
+                  orderBadgeText = 'أمر صرف للمصنع';
+                  orderBadgeStyle = 'bg-rose-100 text-rose-800 border-rose-300 font-bold';
+                } else if (isMfgIn) {
+                  orderBadgeText = 'وارد من المصنع';
+                  orderBadgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+                } else if (isAdjustment) {
+                  orderBadgeText = 'تسوية جردية';
+                  orderBadgeStyle = 'bg-amber-50 text-amber-800 border-amber-200 font-bold';
+                } else if (isReturn) {
+                  orderBadgeText = isFirstIn ? 'مرتجع وارد' : 'مرتجع صادر';
+                  orderBadgeStyle = 'bg-sky-50 text-sky-800 border-sky-200 font-bold';
+                } else if (isFirstIn) {
+                  orderBadgeText = 'توريد مخزني';
+                  orderBadgeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                }
+
+                const displayRef = first.referenceNumber || orderBadgeText;
                 const destinationDisplay = first.destinationName || first.branchName || first.customerName || first.supplierName || 'مستودع مدهال الطيب الرئيسي';
 
                 return (
@@ -356,9 +388,12 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                         </button>
                       </td>
                       <td className="py-3.5 px-4 font-bold font-mono text-slate-900">
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1.5 flex-wrap">
                           <span className={`w-2 h-2 rounded-full ${isFirstIn ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          {displayRef}
+                          <span>{displayRef}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] border shadow-2xs ${orderBadgeStyle}`}>
+                            {orderBadgeText}
+                          </span>
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-xs text-slate-600">
@@ -408,8 +443,22 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                               return (
                                 <div key={m.id ? `${m.id}_${idx}` : idx} className="flex items-center justify-between border border-slate-200/80 p-2.5 bg-white rounded-xl shadow-2xs">
                                   <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${itemIsIn ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                                      {itemIsIn ? 'وارد' : 'صادر'}
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      m.type === 'MFG_OUT'
+                                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                        : m.type === 'MFG_IN'
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                        : itemIsIn
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-rose-100 text-rose-800'
+                                    }`}>
+                                      {m.type === 'MFG_OUT'
+                                        ? 'أمر صرف للمصنع'
+                                        : m.type === 'MFG_IN'
+                                        ? 'وارد من المصنع'
+                                        : itemIsIn
+                                        ? 'وارد'
+                                        : 'صادر'}
                                     </span>
                                     <span className="font-bold text-slate-900 text-xs">{itmName}</span>
                                     <span className="text-[11px] font-mono text-slate-400">({itmCode})</span>
@@ -463,6 +512,12 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
         initialSections={['movements']}
         reportTitle={reportTitle}
         initialPeriod={reportInitialPeriod}
+        extraParams={{
+          searchQuery,
+          type: typeFilter === 'ALL' ? undefined : typeFilter,
+          branchId: branchFilter === 'ALL' ? undefined : branchFilter,
+          customData: reportInitialPeriod === 'all' && (searchQuery || typeFilter !== 'ALL' || branchFilter !== 'ALL' || itemFilter !== 'ALL' || startDate || endDate) ? filteredMovements : undefined,
+        }}
       />
     </div>
   );
