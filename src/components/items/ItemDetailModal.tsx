@@ -14,6 +14,7 @@ import {
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { Item } from '../../types/inventory';
+import { isIncomingMovement } from '../../utils/arabicSearch';
 
 interface ItemDetailModalProps {
   isOpen: boolean;
@@ -202,24 +203,40 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                     <div key={m.id ? `${m.id}_${idx}` : idx} className="p-3 text-xs flex items-center justify-between hover:bg-slate-50">
 
                       <div className="flex items-center gap-2.5">
-                        <span
-                          className={`w-6 h-6 rounded-md flex items-center justify-center ${
-                            m.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                          }`}
-                        >
-                          {m.type === 'IN' ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
-                        </span>
-                        <div>
-                          <div className="font-bold text-slate-900">
-                            {m.type === 'IN' ? 'دخول / توريد' : 'خروج / صرف'}: {m.quantity} {mUnit}
-                            {m.factorApplied > 1 && (
-                              <span className="text-slate-400 font-normal mr-1">
-                                (= {m.baseQuantity} {baseUnit?.name})
+                        {(() => {
+                          const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
+                          const isMfgIn = m.type === 'MFG_IN' || (m.type as string) === 'وارد من المصنع';
+                          const isMfgOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع';
+                          const isAdj = m.type === 'ADJUSTMENT' || (m.notes || '').includes('تسوية');
+
+                          let label = isIn ? 'دخول / توريد' : 'خروج / صرف';
+                          if (isMfgIn) label = 'وارد من المصنع';
+                          else if (isMfgOut) label = 'خروج للمصنع';
+                          else if (isAdj) label = isIn ? 'تسوية جردية (+)' : 'تسوية جردية (-)';
+
+                          return (
+                            <>
+                              <span
+                                className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                                  isIn ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                                }`}
+                              >
+                                {isIn ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
                               </span>
-                            )}
-                          </div>
-                          {m.notes && <p className="text-[11px] text-slate-500 mt-0.5">{m.notes}</p>}
-                        </div>
+                              <div>
+                                <div className="font-bold text-slate-900">
+                                  {label}: {m.quantity} {mUnit}
+                                  {m.factorApplied > 1 && (
+                                    <span className="text-slate-400 font-normal mr-1">
+                                      (= {m.baseQuantity} {baseUnit?.name})
+                                    </span>
+                                  )}
+                                </div>
+                                {m.notes && <p className="text-[11px] text-slate-500 mt-0.5">{m.notes}</p>}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       <div className="text-left font-mono text-[11px] text-slate-400">

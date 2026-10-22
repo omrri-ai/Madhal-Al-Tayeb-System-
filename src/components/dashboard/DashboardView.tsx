@@ -24,6 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import { NavView } from '../common/Navigation';
 import { StockMovement } from '../../types/inventory';
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
+import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
 
 interface DashboardViewProps {
   onNavigate: (view: NavView) => void;
@@ -82,8 +83,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Filtered movements for the invoice table with real-time multi-field search
   const filteredMovements = useMemo(() => {
     let list = movements;
-    if (movementFilter === 'IN') list = list.filter((m) => m.type === 'IN');
-    if (movementFilter === 'OUT') list = list.filter((m) => m.type === 'OUT');
+    if (movementFilter === 'IN') list = list.filter((m) => isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0));
+    if (movementFilter === 'OUT') list = list.filter((m) => isOutgoingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) < 0));
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -491,25 +492,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                       {/* Type Badge */}
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[11px] ${
-                            m.type === 'IN'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {m.type === 'IN' ? (
-                            <>
-                              <ArrowDownLeft className="w-3.5 h-3.5" />
-                              <span>فاتورة توريد (وارد)</span>
-                            </>
-                          ) : (
-                            <>
-                              <ArrowUpRight className="w-3.5 h-3.5" />
-                              <span>سند تصدير (صادر)</span>
-                            </>
-                          )}
-                        </span>
+                        {(() => {
+                          const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
+                          const isMfgIn = m.type === 'MFG_IN' || (m.type as string) === 'وارد من المصنع' || (m.referenceNumber && m.referenceNumber.startsWith('MFG-IN-'));
+                          const isMfgOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع' || (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
+                          const isAdj = m.type === 'ADJUSTMENT' || (m.notes || '').includes('تسوية');
+                          const isRet = (m.type as string) === 'RETURN_IN' || (m.type as string) === 'RETURN_OUT' || (m.notes || '').includes('مرتجع');
+
+                          let badgeText = isIn ? 'فاتورة توريد (وارد)' : 'سند تصدير (صادر)';
+                          let badgeStyle = isIn ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800';
+
+                          if (isMfgIn) {
+                            badgeText = 'وارد من المصنع (+)';
+                            badgeStyle = 'bg-emerald-100 text-emerald-800 font-bold border border-emerald-300';
+                          } else if (isMfgOut) {
+                            badgeText = 'أمر صرف للمصنع (-)';
+                            badgeStyle = 'bg-rose-100 text-rose-800 font-bold border border-rose-300';
+                          } else if (isAdj) {
+                            const isPos = (m.baseQuantity ?? m.quantity) >= 0;
+                            badgeText = isPos ? 'تسوية جردية (فائض +)' : 'تسوية جردية (عجز -)';
+                            badgeStyle = isPos ? 'bg-amber-100 text-amber-800 font-bold border border-amber-300' : 'bg-orange-100 text-orange-800 font-bold border border-orange-300';
+                          } else if (isRet) {
+                            badgeText = isIn ? 'مرتجع وارد (+)' : 'مرتجع صادر (-)';
+                            badgeStyle = 'bg-sky-100 text-sky-800 font-bold border border-sky-300';
+                          }
+
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[11px] ${badgeStyle}`}>
+                              {isIn ? <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600" /> : <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" />}
+                              <span>{badgeText}</span>
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Item */}
@@ -524,14 +538,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                       {/* Quantity & Unit */}
                       <td className="py-3 px-4 font-mono whitespace-nowrap">
-                        <div
-                          className={`font-black text-sm ${
-                            m.type === 'IN' ? 'text-emerald-700' : 'text-rose-700'
-                          }`}
-                        >
-                          {m.type === 'IN' ? '+' : '-'}
-                          {m.quantity} {unit?.name || 'وحدة'}
-                        </div>
+                        {(() => {
+                          const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
+                          return (
+                            <div className={`font-black text-sm ${isIn ? 'text-emerald-700' : 'text-rose-700'}`}>
+                              {isIn ? '+' : '-'}
+                              {m.quantity} {unit?.name || 'وحدة'}
+                            </div>
+                          );
+                        })()}
                         {m.factorApplied > 1 && (
                           <div className="text-[10px] text-slate-400">
                             (= {m.baseQuantity} {baseUnit?.name})

@@ -25,6 +25,8 @@ import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { Item, StockMovement, ItemStockSummary } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
+import { isIncomingMovement } from '../../utils/arabicSearch';
+import { signedBaseQty } from '../../utils/stockRules';
 
 interface InventoryAuditViewProps {
   onBackToItems?: () => void;
@@ -217,11 +219,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
           ? Number(m.baseQuantity)
           : (Number(m.quantity) || 0) * factor;
 
-      if (m.type === 'IN') {
-        runningBalance += baseQty;
-      } else if (m.type === 'OUT') {
-        runningBalance -= baseQty;
-      }
+      runningBalance += signedBaseQty(m);
 
       const bal = Math.round(Math.max(0, runningBalance) * 1000) / 1000;
       return {
@@ -895,7 +893,16 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {allChronologicalMovementsWithBalance.map((m, idx) => {
-                            const isIn = m.type === 'IN';
+                            const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
+                            const isMfgIn = m.type === 'MFG_IN' || (m.type as string) === 'وارد من المصنع';
+                            const isMfgOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع';
+                            const isAdj = m.type === 'ADJUSTMENT' || (m.notes || '').includes('تسوية');
+
+                            let typeLabel = isIn ? 'وارد (توريد)' : 'صادر (صرف)';
+                            if (isMfgIn) typeLabel = 'وارد من المصنع (+)';
+                            else if (isMfgOut) typeLabel = 'صرف للمصنع (-)';
+                            else if (isAdj) typeLabel = (m.baseQuantity ?? m.quantity) >= 0 ? 'تسوية (فائض +)' : 'تسوية (عجز -)';
+
                             return (
                               <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/50">
 
@@ -908,7 +915,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                                     }`}
                                   >
                                     {isIn ? <ArrowDownLeft className="w-3 h-3 text-emerald-600" /> : <ArrowUpRight className="w-3 h-3 text-rose-600" />}
-                                    {isIn ? 'وارد (توريد)' : 'صادر (صرف)'}
+                                    {typeLabel}
                                   </span>
                                 </td>
                                 <td className="p-3 font-mono text-slate-600 whitespace-nowrap">

@@ -2902,72 +2902,29 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { success: false, error: 'الرصيد الجديد مطابق للرصيد الحالي' };
       }
 
-      let adjusted = false;
-      const updatedMovements = movements.map((m) => {
-        if (!adjusted && m.itemId === itemId && (m.type === 'IN' || m.type === 'MFG_IN' || m.type === 'PRODUCTION_RECEIPT' || m.type === 'ADJUSTMENT')) {
-          const currentBase = Number(m.baseQuantity ?? m.quantity);
-          const newBase = currentBase + diff;
-          if (newBase >= 0) {
-            adjusted = true;
-            return {
-              ...m,
-              quantity: m.factorApplied ? newBase / m.factorApplied : newBase,
-              baseQuantity: newBase,
-              notes: (m.notes ? m.notes + ' | ' : '') + `تعديل صامت: ${reason || 'تعديل إلى ' + targetStock}`,
-              updatedAt: new Date().toISOString(),
-            };
-          }
-        }
-        return m;
-      });
+      const nowIso = new Date().toISOString();
+      const refNo = `ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const adjMovement: StockMovement = {
+        id: 'mov_adj_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        itemId: item.id,
+        type: 'ADJUSTMENT',
+        unitId: item.baseUnitId,
+        quantity: Math.abs(diff),
+        factorApplied: 1,
+        baseQuantity: diff,
+        date: nowIso,
+        referenceNumber: refNo,
+        notes: `تسوية جردية صامتة: ${reason || 'تعديل الرصيد إلى ' + targetStock}`,
+        destinationType: 'DIRECT',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
 
-      let finalMovements = updatedMovements;
-      if (!adjusted) {
-        const itemMovs = updatedMovements.filter((m) => m.itemId === itemId);
-        if (itemMovs.length > 0) {
-          const firstMov = itemMovs[0];
-          finalMovements = updatedMovements.map((m) => {
-            if (m.id === firstMov.id) {
-              const currentBase = Number(m.baseQuantity ?? m.quantity);
-              const newBase = Math.max(0, currentBase + diff);
-              return {
-                ...m,
-                quantity: m.factorApplied ? newBase / m.factorApplied : newBase,
-                baseQuantity: newBase,
-                notes: (m.notes ? m.notes + ' | ' : '') + `تعديل صامت: ${reason || 'تعديل إلى ' + targetStock}`,
-                updatedAt: new Date().toISOString(),
-              };
-            }
-            return m;
-          });
-        } else {
-          const nowIso = new Date().toISOString();
-          const silentMov: StockMovement = {
-            id: 'mov_silent_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-            itemId: item.id,
-            type: 'IN',
-            unitId: item.baseUnitId,
-            quantity: targetStock,
-            factorApplied: 1,
-            baseQuantity: targetStock,
-            date: nowIso,
-            notes: `رصيد افتتاحي / تعديل صامت: ${reason || 'ضبط الرصيد إلى ' + targetStock}`,
-            destinationType: 'DIRECT',
-            createdAt: nowIso,
-            updatedAt: nowIso,
-          };
-          finalMovements = [silentMov, ...movements];
-        }
-      }
-
+      const finalMovements = [adjMovement, ...movements];
       setMovements(finalMovements);
       movementsRef.current = finalMovements;
 
-      finalMovements.filter((m) => m.itemId === itemId).forEach((m) => {
-        if (m.id) {
-          FirestoreStorage.saveMovement(m).catch((e) => console.warn(e));
-        }
-      });
+      FirestoreStorage.saveMovement(adjMovement).catch((e) => console.warn(e));
 
       FirestoreStorage.recordAuditLog({
         operationType: 'تعديل',

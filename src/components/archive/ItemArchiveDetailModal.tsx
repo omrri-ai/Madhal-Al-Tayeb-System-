@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Item } from '../../types/inventory';
 import { useInventory } from '../../context/InventoryContext';
+import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
 
 interface ItemArchiveDetailModalProps {
   isOpen: boolean;
@@ -49,11 +50,11 @@ export const ItemArchiveDetailModal: React.FC<ItemArchiveDetailModalProps> = ({
   // Movements associated with this item
   const itemMovements = movements.filter((m) => m.itemId === item.id);
   const totalInQty = itemMovements
-    .filter((m) => m.type === 'IN')
+    .filter((m) => isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0))
     .reduce((sum, m) => sum + m.baseQuantity, 0);
   const totalOutQty = itemMovements
-    .filter((m) => m.type === 'OUT')
-    .reduce((sum, m) => sum + m.baseQuantity, 0);
+    .filter((m) => isOutgoingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) < 0))
+    .reduce((sum, m) => sum + Math.abs(m.baseQuantity), 0);
 
   const isTrash = mode === 'trash' || item.isDeleted;
   const reasonText = isTrash ? item.deleteReason : item.archiveReason;

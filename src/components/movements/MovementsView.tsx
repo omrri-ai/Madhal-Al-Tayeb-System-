@@ -192,8 +192,10 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       const item = items.find((i) => i.id === m.itemId);
       const unit = units.find((u) => u.id === m.unitId);
       const baseUnit = units.find((u) => u.id === item?.baseUnitId);
+      const isMIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
+      const typeStr = m.type === 'MFG_IN' ? 'وارد من المصنع' : m.type === 'MFG_OUT' ? 'صرف للمصنع' : m.type === 'ADJUSTMENT' ? 'تسوية جردية' : isMIn ? 'دخول / وارد' : 'خروج / صادر';
       const dest = m.destinationName || m.branchName || m.customerName || m.supplierName || '-';
-      return [new Date(m.date).toLocaleString('ar-SA'), m.type === 'IN' ? 'دخول / وارد' : 'خروج / صادر', item?.code || '', item?.name || '', m.quantity, unit?.name || '', `${m.baseQuantity} ${baseUnit?.name || ''}`, m.referenceNumber || 'توريد مخزني', dest, m.notes || ''];
+      return [new Date(m.date).toLocaleString('ar-SA'), typeStr, item?.code || '', item?.name || '', m.quantity, unit?.name || '', `${m.baseQuantity} ${baseUnit?.name || ''}`, m.referenceNumber || (isMIn ? 'توريد مخزني' : 'صرف مخزني'), dest, m.notes || ''];
     });
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.map((val) => `"${val}"`).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -448,6 +450,8 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                                         ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                         : m.type === 'MFG_IN'
                                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                        : m.type === 'ADJUSTMENT'
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                         : itemIsIn
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : 'bg-rose-100 text-rose-800'
@@ -456,6 +460,8 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                                         ? 'أمر صرف للمصنع'
                                         : m.type === 'MFG_IN'
                                         ? 'وارد من المصنع'
+                                        : m.type === 'ADJUSTMENT'
+                                        ? ((m.baseQuantity ?? m.quantity) >= 0 ? 'تسوية وارد (+)' : 'تسوية صادر (-)')
                                         : itemIsIn
                                         ? 'وارد'
                                         : 'صادر'}
