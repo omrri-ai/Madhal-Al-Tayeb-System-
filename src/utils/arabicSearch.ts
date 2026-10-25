@@ -60,6 +60,8 @@ export function isIncomingMovement(type: string | undefined | null): boolean {
     type === 'MFG_IN' ||
     type === 'PRODUCTION_RECEIPT' ||
     type === 'PRODUCTION_RETURN' ||
+    type === 'DAMAGED_RECOVERY' ||
+    type === 'راجع من التالف' ||
     type === 'وارد من المصنع' ||
     type === 'وارد'
   );

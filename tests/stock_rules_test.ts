@@ -47,6 +47,8 @@ assert(normalizeMovementType('تسوية') === 'ADJUSTMENT', 'النوع تسو�
 assert(normalizeMovementType('PRODUCTION_RECEIPT') === 'PRODUCTION_RECEIPT', 'النوع PRODUCTION_RECEIPT');
 assert(normalizeMovementType('PRODUCTION_RETURN') === 'PRODUCTION_RETURN', 'النوع PRODUCTION_RETURN');
 assert(normalizeMovementType('PRODUCTION_DISPATCH') === 'PRODUCTION_DISPATCH', 'النوع PRODUCTION_DISPATCH');
+assert(normalizeMovementType('DAMAGED_RECOVERY') === 'DAMAGED_RECOVERY', 'النوع DAMAGED_RECOVERY');
+assert(normalizeMovementType('راجع من التالف') === 'DAMAGED_RECOVERY', 'النوع راجع من التالف بالعربي');
 assert(normalizeMovementType('INVALID_XYZ') === 'UNKNOWN', 'تسجيل النوع غير المعروف كـ UNKNOWN');
 
 // -----------------------------------------------------------------------------
@@ -59,14 +61,16 @@ assert(getMovementStockEffect('PRODUCTION_RECEIPT') === 'INCREASE', 'PRODUCTION_
 assert(getMovementStockEffect('PRODUCTION_RETURN') === 'INCREASE', 'PRODUCTION_RETURN يزيد المخزون');
 assert(getMovementStockEffect('MFG_IN') === 'INCREASE', 'MFG_IN يزيد المخزون');
 assert(getMovementStockEffect('وارد من المصنع') === 'INCREASE', 'وارد من المصنع يزيد المخزون');
+assert(getMovementStockEffect('DAMAGED_RECOVERY') === 'INCREASE', 'DAMAGED_RECOVERY يزيد المخزون (+)');
+assert(getMovementStockEffect('راجع من التالف') === 'INCREASE', 'راجع من التالف يزيد المخزون (+)');
 
 assert(getMovementStockEffect('OUT') === 'DECREASE', 'OUT ينقص المخزون');
 assert(getMovementStockEffect('صادر') === 'DECREASE', 'صادر ينقص المخزون');
 assert(getMovementStockEffect('PRODUCTION_DISPATCH') === 'DECREASE', 'PRODUCTION_DISPATCH ينقص المخزون');
 assert(getMovementStockEffect('MFG_OUT') === 'DECREASE', 'MFG_OUT ينقص المخزون');
 assert(getMovementStockEffect('خروج للمصنع') === 'DECREASE', 'خروج للمصنع ينقص المخزون');
-assert(getMovementStockEffect('DAMAGED') === 'DECREASE', 'DAMAGED ينقص المخزون');
-assert(getMovementStockEffect('تالف') === 'DECREASE', 'تالف ينقص المخزون');
+assert(getMovementStockEffect('DAMAGED') === 'DECREASE', 'DAMAGED ينقص المخزون (-)');
+assert(getMovementStockEffect('تالف') === 'DECREASE', 'تالف ينقص المخزون (-)');
 
 assert(getMovementStockEffect('ADJUSTMENT') === 'ADJUSTMENT', 'ADJUSTMENT تسوية موقّعة');
 assert(getMovementStockEffect('تسوية') === 'ADJUSTMENT', 'تسوية موقّعة');

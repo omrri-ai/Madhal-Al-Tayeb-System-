@@ -355,10 +355,25 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                   ((first.destinationName || '').includes('مصنع') && isFirstIn);
                 const isAdjustment = first.type === 'ADJUSTMENT' || (first.notes || '').includes('تسوية');
                 const isReturn = (first.type as string) === 'RETURN_IN' || (first.type as string) === 'RETURN_OUT' || (first.notes || '').includes('مرتجع');
+                const isDamaged =
+                  first.type === 'DAMAGED' ||
+                  (first.type as string) === 'تالف' ||
+                  (first.destinationType === 'DAMAGED' && !isFirstIn);
+                const isDamagedRecovery =
+                  first.type === 'DAMAGED_RECOVERY' ||
+                  (first.type as string) === 'راجع من التالف' ||
+                  (first.referenceNumber && first.referenceNumber.startsWith('REC-DMG-')) ||
+                  ((first.notes || '').includes('راجع من التالف') && isFirstIn);
 
                 let orderBadgeText = 'أمر صرف مخزني';
                 let orderBadgeStyle = 'bg-rose-50 text-rose-700 border-rose-200';
-                if (isMfgOut) {
+                if (isDamagedRecovery) {
+                  orderBadgeText = 'راجع من التالف (استرداد)';
+                  orderBadgeStyle = 'bg-teal-100 text-teal-800 border-teal-300 font-bold';
+                } else if (isDamaged) {
+                  orderBadgeText = 'إتلاف مخزني';
+                  orderBadgeStyle = 'bg-rose-100 text-rose-800 border-rose-300 font-bold';
+                } else if (isMfgOut) {
                   orderBadgeText = 'أمر صرف للمصنع';
                   orderBadgeStyle = 'bg-rose-100 text-rose-800 border-rose-300 font-bold';
                 } else if (isMfgIn) {
@@ -446,7 +461,11 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                                 <div key={m.id ? `${m.id}_${idx}` : idx} className="flex items-center justify-between border border-slate-200/80 p-2.5 bg-white rounded-xl shadow-2xs">
                                   <div className="flex items-center gap-2">
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                      m.type === 'MFG_OUT'
+                                      m.type === 'DAMAGED_RECOVERY' || (m.notes || '').includes('راجع من التالف')
+                                        ? 'bg-teal-100 text-teal-800 border border-teal-200'
+                                        : m.type === 'DAMAGED'
+                                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                        : m.type === 'MFG_OUT'
                                         ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                         : m.type === 'MFG_IN'
                                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -456,7 +475,11 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : 'bg-rose-100 text-rose-800'
                                     }`}>
-                                      {m.type === 'MFG_OUT'
+                                      {m.type === 'DAMAGED_RECOVERY' || (m.notes || '').includes('راجع من التالف')
+                                        ? 'راجع من التالف (+)'
+                                        : m.type === 'DAMAGED'
+                                        ? 'تالف (-)'
+                                        : m.type === 'MFG_OUT'
                                         ? 'أمر صرف للمصنع'
                                         : m.type === 'MFG_IN'
                                         ? 'وارد من المصنع'

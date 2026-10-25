@@ -8,8 +8,10 @@ export type MovementType =
   | 'MFG_OUT'             // خروج للمصنع
   | 'MFG_IN'              // وارد من المصنع
   | 'DAMAGED'             // تالف
+  | 'DAMAGED_RECOVERY'    // راجع من التالف / استرداد
   | 'خروج للمصنع'
-  | 'وارد من المصنع';
+  | 'وارد من المصنع'
+  | 'راجع من التالف';
 
 export type DamagedSection = 'GENERAL' | 'PRODUCTION';
 
@@ -19,6 +21,29 @@ export type DamagedReason =
   | 'كسر / تلف عرضي'
   | 'عيب مصنعي'
   | 'أخرى';
+
+export type DamagedRecoveryReason =
+  | 'تم الإصلاح بالمصنع'
+  | 'تم الإصلاح محلياً / بالورشة'
+  | 'إعادة تأهيل وتجديد'
+  | 'سليم بعد الفحص والمعاينة'
+  | 'العثور على صنف مفقود'
+  | 'أخرى';
+
+export interface DamagedRecoveryEntry {
+  id: string;
+  date: string;
+  quantity: number;
+  unitId: string;
+  factorApplied: number;
+  baseQuantity: number;
+  movementId: string;
+  referenceNumber?: string;
+  reason: DamagedRecoveryReason | string;
+  notes?: string;
+  createdByName?: string;
+  createdAt: string;
+}
 
 export interface DamagedRecord {
   id: string;
@@ -34,6 +59,10 @@ export interface DamagedRecord {
   movementId?: string;
   createdById?: string;
   createdByName?: string;
+  recoveredQuantity?: number;
+  recoveredBaseQuantity?: number;
+  recoveryHistory?: DamagedRecoveryEntry[];
+  status?: 'ACTIVE' | 'PARTIALLY_RECOVERED' | 'FULLY_RECOVERED';
   createdAt: string;
   updatedAt: string;
 }

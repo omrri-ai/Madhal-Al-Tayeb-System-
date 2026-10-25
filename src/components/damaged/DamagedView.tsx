@@ -11,24 +11,33 @@ import {
   Factory,
   Package,
   User,
+  RotateCcw,
+  PackageCheck,
+  Check,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { DamagedModal } from './DamagedModal';
-import { DamagedSection } from '../../types/inventory';
+import { DamagedRecoveryModal } from './DamagedRecoveryModal';
+import { DamagedSection, DamagedRecord } from '../../types/inventory';
 
 type PeriodFilter = 'ALL' | 'TODAY' | 'WEEK' | 'MONTH';
 type SectionFilter = 'ALL' | DamagedSection;
+type RecoveryStatusFilter = 'ALL' | 'ACTIVE' | 'PARTIAL' | 'FULL';
 
 export const DamagedView: React.FC = () => {
   const { damagedRecords, items, units, categories, deleteDamagedRecord } = useInventory();
   const { isAdmin } = useAuth();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+  const [preselectedRecord, setPreselectedRecord] = useState<DamagedRecord | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>('ALL');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('ALL');
   const [selectedReason, setSelectedReason] = useState<string>('ALL');
+  const [recoveryFilter, setRecoveryFilter] = useState<RecoveryStatusFilter>('ALL');
 
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -85,28 +94,48 @@ export const DamagedView: React.FC = () => {
         matchesPeriod = recordDateStr >= startOfMonth;
       }
 
-      return matchesSearch && matchesSection && matchesReason && matchesPeriod;
+      // Recovery filter
+      let matchesRecovery = true;
+      const recBase = r.recoveredBaseQuantity || 0;
+      const remBase = Math.round((r.baseQuantity - recBase) * 1000) / 1000;
+      if (recoveryFilter === 'ACTIVE') {
+        matchesRecovery = recBase === 0;
+      } else if (recoveryFilter === 'PARTIAL') {
+        matchesRecovery = recBase > 0 && remBase > 0.001;
+      } else if (recoveryFilter === 'FULL') {
+        matchesRecovery = remBase <= 0.001;
+      }
+
+      return matchesSearch && matchesSection && matchesReason && matchesPeriod && matchesRecovery;
     });
-  }, [damagedRecords, items, searchQuery, sectionFilter, selectedReason, periodFilter]);
+  }, [damagedRecords, items, searchQuery, sectionFilter, selectedReason, periodFilter, recoveryFilter]);
 
   // Statistics
   const stats = useMemo(() => {
     let totalQty = 0;
+    let recoveredQty = 0;
     let generalQty = 0;
     let prodQty = 0;
 
     damagedRecords.forEach((r) => {
-      totalQty += r.baseQuantity || 0;
+      const base = r.baseQuantity || 0;
+      const rec = r.recoveredBaseQuantity || 0;
+      totalQty += base;
+      recoveredQty += rec;
       if (r.section === 'GENERAL') {
-        generalQty += r.baseQuantity || 0;
+        generalQty += base;
       } else {
-        prodQty += r.baseQuantity || 0;
+        prodQty += base;
       }
     });
+
+    const netQty = Math.max(0, Math.round((totalQty - recoveredQty) * 1000) / 1000);
 
     return {
       count: damagedRecords.length,
       totalQty: Math.round(totalQty * 1000) / 1000,
+      recoveredQty: Math.round(recoveredQty * 1000) / 1000,
+      netQty,
       generalQty: Math.round(generalQty * 1000) / 1000,
       prodQty: Math.round(prodQty * 1000) / 1000,
     };
@@ -120,37 +149,55 @@ export const DamagedView: React.FC = () => {
     setDeleteReason('');
   };
 
+  const handleOpenRecovery = (record?: DamagedRecord) => {
+    setPreselectedRecord(record || null);
+    setIsRecoveryModalOpen(true);
+  };
+
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">
       {/* Top Banner / Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200 shadow-inner">
             <AlertTriangle className="w-6 h-6" />
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900 tracking-tight">سجل التلف والمفقودات</h2>
-            <p className="text-xs text-slate-500">إدارة ومتابعة الكميات التالفة للمخزون العام والإنتاج والتصنيع</p>
+            <p className="text-xs text-slate-500">
+              إدارة الكميات التالفة ومتابعة ما تم استرداده وإعادته للمخزون بعد الإصلاح والتأهيل
+            </p>
           </div>
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>تسجيل صنف تالف جديد</span>
-          </button>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={() => handleOpenRecovery()}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
+              title="إعادة إدخال صنف تم إصلاحه أو تأهيله أو العثور عليه إلى المخزون"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>راجع من التالف / استرداد للمخزون</span>
+            </button>
+
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>تسجيل صنف تالف جديد</span>
+            </button>
+          </div>
         )}
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-slate-500 text-xs font-bold block mb-1">إجمالي عمليات التلف</span>
-            <span className="text-xl font-black font-mono text-slate-900">{stats.count}</span>
+            <span className="text-xl font-black font-mono text-slate-900">{stats.count} عملية</span>
           </div>
           <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
             <Package className="w-5 h-5" />
@@ -159,21 +206,31 @@ export const DamagedView: React.FC = () => {
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-slate-500 text-xs font-bold block mb-1">تالف المخزون العام</span>
-            <span className="text-xl font-black font-mono text-emerald-700">{stats.generalQty}</span>
+            <span className="text-slate-500 text-xs font-bold block mb-1">إجمالي الكميات التالفة</span>
+            <span className="text-xl font-black font-mono text-rose-700">{stats.totalQty}</span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
-            <Package className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+            <AlertTriangle className="w-5 h-5" />
           </div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-slate-500 text-xs font-bold block mb-1">تالف الإنتاج والتصنيع</span>
-            <span className="text-xl font-black font-mono text-indigo-700">{stats.prodQty}</span>
+            <span className="text-slate-500 text-xs font-bold block mb-1">راجع من التالف (المسترد)</span>
+            <span className="text-xl font-black font-mono text-emerald-700">+{stats.recoveredQty}</span>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-200">
-            <Factory className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
+            <RotateCcw className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-slate-500 text-xs font-bold block mb-1">صافي التالف الفعلي المتبقي</span>
+            <span className="text-xl font-black font-mono text-amber-700">{stats.netQty}</span>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
+            <CheckCircle2 className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -200,6 +257,17 @@ export const DamagedView: React.FC = () => {
             <option value="ALL">جميع الأقسام</option>
             <option value="GENERAL">المخزون العام</option>
             <option value="PRODUCTION">الإنتاج والتصنيع</option>
+          </select>
+
+          <select
+            value={recoveryFilter}
+            onChange={(e) => setRecoveryFilter(e.target.value as RecoveryStatusFilter)}
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700"
+          >
+            <option value="ALL">جميع حالات الاسترداد</option>
+            <option value="ACTIVE">قيد التلف (لم يسترد شيء)</option>
+            <option value="PARTIAL">استرداد جزئي</option>
+            <option value="FULL">مسترد بالكامل للمخزون</option>
           </select>
 
           <select
@@ -232,7 +300,7 @@ export const DamagedView: React.FC = () => {
       </div>
 
       {/* Records Table / List */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
         {filteredRecords.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <div className="w-14 h-14 mx-auto rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center">
@@ -240,7 +308,7 @@ export const DamagedView: React.FC = () => {
             </div>
             <h3 className="text-sm font-black text-slate-800">لا توجد سجلات تالف مطابقة للفلاتر</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              يمكنك تسجيل صنف تالف جديد بسهولة باستخدام الزر أعلاه.
+              يمكنك تسجيل صنف تالف جديد أو تسجيل صنف راجع من التالف باستخدام الأزرار أعلاه.
             </p>
           </div>
         ) : (
@@ -250,8 +318,10 @@ export const DamagedView: React.FC = () => {
                 <tr>
                   <th className="p-3.5 pr-5">التاريخ والوقت</th>
                   <th className="p-3.5">القسم</th>
-                  <th className="p-3.5">الصنف التالف</th>
+                  <th className="p-3.5">الصنف</th>
                   <th className="p-3.5 text-center">الكمية التالفة</th>
+                  <th className="p-3.5 text-center">راجع من التالف</th>
+                  <th className="p-3.5 text-center">صافي التالف المتبقي</th>
                   <th className="p-3.5">سبب التلف</th>
                   <th className="p-3.5">الملاحظات</th>
                   <th className="p-3.5">المستخدم</th>
@@ -264,6 +334,13 @@ export const DamagedView: React.FC = () => {
                   const unit = units.find((u) => u.id === r.unitId);
                   const category = categories.find((c) => c.id === item?.categoryId);
                   const isGen = r.section === 'GENERAL';
+
+                  const recoveredQty = r.recoveredQuantity || 0;
+                  const recoveredBase = r.recoveredBaseQuantity || 0;
+                  const factor = r.factorApplied || 1;
+                  const remainingBase = Math.max(0, Math.round((r.baseQuantity - recoveredBase) * 1000) / 1000);
+                  const remainingUnitQty = Math.round((remainingBase / factor) * 1000) / 1000;
+                  const isFullyRecovered = remainingBase <= 0.001;
 
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/70 transition">
@@ -302,6 +379,30 @@ export const DamagedView: React.FC = () => {
                         {r.quantity} {unit?.name || 'وحدة'}
                       </td>
 
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        {recoveredQty > 0 ? (
+                          <span className="inline-flex items-center gap-1 font-mono font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-xs">
+                            <RotateCcw className="w-3 h-3 text-emerald-600" />
+                            <span>+{recoveredQty} {unit?.name || ''}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-mono text-xs">-</span>
+                        )}
+                      </td>
+
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        {isFullyRecovered ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            <Check className="w-3 h-3" />
+                            <span>مسترد بالكامل</span>
+                          </span>
+                        ) : (
+                          <span className="font-mono font-black text-amber-800 text-xs bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+                            {remainingUnitQty} {unit?.name || ''}
+                          </span>
+                        )}
+                      </td>
+
                       <td className="p-3.5 font-bold text-slate-800">{r.reason}</td>
 
                       <td className="p-3.5 text-slate-600 max-w-xs truncate" title={r.notes || ''}>
@@ -317,13 +418,34 @@ export const DamagedView: React.FC = () => {
 
                       {isAdmin && (
                         <td className="p-3.5 pl-5 text-center whitespace-nowrap">
-                          <button
-                            onClick={() => setDeleteId(r.id)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="حذف سجل التلف واستعادة الرصيد"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Recover from Damaged Button */}
+                            <button
+                              onClick={() => handleOpenRecovery(r)}
+                              disabled={isFullyRecovered}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                isFullyRecovered
+                                  ? 'text-slate-300 cursor-not-allowed'
+                                  : 'text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800'
+                              }`}
+                              title={
+                                isFullyRecovered
+                                  ? 'تم استرداد كامل الكمية التالفة لهذا السجل'
+                                  : 'تسجيل راجع من التالف وإعادة الكمية للمخزون'
+                              }
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+
+                            {/* Delete Record Button */}
+                            <button
+                              onClick={() => setDeleteId(r.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="حذف سجل التلف واستعادة الرصيد"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -338,7 +460,7 @@ export const DamagedView: React.FC = () => {
       {/* Delete Confirmation Modal */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 text-right">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 text-right">
             <h3 className="text-base font-black text-slate-900 mb-2">تأكيد حذف سجل التلف</h3>
             <p className="text-xs text-slate-500 mb-4">
               سيتم حذف سجل التلف هذا واستعادة الكمية التالفة تلقائياً إلى رصيد المستودع. يرجى ذكر السبب:
@@ -374,6 +496,16 @@ export const DamagedView: React.FC = () => {
 
       {/* Add Modal */}
       <DamagedModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+      {/* Recovery / Restored from Damaged Modal */}
+      <DamagedRecoveryModal
+        isOpen={isRecoveryModalOpen}
+        onClose={() => {
+          setIsRecoveryModalOpen(false);
+          setPreselectedRecord(null);
+        }}
+        preselectedRecord={preselectedRecord}
+      />
     </div>
   );
 };

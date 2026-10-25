@@ -207,10 +207,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                           const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
                           const isMfgIn = m.type === 'MFG_IN' || (m.type as string) === 'وارد من المصنع';
                           const isMfgOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع';
+                          const isDamaged = m.type === 'DAMAGED' || (m.type as string) === 'تالف';
+                          const isDamagedRec = m.type === 'DAMAGED_RECOVERY' || (m.type as string) === 'راجع من التالف' || (m.notes || '').includes('راجع من التالف');
                           const isAdj = m.type === 'ADJUSTMENT' || (m.notes || '').includes('تسوية');
 
                           let label = isIn ? 'دخول / توريد' : 'خروج / صرف';
-                          if (isMfgIn) label = 'وارد من المصنع';
+                          if (isDamagedRec) label = 'راجع من التالف (استرداد)';
+                          else if (isDamaged) label = 'إتلاف مخزني';
+                          else if (isMfgIn) label = 'وارد من المصنع';
                           else if (isMfgOut) label = 'خروج للمصنع';
                           else if (isAdj) label = isIn ? 'تسوية جردية (+)' : 'تسوية جردية (-)';
 

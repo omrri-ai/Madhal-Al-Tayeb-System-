@@ -496,13 +496,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
                           const isMfgIn = m.type === 'MFG_IN' || (m.type as string) === 'وارد من المصنع' || (m.referenceNumber && m.referenceNumber.startsWith('MFG-IN-'));
                           const isMfgOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع' || (m.referenceNumber && m.referenceNumber.startsWith('MFG-OUT-'));
+                          const isDamaged = m.type === 'DAMAGED' || (m.type as string) === 'تالف';
+                          const isDamagedRec = m.type === 'DAMAGED_RECOVERY' || (m.type as string) === 'راجع من التالف' || (m.referenceNumber && m.referenceNumber.startsWith('REC-DMG-')) || (m.notes || '').includes('راجع من التالف');
                           const isAdj = m.type === 'ADJUSTMENT' || (m.notes || '').includes('تسوية');
                           const isRet = (m.type as string) === 'RETURN_IN' || (m.type as string) === 'RETURN_OUT' || (m.notes || '').includes('مرتجع');
 
                           let badgeText = isIn ? 'فاتورة توريد (وارد)' : 'سند تصدير (صادر)';
                           let badgeStyle = isIn ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800';
 
-                          if (isMfgIn) {
+                          if (isDamagedRec) {
+                            badgeText = 'راجع من التالف (+)';
+                            badgeStyle = 'bg-teal-100 text-teal-800 font-bold border border-teal-300';
+                          } else if (isDamaged) {
+                            badgeText = 'إتلاف مخزني (-)';
+                            badgeStyle = 'bg-rose-100 text-rose-800 font-bold border border-rose-300';
+                          } else if (isMfgIn) {
                             badgeText = 'وارد من المصنع (+)';
                             badgeStyle = 'bg-emerald-100 text-emerald-800 font-bold border border-emerald-300';
                           } else if (isMfgOut) {

@@ -5,6 +5,7 @@ import {
   CompanySettings,
   Customer,
   DamagedRecord,
+  DamagedRecoveryEntry,
   DamagedSection,
   InventoryStats,
   Item,
@@ -289,6 +290,15 @@ interface InventoryContextType {
     reason: string;
     notes?: string;
   }) => Promise<{ success: boolean; error?: string; record?: DamagedRecord }>;
+  recoverDamagedRecord: (data: {
+    damagedRecordId?: string;
+    itemId: string;
+    unitId: string;
+    quantity: number;
+    reason: string;
+    notes?: string;
+    date?: string;
+  }) => Promise<{ success: boolean; error?: string; movementId?: string; record?: DamagedRecord }>;
   deleteDamagedRecord: (id: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Simplified Factory Movements
@@ -487,17 +497,56 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }));
       }
 
+      const loadedMovements = deduplicateById(loaded.movements || []);
+      const loadedDamaged = deduplicateById(loaded.damagedRecords || []);
+      const missingMovements: StockMovement[] = [];
+
+      for (const dmg of loadedDamaged) {
+        const hasMatchingMov = loadedMovements.some(
+          (m) =>
+            m.id === dmg.movementId ||
+            m.damagedRecordId === dmg.id ||
+            (m.type === 'DAMAGED' && m.itemId === dmg.itemId && Math.abs(m.baseQuantity - dmg.baseQuantity) < 0.001)
+        );
+
+        if (!hasMatchingMov) {
+          const synthesizedMov: StockMovement = {
+            id: dmg.movementId || `mov_dmg_rec_${dmg.id}`,
+            itemId: dmg.itemId,
+            type: 'DAMAGED',
+            unitId: dmg.unitId,
+            quantity: dmg.quantity,
+            factorApplied: dmg.factorApplied || 1,
+            baseQuantity: dmg.baseQuantity,
+            date: dmg.date || dmg.createdAt || new Date().toISOString(),
+            referenceNumber: `DMG-${Math.floor(100000 + Math.random() * 900000)}`,
+            notes: `تلف (${dmg.section === 'GENERAL' ? 'المخزون العام' : 'الإنتاج والتصنيع'}): ${dmg.reason}${dmg.notes ? ` - ${dmg.notes}` : ''}`,
+            destinationType: 'DAMAGED',
+            damagedRecordId: dmg.id,
+            createdByName: dmg.createdByName || 'إدارة النظام',
+            status: 'APPROVED',
+            createdAt: dmg.createdAt || new Date().toISOString(),
+            updatedAt: dmg.updatedAt || new Date().toISOString(),
+          };
+          missingMovements.push(synthesizedMov);
+          FirestoreStorage.saveMovement(synthesizedMov).catch((e) => console.warn(e));
+        }
+      }
+
+      const allMovements = missingMovements.length > 0 ? [...missingMovements, ...loadedMovements] : loadedMovements;
+
       setUnits(sortUnitsWithHabbaFirst(deduplicateById(finalUnits)));
       setCategories(deduplicateById(loaded.categories || []));
       setItems(deduplicateById(loaded.items || []));
-      setMovements(deduplicateById(loaded.movements || []));
+      setMovements(allMovements);
+      movementsRef.current = allMovements;
       setBranches(deduplicateById(currentBranches));
       setReturns(deduplicateById(loaded.returns || []));
       setCustomers(deduplicateById(loaded.customers || []));
       setProductionOrders(deduplicateById(loaded.productionOrders || []));
       productionOrdersRef.current = deduplicateById(loaded.productionOrders || []);
-      setDamagedRecords(deduplicateById(loaded.damagedRecords || []));
-      damagedRecordsRef.current = deduplicateById(loaded.damagedRecords || []);
+      setDamagedRecords(loadedDamaged);
+      damagedRecordsRef.current = loadedDamaged;
       if (loaded.settings) {
         setCompanySettings(loaded.settings);
       }
@@ -3158,6 +3207,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       setReturns(updatedReturns);
       setMovements(updatedMovements);
+      returnsRef.current = updatedReturns;
+      movementsRef.current = updatedMovements;
+
+      FirestoreStorage.saveReturn(updatedRecord).catch((e) => console.warn(e));
+      newMovements.forEach((m) => FirestoreStorage.saveMovement(m).catch((e) => console.warn(e)));
       persistChanges(units, categories, items, updatedMovements, branches, updatedReturns);
 
       showToast(`تم اعتماد سند المرتجع #${target.returnNumber} وتحديث المخزون بنجاح`, 'success');
@@ -3231,6 +3285,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       setReturns(updatedReturns);
       setMovements(updatedMovements);
+      returnsRef.current = updatedReturns;
+      movementsRef.current = updatedMovements;
+
+      FirestoreStorage.saveReturn(updatedRecord).catch((e) => console.warn(e));
+      reversalMovements.forEach((m) => FirestoreStorage.saveMovement(m).catch((e) => console.warn(e)));
       FirestoreStorage.recordAuditLog({
         operationType: 'تعديل',
         entityType: 'مرتجع',
@@ -3447,6 +3506,154 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return { success: true };
     },
     [ensureAdmin, damagedRecords, movements, units, categories, items, branches, returns, productionOrders, persistChanges, showToast]
+  );
+
+  const recoverDamagedRecord = useCallback(
+    async (data: {
+      damagedRecordId?: string;
+      itemId: string;
+      unitId: string;
+      quantity: number;
+      reason: string;
+      notes?: string;
+      date?: string;
+    }): Promise<{ success: boolean; error?: string; movementId?: string; record?: DamagedRecord }> => {
+      if (!ensureAdmin('تسجيل راجع من التالف')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+
+      const item = items.find((i) => i.id === data.itemId);
+      if (!item) return { success: false, error: 'الصنف غير موجود أو محذوف' };
+
+      const unit = units.find((u) => u.id === data.unitId);
+      if (!unit) return { success: false, error: 'الوحدة غير موجودة' };
+
+      if (!data.quantity || data.quantity <= 0) {
+        return { success: false, error: 'يرجى إدخال كمية صحيحة أكبر من الصفر' };
+      }
+
+      const factor = item.baseUnitId === data.unitId
+        ? 1
+        : item.conversions.find((c) => c.unitId === data.unitId)?.factorToBase || 1;
+      const baseQuantity = Math.round(data.quantity * factor * 1000) / 1000;
+
+      const now = data.date || new Date().toISOString();
+      const activeRole = sessionStorage.getItem('makhzouni_active_role_session_v1') || 'ADMIN';
+      const userName = activeRole === 'ADMIN' ? (companySettings.managerName || 'مدير النظام') : 'مشرف المستودع';
+
+      let targetRecord: DamagedRecord | undefined;
+      let updatedRecord: DamagedRecord | undefined;
+
+      if (data.damagedRecordId) {
+        targetRecord = damagedRecords.find((r) => r.id === data.damagedRecordId);
+        if (!targetRecord) {
+          return { success: false, error: 'سجل التلف المرتبط غير موجود' };
+        }
+
+        const currentRecoveredBase = targetRecord.recoveredBaseQuantity || 0;
+        const remainingDamagedBase = Math.round((targetRecord.baseQuantity - currentRecoveredBase) * 1000) / 1000;
+
+        if (baseQuantity > remainingDamagedBase + 0.001) {
+          return {
+            success: false,
+            error: `الكمية المستردة (${data.quantity} ${unit.name} = ${baseQuantity} أساسي) تتجاوز الكمية التالفة المتبقية في هذا السجل (${remainingDamagedBase} أساسي).`,
+          };
+        }
+      }
+
+      const movementId = 'mov_rec_' + Math.random().toString(36).substr(2, 9);
+      const recoveryEntryId = 'rec_entry_' + Math.random().toString(36).substr(2, 9);
+      const referenceNumber = `REC-DMG-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const recoveryMovement: StockMovement = {
+        id: movementId,
+        itemId: data.itemId,
+        type: 'DAMAGED_RECOVERY',
+        unitId: data.unitId,
+        quantity: data.quantity,
+        factorApplied: factor,
+        baseQuantity,
+        date: now,
+        referenceNumber,
+        notes: `راجع من التالف (${data.reason}): ${data.notes || ''}`.trim(),
+        destinationType: 'DAMAGED',
+        damagedRecordId: data.damagedRecordId,
+        createdByName: userName,
+        status: 'APPROVED',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const recoveryHistoryEntry: DamagedRecoveryEntry = {
+        id: recoveryEntryId,
+        date: now,
+        quantity: data.quantity,
+        unitId: data.unitId,
+        factorApplied: factor,
+        baseQuantity,
+        movementId,
+        referenceNumber,
+        reason: data.reason,
+        notes: data.notes?.trim(),
+        createdByName: userName,
+        createdAt: now,
+      };
+
+      let newDamagedRecords = [...damagedRecords];
+      if (targetRecord) {
+        const newRecoveredBase = Math.round(((targetRecord.recoveredBaseQuantity || 0) + baseQuantity) * 1000) / 1000;
+        const newRecoveredQty = (targetRecord.recoveredQuantity || 0) + data.quantity;
+        const isFully = newRecoveredBase >= targetRecord.baseQuantity - 0.001;
+
+        updatedRecord = {
+          ...targetRecord,
+          recoveredQuantity: newRecoveredQty,
+          recoveredBaseQuantity: newRecoveredBase,
+          status: isFully ? 'FULLY_RECOVERED' : 'PARTIALLY_RECOVERED',
+          recoveryHistory: [...(targetRecord.recoveryHistory || []), recoveryHistoryEntry],
+          updatedAt: now,
+        };
+
+        newDamagedRecords = damagedRecords.map((r) => (r.id === targetRecord!.id ? updatedRecord! : r));
+      }
+
+      const newMovements = [recoveryMovement, ...movements];
+
+      setDamagedRecords(newDamagedRecords);
+      setMovements(newMovements);
+      damagedRecordsRef.current = newDamagedRecords;
+      movementsRef.current = newMovements;
+
+      try {
+        await FirestoreStorage.saveMovement(recoveryMovement);
+        if (updatedRecord) {
+          await FirestoreStorage.saveDamagedRecord(updatedRecord);
+        }
+        await persistChanges(units, categories, items, newMovements, branches, returns, newDamagedRecords, productionOrders);
+      } catch (err: any) {
+        // Rollback local state on cloud failure
+        setDamagedRecords(damagedRecords);
+        setMovements(movements);
+        const errDesc = err?.message || 'فشل حفظ عملية راجع من التالف في سحابة Firestore.';
+        showToast(errDesc, 'error');
+        return { success: false, error: errDesc };
+      }
+
+      await FirestoreStorage.recordAuditLog({
+        operationType: 'إضافة',
+        entityType: 'حركة مخزنية',
+        entityId: movementId,
+        entityName: `راجع من التالف: ${item.name}`,
+        reason: `استرداد للمخزون: ${data.reason}`,
+        userName: userName,
+        dataBefore: targetRecord || null,
+        dataAfter: { recoveryMovement, updatedRecord },
+      }).catch((e) => console.warn(e));
+
+      showToast(`تم تسجيل الصنف كراجع من التالف وإضافته إلى رصيد المخزون بنجاح (+${data.quantity} ${unit.name})`, 'success');
+      return { success: true, movementId, record: updatedRecord };
+    },
+    [ensureAdmin, items, units, damagedRecords, movements, companySettings, persistChanges, branches, returns, productionOrders, showToast]
   );
 
   // BACKUP & IMPORT
@@ -4708,6 +4915,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Damaged Records
     damagedRecords,
     addDamagedRecord,
+    recoverDamagedRecord,
     deleteDamagedRecord,
 
     // Factory movements

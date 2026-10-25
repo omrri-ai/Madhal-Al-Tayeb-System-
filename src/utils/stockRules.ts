@@ -18,13 +18,14 @@ export type NormalizedMovementType =
   | 'MFG_IN'
   | 'MFG_OUT'
   | 'DAMAGED'
+  | 'DAMAGED_RECOVERY'
   | 'UNKNOWN';
 
 export type MovementStockEffect = 'INCREASE' | 'DECREASE' | 'ADJUSTMENT' | 'NONE';
 
 /**
  * 1. جدول وحيد لتأثير كل نوع حركة:
- * - يزيد الرصيد: IN، PRODUCTION_RECEIPT، PRODUCTION_RETURN، MFG_IN، "وارد من المصنع"
+ * - يزيد الرصيد: IN، PRODUCTION_RECEIPT، PRODUCTION_RETURN، MFG_IN، "وارد من المصنع"، DAMAGED_RECOVERY، "راجع من التالف"
  * - ينقص الرصيد: OUT، PRODUCTION_DISPATCH، MFG_OUT، DAMAGED، "خروج للمصنع"
  * - ADJUSTMENT: كميته الأساسية موقّعة (موجبة تزيد وسالبة تنقص)
  */
@@ -34,7 +35,10 @@ export const MOVEMENT_TYPE_EFFECT_MAP: Record<string, MovementStockEffect> = {
   PRODUCTION_RECEIPT: 'INCREASE',
   PRODUCTION_RETURN: 'INCREASE',
   MFG_IN: 'INCREASE',
+  DAMAGED_RECOVERY: 'INCREASE',
   'وارد من المصنع': 'INCREASE',
+  'راجع من التالف': 'INCREASE',
+  'استرداد تالف': 'INCREASE',
   وارد: 'INCREASE',
 
   // ينقص الرصيد (-):
@@ -88,6 +92,10 @@ export function normalizeMovementType(rawType: string | undefined | null): Norma
     case 'DAMAGED':
     case 'تالف':
       return 'DAMAGED';
+    case 'DAMAGED_RECOVERY':
+    case 'راجع من التالف':
+    case 'استرداد تالف':
+      return 'DAMAGED_RECOVERY';
     default:
       console.warn(`[stockRules] تحذير: نوع حركة غير معروف لم يُتعرف عليه: "${rawType}"`);
       return 'UNKNOWN';
@@ -105,7 +113,8 @@ export function getMovementStockEffect(type: string | undefined | null): Movemen
     norm === 'IN' ||
     norm === 'PRODUCTION_RECEIPT' ||
     norm === 'PRODUCTION_RETURN' ||
-    norm === 'MFG_IN'
+    norm === 'MFG_IN' ||
+    norm === 'DAMAGED_RECOVERY'
   ) {
     return 'INCREASE';
   }
