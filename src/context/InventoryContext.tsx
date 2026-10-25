@@ -290,6 +290,13 @@ interface InventoryContextType {
     reason: string;
     notes?: string;
   }) => Promise<{ success: boolean; error?: string; record?: DamagedRecord }>;
+  addMultiDamagedRecords: (data: {
+    section: DamagedSection;
+    reason: string;
+    generalNotes?: string;
+    date?: string;
+    items: { itemId: string; unitId: string; quantity: number; reason?: string; notes?: string }[];
+  }) => Promise<{ success: boolean; records?: DamagedRecord[]; error?: string }>;
   recoverDamagedRecord: (data: {
     damagedRecordId?: string;
     itemId: string;
@@ -311,6 +318,12 @@ interface InventoryContextType {
     notes?: string;
     date?: string;
   }) => Promise<{ success: boolean; movement?: StockMovement; error?: string }>;
+  addMultiItemFactoryMovement: (data: {
+    type: 'MFG_OUT' | 'MFG_IN';
+    date?: string;
+    notes?: string;
+    items: { itemId: string; unitId: string; quantity: number; notes?: string }[];
+  }) => Promise<{ success: boolean; movements?: StockMovement[]; error?: string; referenceNumber?: string }>;
 
   // Helpers & Calculations
   getItemStock: (itemId: string) => number; // in base units
@@ -3449,6 +3462,144 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [ensureAdmin, items, units, getItemStock, damagedRecords, movements, companySettings, persistChanges, branches, returns, productionOrders, showToast]
   );
 
+  const addMultiDamagedRecords = useCallback(
+    async (data: {
+      section: DamagedSection;
+      reason: string;
+      generalNotes?: string;
+      date?: string;
+      items: { itemId: string; unitId: string; quantity: number; reason?: string; notes?: string }[];
+    }): Promise<{ success: boolean; records?: DamagedRecord[]; error?: string }> => {
+      if (!ensureAdmin('تسجيل أصناف تالفة')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+
+      if (!data.items || data.items.length === 0) {
+        return { success: false, error: 'يرجى إضافة صنف واحد على الأقل' };
+      }
+
+      const activeRole = sessionStorage.getItem('makhzouni_active_role_session_v1') || 'ADMIN';
+      const userName = activeRole === 'ADMIN' ? (companySettings.managerName || 'مدير النظام') : 'مشرف المستودع';
+      const now = data.date || new Date().toISOString();
+      const sharedRefNumber = `DMG-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      // Validate all items first
+      const processed: {
+        record: DamagedRecord;
+        movement: StockMovement;
+      }[] = [];
+
+      for (let idx = 0; idx < data.items.length; idx++) {
+        const entry = data.items[idx];
+        const item = items.find((i) => i.id === entry.itemId && !i.isDeleted);
+        if (!item) return { success: false, error: `الصنف في البند رقم ${idx + 1} غير موجود أو محذوف` };
+        const unit = units.find((u) => u.id === entry.unitId);
+        if (!unit) return { success: false, error: `الوحدة في البند رقم ${idx + 1} غير موجودة` };
+
+        const numQty = Number(entry.quantity);
+        if (!numQty || numQty <= 0 || isNaN(numQty)) {
+          return { success: false, error: `يرجى إدخال كمية صحيحة أكبر من الصفر للصنف "${item.name}"` };
+        }
+
+        const factor = item.baseUnitId === entry.unitId
+          ? 1
+          : item.conversions.find((c) => c.unitId === entry.unitId)?.factorToBase || 1;
+        const baseQuantity = Math.round(numQty * factor * 1000) / 1000;
+
+        const currentStock = getItemStock(entry.itemId);
+        if (!canWithdraw(currentStock, baseQuantity)) {
+          return {
+            success: false,
+            error: `عفواً، الكمية التالفة المطلوبة للصنف "${item.name}" (${numQty} ${unit.name} = ${baseQuantity} أساسي) تتجاوز الرصيد المتوفر حالياً (${currentStock}).`,
+          };
+        }
+
+        const recordId = 'dmg_' + Math.random().toString(36).substr(2, 9);
+        const movementId = 'mov_dmg_' + Math.random().toString(36).substr(2, 9);
+        const itemReason = entry.reason?.trim() || data.reason;
+        const itemNotes = [entry.notes?.trim(), data.generalNotes?.trim()].filter(Boolean).join(' - ');
+
+        const damagedRecord: DamagedRecord = {
+          id: recordId,
+          date: now,
+          section: data.section,
+          itemId: entry.itemId,
+          unitId: entry.unitId,
+          quantity: numQty,
+          factorApplied: factor,
+          baseQuantity,
+          reason: itemReason,
+          notes: itemNotes || undefined,
+          movementId,
+          createdByName: userName,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const movement: StockMovement = {
+          id: movementId,
+          itemId: entry.itemId,
+          type: 'DAMAGED',
+          unitId: entry.unitId,
+          quantity: numQty,
+          factorApplied: factor,
+          baseQuantity,
+          date: now,
+          referenceNumber: sharedRefNumber,
+          notes: `تلف (${data.section === 'GENERAL' ? 'المخزون العام' : 'الإنتاج والتصنيع'}): ${itemReason}${itemNotes ? ` - ${itemNotes}` : ''}`,
+          destinationType: 'DAMAGED',
+          damagedRecordId: recordId,
+          createdByName: userName,
+          status: 'APPROVED',
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        processed.push({ record: damagedRecord, movement });
+      }
+
+      const newRecordsToAdd = processed.map((p) => p.record);
+      const newMovementsToAdd = processed.map((p) => p.movement);
+
+      const newDamagedRecords = [...newRecordsToAdd, ...damagedRecords];
+      const newMovements = [...newMovementsToAdd, ...movements];
+
+      setDamagedRecords(newDamagedRecords);
+      setMovements(newMovements);
+      damagedRecordsRef.current = newDamagedRecords;
+      movementsRef.current = newMovements;
+
+      try {
+        for (const itemPair of processed) {
+          await FirestoreStorage.saveDamagedRecord(itemPair.record);
+          await FirestoreStorage.saveMovement(itemPair.movement);
+        }
+        await persistChanges(units, categories, items, newMovements, branches, returns, newDamagedRecords, productionOrders);
+      } catch (err: any) {
+        setDamagedRecords(damagedRecords);
+        setMovements(movements);
+        const errDesc = err?.message || 'فشل حفظ سجلات التلف في سحابة Firestore.';
+        showToast(errDesc, 'error');
+        return { success: false, error: errDesc };
+      }
+
+      await FirestoreStorage.recordAuditLog({
+        operationType: 'إضافة',
+        entityType: 'حركة مخزنية',
+        entityId: sharedRefNumber,
+        entityName: `تسجيل تلف متعدد (${processed.length} أصناف)`,
+        reason: `تسجيل تلف: ${data.reason}`,
+        userName,
+        dataBefore: null,
+        dataAfter: { recordsCount: processed.length, referenceNumber: sharedRefNumber },
+      }).catch((e) => console.warn(e));
+
+      showToast(`تم تسجيل ${processed.length} أصناف تالفة وخصمها من الرصيد بنجاح`, 'success');
+      return { success: true, records: newRecordsToAdd };
+    },
+    [ensureAdmin, items, units, getItemStock, damagedRecords, movements, companySettings, persistChanges, branches, returns, productionOrders, showToast]
+  );
+
   const deleteDamagedRecord = useCallback(
     async (id: string, reason?: string): Promise<{ success: boolean; error?: string }> => {
       if (!ensureAdmin('حذف سجل تلف')) {
@@ -4665,6 +4816,114 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ]
   );
 
+  const addMultiItemFactoryMovement = useCallback(
+    async (data: {
+      type: 'MFG_OUT' | 'MFG_IN';
+      date?: string;
+      notes?: string;
+      items: { itemId: string; unitId: string; quantity: number; notes?: string }[];
+    }): Promise<{ success: boolean; movements?: StockMovement[]; error?: string; referenceNumber?: string }> => {
+      const isOut = data.type === 'MFG_OUT';
+      if (!ensureAdmin(isOut ? 'خروج للمصنع' : 'وارد من المصنع')) {
+        return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
+      }
+
+      if (!data.items || data.items.length === 0) {
+        return { success: false, error: 'يرجى إضافة صنف واحد على الأقل' };
+      }
+
+      const refNumber = generateFactoryReferenceNumber(data.type);
+      const nowIso = new Date().toISOString();
+      const movementDate = data.date ? (data.date.includes('T') ? data.date : `${data.date}T${new Date().toTimeString().split(' ')[0]}`) : nowIso;
+      const createdMovements: StockMovement[] = [];
+
+      for (let idx = 0; idx < data.items.length; idx++) {
+        const entry = data.items[idx];
+        const item = items.find((i) => i.id === entry.itemId && !i.isDeleted);
+        if (!item) return { success: false, error: `الصنف في البند ${idx + 1} غير موجود أو محذوف` };
+
+        const numQty = Number(entry.quantity);
+        if (!numQty || numQty <= 0 || isNaN(numQty)) {
+          return { success: false, error: `الكمية غير صحيحة للصنف "${item.name}"` };
+        }
+
+        let factor = 1;
+        if (entry.unitId !== item.baseUnitId) {
+          const conv = item.conversions.find((c) => c.unitId === entry.unitId);
+          if (!conv) {
+            const selectedUnit = units.find((u) => u.id === entry.unitId);
+            return { success: false, error: `لم يتم تحديد معامل تحويل للوحدة (${selectedUnit?.name || ''}) للصنف "${item.name}"` };
+          }
+          factor = conv.factorToBase;
+        }
+
+        const baseQuantity = Math.round(numQty * factor * 1000) / 1000;
+        const currentStock = getItemStock(entry.itemId);
+
+        if (isOut && !canWithdraw(currentStock, baseQuantity)) {
+          const bName = units.find((u) => u.id === item.baseUnitId)?.name || 'وحدة';
+          return {
+            success: false,
+            error: `الكمية المطلوبة للصنف "${item.name}" (${numQty} = ${baseQuantity} ${bName}) تتجاوز الرصيد المتوفر (${currentStock} ${bName}). يمنع النظام الرصيد السالب!`,
+          };
+        }
+
+        const movementId = `mfg_${isOut ? 'out' : 'in'}_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`;
+        const noteText = [entry.notes?.trim(), data.notes?.trim()].filter(Boolean).join(' - ');
+
+        const mov: StockMovement = {
+          id: movementId,
+          itemId: entry.itemId,
+          type: data.type,
+          unitId: entry.unitId,
+          quantity: numQty,
+          factorApplied: factor,
+          baseQuantity,
+          date: movementDate,
+          referenceNumber: refNumber,
+          notes: noteText || (isOut ? 'أمر صرف وخروج للمصنع' : 'استلام وارد من المصنع'),
+          destinationType: 'FACTORY',
+          destinationName: 'المصنع',
+          status: 'APPROVED',
+          createdByName: companySettings.managerName || 'مدير النظام',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+
+        createdMovements.push(mov);
+      }
+
+      const updatedMovements = [...createdMovements, ...movements];
+      setMovements(updatedMovements);
+      movementsRef.current = updatedMovements;
+
+      try {
+        for (const m of createdMovements) {
+          await FirestoreStorage.saveMovement(m);
+        }
+        await persistChanges(units, categories, items, updatedMovements, branches, returns, damagedRecords, productionOrders);
+      } catch (err: any) {
+        setMovements(movements);
+        return { success: false, error: 'فشل حفظ حركات المصنع في السحابة' };
+      }
+
+      await FirestoreStorage.recordAuditLog({
+        operationType: 'إضافة',
+        entityType: 'حركة مخزنية',
+        entityId: refNumber,
+        entityName: `${isOut ? 'أمر صرف للمصنع' : 'وارد من المصنع'} (${createdMovements.length} أصناف)`,
+        reason: `${isOut ? 'خروج للمصنع' : 'وارد من المصنع'}: سند رقم ${refNumber}`,
+        userName: companySettings.managerName || 'مدير النظام',
+        dataBefore: null,
+        dataAfter: { refNumber, count: createdMovements.length },
+      }).catch((e) => console.warn(e));
+
+      showToast(`تم تسجيل سند ${isOut ? 'الخروج للمصنع' : 'الوارد من المصنع'} #${refNumber} (${createdMovements.length} أصناف) بنجاح`, 'success');
+      return { success: true, movements: createdMovements, referenceNumber: refNumber };
+    },
+    [ensureAdmin, items, units, getItemStock, movements, companySettings, persistChanges, branches, returns, damagedRecords, productionOrders, generateFactoryReferenceNumber, showToast]
+  );
+
   const clearDatabase = useCallback(async () => {
     await StorageService.clearAll();
     setUnits([]);
@@ -4915,12 +5174,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Damaged Records
     damagedRecords,
     addDamagedRecord,
+    addMultiDamagedRecords,
     recoverDamagedRecord,
     deleteDamagedRecord,
 
     // Factory movements
     generateFactoryReferenceNumber,
     addFactoryMovement,
+    addMultiItemFactoryMovement,
 
     getItemStock,
     getItemStockSummary,
