@@ -43,7 +43,12 @@ export const DamagedModal: React.FC<DamagedModalProps> = ({ isOpen, onClose }) =
 
   const [generalReason, setGeneralReason] = useState<DamagedReason | string>('تلف تخزين');
   const [generalNotes, setGeneralNotes] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().substring(0, 16));
+  const [date, setDate] = useState(() => {
+    const now = new Date();
+    const offsetMs = now.getTimezoneOffset() * 60 * 1000;
+    const localTime = new Date(now.getTime() - offsetMs);
+    return localTime.toISOString().substring(0, 16);
+  });
   const [rows, setRows] = useState<DamagedItemRow[]>([
     { rowId: 'row_1', itemId: '', unitId: '', quantity: '', notes: '' },
   ]);
@@ -218,7 +223,7 @@ export const DamagedModal: React.FC<DamagedModalProps> = ({ isOpen, onClose }) =
         section: 'GENERAL', // Unified inventory
         reason: generalReason,
         generalNotes: generalNotes.trim() || undefined,
-        date: new Date(date).toISOString(),
+        date,
         items: payloadItems,
       });
 

@@ -107,7 +107,7 @@ export const DamagedView: React.FC = () => {
       }
 
       return matchesSearch && matchesSection && matchesReason && matchesPeriod && matchesRecovery;
-    });
+    }).sort((a, b) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
   }, [damagedRecords, items, searchQuery, sectionFilter, selectedReason, periodFilter, recoveryFilter]);
 
   // Statistics
@@ -345,13 +345,18 @@ export const DamagedView: React.FC = () => {
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/70 transition">
                       <td className="p-3.5 pr-5 text-slate-600 font-medium whitespace-nowrap">
-                        {new Date(r.date).toLocaleString('ar-SA', {
-                          year: 'numeric',
-                          month: 'numeric',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {(() => {
+                          const d = new Date(r.date);
+                          return isNaN(d.getTime()) ? r.date : d.toLocaleString('ar-SA', {
+                            year: 'numeric',
+                            month: 'numeric',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                            timeZone: 'UTC'
+                          });
+                        })()}
                       </td>
 
                       <td className="p-3.5 whitespace-nowrap">
