@@ -3695,21 +3695,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       let targetRecord: DamagedRecord | undefined;
       let updatedRecord: DamagedRecord | undefined;
 
-      if (data.damagedRecordId) {
-        targetRecord = damagedRecords.find((r) => r.id === data.damagedRecordId);
-        if (!targetRecord) {
-          return { success: false, error: 'سجل التلف المرتبط غير موجود' };
-        }
+      if (!data.damagedRecordId) {
+        return {
+          success: false,
+          error: 'يجب اختيار سجل تالف معتمد ومخصوم مسبقاً من المخزون. لا يمكن استرداد أصناف لم تُسجل في التالف.',
+        };
+      }
 
-        const currentRecoveredBase = targetRecord.recoveredBaseQuantity || 0;
-        const remainingDamagedBase = Math.round((targetRecord.baseQuantity - currentRecoveredBase) * 1000) / 1000;
+      targetRecord = damagedRecords.find((r) => r.id === data.damagedRecordId);
+      if (!targetRecord) {
+        return { success: false, error: 'سجل التلف المرتبط غير موجود أو تم حذفه مسبقاً' };
+      }
 
-        if (baseQuantity > remainingDamagedBase + 0.001) {
-          return {
-            success: false,
-            error: `الكمية المستردة (${data.quantity} ${unit.name} = ${baseQuantity} أساسي) تتجاوز الكمية التالفة المتبقية في هذا السجل (${remainingDamagedBase} أساسي).`,
-          };
-        }
+      const currentRecoveredBase = targetRecord.recoveredBaseQuantity || 0;
+      const remainingDamagedBase = Math.round((targetRecord.baseQuantity - currentRecoveredBase) * 1000) / 1000;
+
+      if (baseQuantity > remainingDamagedBase + 0.001) {
+        return {
+          success: false,
+          error: `الكمية المستردة (${data.quantity} ${unit.name} = ${baseQuantity} بالوحدة الأساسية) تتجاوز الكمية التالفة المتبقية في هذا السجل (${remainingDamagedBase} بالأساسية).`,
+        };
       }
 
       const movementId = 'mov_rec_' + Math.random().toString(36).substr(2, 9);

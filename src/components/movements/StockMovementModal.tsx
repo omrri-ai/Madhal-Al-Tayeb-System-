@@ -12,6 +12,7 @@ import {
   Trash2,
   FileText,
   Boxes,
+  Search,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { Item, MovementType, StockMovement } from '../../types/inventory';
@@ -52,7 +53,6 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
   const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 16));
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [generalNotes, setNotes] = useState<string>('');
-  const [addToProduction, setAddToProduction] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -84,7 +84,6 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       );
       setReferenceNumber(editingMovement.referenceNumber || '');
       setNotes(editingMovement.notes || '');
-      setAddToProduction(false);
     } else {
       setType(defaultType);
       const chosenItem = preselectedItemId || (activeItems.length > 0 ? activeItems[0].id : '');
@@ -104,7 +103,6 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       setDate(new Date().toISOString().substring(0, 16));
       setReferenceNumber('');
       setNotes('');
-      setAddToProduction(false);
     }
   }, [isOpen, editingMovement, defaultType, preselectedItemId, activeItems, items]);
 
@@ -358,12 +356,6 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
         const calc = rowsCalculations.find((c) => c.rowId === r.rowId);
         const itemNote = r.notes.trim();
         const combinedNotes = [generalNotes.trim(), itemNote].filter(Boolean).join(' - ');
-        const finalNotes =
-          addToProduction && type === 'IN'
-            ? combinedNotes
-              ? `${combinedNotes} (تابع للإنتاج والتصنيع)`
-              : 'إضافة إلى الإنتاج والتصنيع'
-            : combinedNotes;
 
         const res = await addMovement({
           itemId: r.itemId,
@@ -372,24 +364,13 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
           quantity: calc?.numQty || parseFloat(r.quantity),
           date: isoDate,
           referenceNumber: voucherRef,
-          notes: finalNotes,
+          notes: combinedNotes,
         });
 
         if (!res.success) {
           setErrorMsg(res.error || `تعذر تسجيل الحركة للصنف (${calc?.item?.name || r.itemId})`);
           setIsSubmitting(false);
           return;
-        }
-
-        if (type === 'IN' && addToProduction && calc?.item) {
-          updateItem(
-            r.itemId,
-            {
-              ...calc.item,
-              isProductionItem: true,
-            },
-            'إضافة الصنف إلى الإنتاج والتصنيع'
-          );
         }
 
         successCount++;
@@ -607,15 +588,16 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-slate-400 text-sm">
-                              <Package className="w-4 h-4 text-slate-400" />
-                              <span>اضغط لاختيار الصنف...</span>
+                            <div className="flex items-center gap-2 text-slate-500 text-xs">
+                              <Search className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>🔍 اضغط هنا للبحث واختيار الصنف...</span>
                             </div>
                           )}
 
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                              {row.item ? 'تغيير' : 'اختيار'}
+                            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                              <Search className="w-3.5 h-3.5" />
+                              <span>{row.item ? 'تغيير الصنف' : 'بحث واختيار'}</span>
                             </span>
                             <ChevronDown className="w-4 h-4 text-slate-400" />
                           </div>
@@ -701,28 +683,6 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>+ إضافة صنف آخر للسند</span>
               </button>
-            </div>
-          )}
-
-          {/* Add to Production Checkbox when type is IN */}
-          {type === 'IN' && !editingMovement && (
-            <div
-              className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition"
-              onClick={() => setAddToProduction(!addToProduction)}
-            >
-              <input
-                type="checkbox"
-                id="addToProduction"
-                checked={addToProduction}
-                onChange={(e) => setAddToProduction(e.target.checked)}
-                className="w-4 h-4 text-indigo-600 rounded-sm border-indigo-300 focus:ring-indigo-500 cursor-pointer"
-              />
-              <label htmlFor="addToProduction" className="text-xs font-black text-indigo-950 cursor-pointer select-none flex-1">
-                ☑ إضافة الأصناف إلى الإنتاج والتصنيع
-                <span className="block text-[11px] font-normal text-indigo-700 mt-0.5">
-                  يُضاف كل صنف للمخزون المعتاد ويُصنف كمنتج تابع للإنتاج والتصنيع ليظهر في القسم المخصص تلقائياً.
-                </span>
-              </label>
             </div>
           )}
 
