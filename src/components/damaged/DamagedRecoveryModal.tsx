@@ -5,9 +5,7 @@ import {
   PackageCheck,
   AlertCircle,
   Search,
-  CheckCircle2,
   Calendar,
-  AlertTriangle,
   Info,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
@@ -213,134 +211,103 @@ export const DamagedRecoveryModal: React.FC<DamagedRecoveryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
-      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 p-6 my-8 text-right max-h-[92vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200 shadow-inner">
-              <RotateCcw className="w-6 h-6" />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 p-5 my-8 text-right max-h-[92vh] flex flex-col">
+        {/* Header - Simple & Clean */}
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+              <RotateCcw className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-base font-black text-slate-900">راجع من التالف / إعادة للمخزون</h3>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                  يزيد الرصيد (+)
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                إعادة الأصناف التالفة التي تم إصلاحها بالمصنع أو الورشة حصرياً من السجلات المخصومة
-              </p>
+              <h3 className="text-sm font-black text-slate-900">راجع من التالف / إعادة للمخزون</h3>
+              <p className="text-[11px] text-slate-500">اختر الصنف المخصوم وحدد الكمية لإعادتها للرصيد</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2 shrink-0">
+          <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2 shrink-0">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {recoverableDamagedRecords.length === 0 ? (
-          /* Empty State: No damaged records eligible for recovery */
-          <div className="py-12 px-6 text-center space-y-3 bg-slate-50 rounded-2xl border border-slate-200">
-            <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
-              <Info className="w-6 h-6" />
+          <div className="py-10 px-4 text-center space-y-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="w-10 h-10 mx-auto rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+              <Info className="w-5 h-5" />
             </div>
-            <h4 className="text-sm font-bold text-slate-900">لا توجد أصناف تالفة مؤهلة للاسترداد حالياً</h4>
-            <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-              وفقاً لقواعد النظام، لا يمكن إضافة أصناف كـ «راجع من التالف» إلا للأصناف التي خُصمت فعلياً وسُجلت سابقاً في قسم التالف ولم يتم استردادها بالكامل بعد.
+            <h4 className="text-xs font-bold text-slate-900">لا توجد أصناف تالفة مؤهلة للاسترداد حالياً</h4>
+            <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+              لا يمكن إضافة أصناف كـ «راجع من التالف» إلا للأصناف التي خُصمت فعلياً من المخزون في قسم التالف.
             </p>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition"
-              >
-                إغلاق النافذة
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg transition"
+            >
+              إغلاق
+            </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
-            {/* Search Box for Damaged Records */}
+          <form onSubmit={handleSubmit} className="space-y-3 text-xs overflow-y-auto pr-1 flex-1">
+            {/* Search and Select Damaged Item */}
             <div>
-              <label className="block text-slate-700 font-bold mb-1.5">
-                اختر الصنف التالف المراد استرداده (الأصناف المخصومة فقط) *
+              <label className="block text-slate-700 font-bold mb-1">
+                اختر الصنف من سجل التلف المخصوم *
               </label>
-              <div className="relative mb-2">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+              <div className="relative mb-1.5">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="ابحث باسم الصنف، الكود، سبب التلف، أو السند..."
-                  className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
+                  placeholder="ابحث باسم الصنف أو الكود..."
+                  className="w-full pl-3 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
                 />
               </div>
 
-              {/* Records List */}
-              <div className="space-y-2 max-h-48 overflow-y-auto p-1 border border-slate-200 rounded-xl bg-slate-50/50">
+              {/* Clean List */}
+              <div className="space-y-1.5 max-h-36 overflow-y-auto p-1 border border-slate-200 rounded-xl bg-slate-50">
                 {filteredRecords.length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-xs">
-                    لا توجد أصناف تالفة مطابقة لبحثك
-                  </div>
+                  <div className="p-3 text-center text-slate-400 text-[11px]">لا توجد نتائج مطابقة</div>
                 ) : (
                   filteredRecords.map((r) => {
                     const it = items.find((i) => i.id === r.itemId);
                     const un = units.find((u) => u.id === r.unitId);
                     const remBase =
                       Math.round((r.baseQuantity - (r.recoveredBaseQuantity || 0)) * 1000) / 1000;
-                    const dateStr = new Date(r.date).toLocaleDateString('ar-SA');
                     const isSelected = selectedRecordId === r.id;
 
                     return (
                       <div
                         key={r.id}
                         onClick={() => handleSelectRecord(r)}
-                        className={`p-3 rounded-xl border text-right cursor-pointer transition-all ${
+                        className={`p-2.5 rounded-lg border text-right cursor-pointer transition-all flex items-center justify-between ${
                           isSelected
-                            ? 'bg-emerald-50 border-emerald-500 shadow-xs ring-1 ring-emerald-500'
+                            ? 'bg-emerald-50 border-emerald-500 font-bold'
                             : 'bg-white border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                                isSelected
-                                  ? 'border-emerald-600 bg-emerald-600 text-white'
-                                  : 'border-slate-300 bg-white'
-                              }`}
-                            >
-                              {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </span>
-                            <span className="font-bold text-slate-900 text-xs">{it?.name || 'صنف'}</span>
-                            <span dir="ltr" className="font-mono text-[10px] text-slate-400">
-                              {it?.code}
-                            </span>
-                          </div>
-
-                          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md font-mono">
-                            متبقي للتلف: {remBase} {un?.name || 'وحدة'}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`w-3.5 h-3.5 rounded-full border shrink-0 flex items-center justify-center ${
+                              isSelected ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'
+                            }`}
+                          >
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </span>
+                          <span className="text-xs text-slate-900 truncate">{it?.name || 'صنف'}</span>
                         </div>
-
-                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500 pr-6">
-                          <span>
-                            سند: <strong className="text-slate-700 font-mono">{r.movementId ? r.movementId.slice(-8) : r.id.slice(-6)}</strong> • سبب: {r.reason}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            <span>{dateStr}</span>
-                          </span>
-                        </div>
+                        <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded shrink-0">
+                          المتبقي: {remBase} {un?.name || ''}
+                        </span>
                       </div>
                     );
                   })
@@ -348,28 +315,10 @@ export const DamagedRecoveryModal: React.FC<DamagedRecoveryModalProps> = ({
               </div>
             </div>
 
-            {/* Selected Item Summary Card */}
-            {activeRecord && selectedItem && (
-              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900">{selectedItem.name}</span>
-                  <span className="text-slate-500 text-[11px]">
-                    الرصيد المتاح حالياً: <strong>{currentStock} {baseUnitName}</strong>
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-600 flex items-center justify-between">
-                  <span>إجمالي التالف الأصلي: {activeRecord.baseQuantity} {baseUnitName}</span>
-                  <span className="text-emerald-700 font-bold">
-                    المتاح للاسترداد الآن: {remainingBaseAllowed} {baseUnitName}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Quantity & Unit Grid */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Quantity and Unit Row */}
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-slate-700 font-bold mb-1.5">الكمية المستردة *</label>
+                <label className="block text-slate-700 font-bold mb-1">الكمية المستردة *</label>
                 <input
                   type="number"
                   step="any"
@@ -377,39 +326,39 @@ export const DamagedRecoveryModal: React.FC<DamagedRecoveryModalProps> = ({
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value === '' ? '' : Number(e.target.value))}
                   placeholder="0"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl font-mono text-sm font-black focus:outline-none focus:ring-2 ${
+                  className={`w-full px-3 py-2 bg-slate-50 border rounded-xl font-mono text-xs font-black ${
                     isExceedingAllowed
-                      ? 'border-rose-400 text-rose-700 focus:ring-rose-500/20'
-                      : 'border-slate-200 text-slate-900 focus:ring-emerald-500/20 focus:border-emerald-500'
+                      ? 'border-rose-400 text-rose-700'
+                      : 'border-slate-200 text-slate-900 focus:border-emerald-500'
                   }`}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-bold mb-1.5">الوحدة *</label>
+                <label className="block text-slate-700 font-bold mb-1">الوحدة *</label>
                 <select
                   value={unitId}
                   onChange={(e) => setUnitId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:border-emerald-500"
                   required
                 >
                   {itemUnits.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name} {u.factor !== 1 ? `(${u.factor} بالأساسية)` : ''}
+                      {u.name} {u.factor !== 1 ? `(${u.factor})` : ''}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Recovery Reason */}
+            {/* Reason */}
             <div>
-              <label className="block text-slate-700 font-bold mb-1.5">سبب الاسترداد / العودة للمخزون *</label>
+              <label className="block text-slate-700 font-bold mb-1">سبب الاسترداد *</label>
               <select
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:border-emerald-500"
               >
                 {RECOVERY_REASONS.map((r) => (
                   <option key={r} value={r}>
@@ -421,56 +370,43 @@ export const DamagedRecoveryModal: React.FC<DamagedRecoveryModalProps> = ({
 
             {/* Notes */}
             <div>
-              <label className="block text-slate-700 font-bold mb-1.5">بيان أو ملاحظات إضافية (اختياري)</label>
+              <label className="block text-slate-700 font-bold mb-1">ملاحظات (اختياري)</label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="مثال: تم الاستلام بعد الإصلاح، بحالة ممتازة..."
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                placeholder="ملاحظات الاستلام أو الإصلاح..."
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:border-emerald-500"
               />
             </div>
 
-            {/* Visual Stock Simulation Box */}
+            {/* Simple Stock Preview */}
             {selectedItem && (
-              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-emerald-950">
-                  <span className="flex items-center gap-1.5">
-                    <PackageCheck className="w-4 h-4 text-emerald-600" />
-                    <span>محاكاة أثر الحركة على المخزون:</span>
-                  </span>
-                  <span className="font-mono text-emerald-700">+{baseQty} {baseUnitName}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-emerald-200/60">
-                  <div className="text-slate-600">
-                    <span>الرصيد الحالي: </span>
-                    <span className="font-mono font-bold text-slate-900">{currentStock}</span>
-                  </div>
-                  <div className="text-emerald-800 font-bold">
-                    <span>الرصيد بعد الاسترداد: </span>
-                    <span className="font-mono font-black text-emerald-700">{projectedStock}</span>
-                  </div>
-                </div>
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[11px]">
+                <span className="text-slate-600 font-medium">الرصيد بعد الإعادة:</span>
+                <span className="font-mono font-bold text-emerald-700">
+                  {currentStock} ➔ {projectedStock} {baseUnitName} (+{baseQty})
+                </span>
               </div>
             )}
 
-            {/* Submit & Cancel */}
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 shrink-0">
+            {/* Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer"
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting || isExceedingAllowed || numQty <= 0 || !activeRecord}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-sm transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-xs transition cursor-pointer"
               >
                 <PackageCheck className="w-4 h-4" />
-                <span>{isSubmitting ? 'جاري الحفظ والتحديث...' : 'تأكيد العودة للمخزون'}</span>
+                <span>{isSubmitting ? 'جاري الحفظ...' : 'تأكيد العودة للمخزون'}</span>
               </button>
             </div>
           </form>
