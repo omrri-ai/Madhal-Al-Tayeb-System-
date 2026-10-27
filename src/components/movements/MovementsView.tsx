@@ -16,6 +16,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { MovementType, StockMovement } from '../../types/inventory';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { StockMovementModal } from './StockMovementModal';
@@ -55,6 +56,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   returnToReports,
 }) => {
   const { movements, items, units, categories, branches, getItemStock, deleteMovement } = useInventory();
+  const { isAdmin } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>(initialType || 'ALL');
@@ -87,6 +89,26 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
     setIsReportModalOpen(true);
   };
 
+  // Helper to identify silent/hidden adjustment movements that shouldn't appear in the movements table
+  const isSilentMovement = (m: StockMovement) => {
+    if (m.isHidden || m.isSilent) return true;
+    const notes = m.notes || '';
+    if (
+      notes.includes('تسوية جردية صامتة') ||
+      notes.includes('تعديل صامت') ||
+      notes.includes('صامتة') ||
+      notes.includes('تعديل الرصيد الصامت')
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  // Visible movements: strictly excluding silent adjustments
+  const visibleMovements = useMemo(() => {
+    return movements.filter((m) => !isSilentMovement(m));
+  }, [movements]);
+
   // Precomputed Date Ranges & Counts for Quick Buttons
   const todayRange = useMemo(() => computeReportDateRange('today'), []);
   const yesterdayRange = useMemo(() => computeReportDateRange('yesterday'), []);
@@ -94,24 +116,24 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   const monthRange = useMemo(() => computeReportDateRange('this_month'), []);
 
   const todayCount = useMemo(
-    () => movements.filter((m) => isRecordInDateRange(m.date, todayRange)).length,
-    [movements, todayRange]
+    () => visibleMovements.filter((m) => isRecordInDateRange(m.date, todayRange)).length,
+    [visibleMovements, todayRange]
   );
   const yesterdayCount = useMemo(
-    () => movements.filter((m) => isRecordInDateRange(m.date, yesterdayRange)).length,
-    [movements, yesterdayRange]
+    () => visibleMovements.filter((m) => isRecordInDateRange(m.date, yesterdayRange)).length,
+    [visibleMovements, yesterdayRange]
   );
   const weekCount = useMemo(
-    () => movements.filter((m) => isRecordInDateRange(m.date, weekRange)).length,
-    [movements, weekRange]
+    () => visibleMovements.filter((m) => isRecordInDateRange(m.date, weekRange)).length,
+    [visibleMovements, weekRange]
   );
   const monthCount = useMemo(
-    () => movements.filter((m) => isRecordInDateRange(m.date, monthRange)).length,
-    [movements, monthRange]
+    () => visibleMovements.filter((m) => isRecordInDateRange(m.date, monthRange)).length,
+    [visibleMovements, monthRange]
   );
 
   const filteredMovements = useMemo(() => {
-    const list = movements.filter((m) => {
+    const list = visibleMovements.filter((m) => {
       const item = items.find((i) => i.id === m.itemId);
       const query = searchQuery.toLowerCase().trim();
       const destinationStr = `${m.destinationName || ''} ${m.branchName || ''} ${m.customerName || ''} ${m.destinationContactName || ''} ${m.supplierName || ''} ${m.shippingCompany || ''} ${m.customShippingCompany || ''}`.toLowerCase();
@@ -144,7 +166,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       const timeB = new Date(b.createdAt || b.date || 0).getTime();
       return timeB - timeA;
     });
-  }, [movements, items, branches, searchQuery, typeFilter, branchFilter, itemFilter, startDate, endDate]);
+  }, [visibleMovements, items, branches, searchQuery, typeFilter, branchFilter, itemFilter, startDate, endDate]);
 
   const groupedMovements = useMemo(() => {
     const groups: Record<string, StockMovement[]> = {};
@@ -424,7 +446,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                       </td>
                       <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
-                          {!isFirstIn && (
+                          {isAdmin && !isFirstIn && (
                             <button
                               onClick={() => setEditingDispatchVoucher(first.batchId || first.referenceNumber || first.id)}
                               className="p-1.5 text-slate-500 hover:text-amber-700 cursor-pointer rounded-lg hover:bg-amber-50 transition-colors"
@@ -526,7 +548,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       )}
 
       {/* Edit Approved Outgoing Dispatch Voucher Modal */}
-      {editingDispatchVoucher && (
+      {isAdmin && editingDispatchVoucher && (
         <OutgoingDispatchModal
           isOpen={Boolean(editingDispatchVoucher)}
           editVoucherNoOrBatch={editingDispatchVoucher}

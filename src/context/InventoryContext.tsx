@@ -213,6 +213,8 @@ interface InventoryContextType {
     newStock: number;
     reason: string;
     unitId?: string;
+    isSilent?: boolean;
+    isHidden?: boolean;
   }) => { success: boolean; error?: string };
   adjustStockSilently: (itemId: string, newTargetStock: number, reason?: string) => { success: boolean; error?: string };
 
@@ -2865,6 +2867,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       newStock: number;
       reason: string;
       unitId?: string;
+      isSilent?: boolean;
+      isHidden?: boolean;
     }): { success: boolean; error?: string } => {
       if (!ensureAdmin('تسوية جردية للمخزون')) {
         return { success: false, error: 'غير مصرح: وضع مسؤول المصنع مخصص للمشاهدة فقط' };
@@ -2905,6 +2909,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const nowIso = new Date().toISOString();
       const refNo = `ADJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const isSilentMode = !!data.isSilent || !!data.isHidden;
 
       const adjustmentMovement: StockMovement = {
         id: 'mov_adj_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
@@ -2916,10 +2921,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         baseQuantity: diffBase,
         date: nowIso,
         referenceNumber: refNo,
-        notes: `تسوية جردية: الرصيد المسجل السابق (${currentStockBase}) -> الرصيد الفعلي الجديد (${newStockInBase}). السبب: ${cleanReason}`,
+        notes: `${isSilentMode ? 'تسوية جردية صامتة: ' : 'تسوية جردية: '}الرصيد المسجل السابق (${currentStockBase}) -> الرصيد الفعلي الجديد (${newStockInBase}). السبب: ${cleanReason}`,
         destinationType: 'DIRECT',
         createdAt: nowIso,
         updatedAt: nowIso,
+        isHidden: isSilentMode,
+        isSilent: isSilentMode,
       };
 
       const updatedMovements = [adjustmentMovement, ...movements];
@@ -2980,6 +2987,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         destinationType: 'DIRECT',
         createdAt: nowIso,
         updatedAt: nowIso,
+        isHidden: true,
+        isSilent: true,
       };
 
       const finalMovements = [adjMovement, ...movements];

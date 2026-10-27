@@ -13,10 +13,12 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Branch } from '../../types/inventory';
 
 export const BranchesView: React.FC = () => {
   const { branches, addBranch, deleteBranch, updateBranch, showToast } = useInventory();
+  const { isAdmin } = useAuth();
   
   // New branch form state
   const [name, setName] = useState('');
@@ -147,98 +149,100 @@ export const BranchesView: React.FC = () => {
       </div>
 
       {/* Add New Branch Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 sm:p-6">
-        <h2 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-          <Plus className="w-4 h-4 text-emerald-600" />
-          <span>إضافة فرع جديد</span>
-        </h2>
+      {isAdmin && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 sm:p-6">
+          <h2 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <Plus className="w-4 h-4 text-emerald-600" />
+            <span>إضافة فرع جديد</span>
+          </h2>
 
-        <form onSubmit={handleAdd} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                اسم الفرع <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: فرع الرياض الرئيسي"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
-              />
+          <form onSubmit={handleAdd} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  اسم الفرع <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: فرع الرياض الرئيسي"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  اسم المسؤول / مشرف الفرع
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: أبو فهد / محمد الشمري"
+                  value={branchManagerName}
+                  onChange={(e) => setBranchManagerName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  رقم جوال المسؤول
+                </label>
+                <input
+                  type="text"
+                  placeholder="05XXXXXXXX"
+                  value={branchManagerPhone}
+                  onChange={(e) => setBranchManagerPhone(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">المدينة / المنطقة</label>
+                <input
+                  type="text"
+                  placeholder="مثال: الرياض"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">هاتف الفرع (إضافي)</label>
+                <input
+                  type="text"
+                  placeholder="011XXXXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات إضافية</label>
+                <input
+                  type="text"
+                  placeholder="موقع الفرع أو ساعات العمل..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                اسم المسؤول / مشرف الفرع
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: أبو فهد / محمد الشمري"
-                value={branchManagerName}
-                onChange={(e) => setBranchManagerName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
-              />
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>حفظ الفرع في النظام</span>
+              </button>
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                رقم جوال المسؤول
-              </label>
-              <input
-                type="text"
-                placeholder="05XXXXXXXX"
-                value={branchManagerPhone}
-                onChange={(e) => setBranchManagerPhone(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">المدينة / المنطقة</label>
-              <input
-                type="text"
-                placeholder="مثال: الرياض"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">هاتف الفرع (إضافي)</label>
-              <input
-                type="text"
-                placeholder="011XXXXXXX"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات إضافية</label>
-              <input
-                type="text"
-                placeholder="موقع الفرع أو ساعات العمل..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow-sm transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>حفظ الفرع في النظام</span>
-            </button>
-          </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      )}
 
       {/* Branches List Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
@@ -289,7 +293,7 @@ export const BranchesView: React.FC = () => {
                   <th className="py-3 px-4">المدينة / المنطقة</th>
                   <th className="py-3 px-4">هاتف الفرع</th>
                   <th className="py-3 px-4">ملاحظات</th>
-                  <th className="py-3 px-4 text-center">إجراءات</th>
+                  {isAdmin && <th className="py-3 px-4 text-center">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -405,50 +409,52 @@ export const BranchesView: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {isEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => saveEdit(b.id)}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                                title="حفظ التعديل"
-                              >
-                                <Save className="w-3.5 h-3.5" />
-                                <span>حفظ</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEdit}
-                                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
-                                title="إلغاء التعديل"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startEdit(b)}
-                                className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                                title="تعديل بيانات الفرع"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(b.id, b.name)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="حذف الفرع"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => saveEdit(b.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                                  title="حفظ التعديل"
+                                >
+                                  <Save className="w-3.5 h-3.5" />
+                                  <span>حفظ</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEdit}
+                                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                                  title="إلغاء التعديل"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(b)}
+                                  className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                  title="تعديل بيانات الفرع"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(b.id, b.name)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="حذف الفرع"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

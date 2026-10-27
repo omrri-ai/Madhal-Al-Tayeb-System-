@@ -207,6 +207,8 @@ export interface StockMovement {
   
   createdByName?: string;
   status?: 'APPROVED' | 'CANCELLED';
+  isHidden?: boolean; // When true, hidden from standard movements list (silent adjustments)
+  isSilent?: boolean;
   createdAt: string;
   updatedAt: string;
 }

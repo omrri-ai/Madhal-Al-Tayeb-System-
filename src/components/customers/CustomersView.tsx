@@ -14,11 +14,13 @@ import {
   X,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { Customer } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 
 export const CustomersView: React.FC = () => {
   const { customers, addCustomer, updateCustomer, deleteCustomer, showToast } = useInventory();
+  const { isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -140,13 +142,15 @@ export const CustomersView: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إضافة عميل جديد</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة عميل جديد</span>
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -186,22 +190,24 @@ export const CustomersView: React.FC = () => {
                       <span className="text-[10px] text-slate-400 font-mono">ID: {c.id.substring(0, 8)}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEdit(c)}
-                      className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"
-                      title="تعديل"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(c.id, c.name)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                      title="حذف"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEdit(c)}
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"
+                        title="تعديل"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(c.id, c.name)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2 text-xs text-slate-600 py-2 border-t border-b border-slate-100 my-2">
@@ -234,7 +240,7 @@ export const CustomersView: React.FC = () => {
       )}
 
       {/* Add / Edit Modal */}
-      {isModalOpen && (
+      {isAdmin && isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 text-right">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
