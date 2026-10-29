@@ -315,7 +315,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
       if (!itm) continue;
       let factor = 1;
       if (r.unitId !== itm.baseUnitId) {
-        const conv = itm.conversions.find((c) => c.unitId === r.unitId);
+        const conv = (itm.conversions || []).find((c) => c.unitId === r.unitId);
         factor = conv ? conv.factorToBase : 1;
       }
       const numQty = parseFloat(r.quantity) || 0;
@@ -336,7 +336,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
 
       let factor = 1;
       if (row.unitId !== item.baseUnitId) {
-        const conv = item.conversions.find((c) => c.unitId === row.unitId);
+        const conv = (item.conversions || []).find((c) => c.unitId === row.unitId);
         factor = conv ? conv.factorToBase : 1;
       }
 
@@ -1231,7 +1231,7 @@ export const OutgoingDispatchModal: React.FC<OutgoingDispatchModalProps> = ({
                               <option value={val.item.baseUnitId}>
                                 {units.find((u) => u.id === val.item.baseUnitId)?.name || 'وحدة أساسية'} (أساسية)
                               </option>
-                              {val.item.conversions.map((conv) => {
+                              {(val.item.conversions || []).map((conv) => {
                                 const uName = units.find((u) => u.id === conv.unitId)?.name || conv.unitId;
                                 return (
                                   <option key={conv.unitId} value={conv.unitId}>

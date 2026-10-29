@@ -33,10 +33,12 @@ import {
   Factory,
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
+import { useAuth } from '../../context/AuthContext';
 import { StockMovement, Item } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
+import { isSilentMovement } from '../../utils/stockRules';
 
 import { NavView } from '../common/Navigation';
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
@@ -109,6 +111,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 }) => {
   const { movements, items, categories, units, branches, returns, damagedRecords, getItemStock, getItemStockSummary } =
     useInventory();
+  const { isAdmin } = useAuth();
 
   // Tab navigation
   const [activeTab, setActiveTab] = useState<ReportTab>('dashboard');
@@ -329,6 +332,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const { currentMovements, prevMovements } = useMemo(() => {
     const cur = movements.filter((m) => {
       if (!m) return false;
+      if (isSilentMovement(m)) return false;
       if (!isDateInRange(m.date, dateRange.start, dateRange.end)) return false;
       if (selectedBranchId !== 'all' && m.branchId !== selectedBranchId) return false;
       if (selectedMovementType === 'IN' && !isIncomingMovement(m.type)) return false;
@@ -343,6 +347,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
     const prev = movements.filter((m) => {
       if (!m) return false;
+      if (isSilentMovement(m)) return false;
       if (!isDateInRange(m.date, dateRange.prevStart, dateRange.prevEnd)) return false;
       if (selectedBranchId !== 'all' && m.branchId !== selectedBranchId) return false;
       if (selectedMovementType === 'IN' && !isIncomingMovement(m.type)) return false;
@@ -1199,7 +1204,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           { id: 'outgoing', label: 'الصادر والصرف', icon: ArrowUpRight },
           { id: 'returns', label: 'المرتجعات', icon: RotateCcw },
           { id: 'production', label: 'الإنتاج والتصنيع', icon: Factory },
-          { id: 'adjustments', label: 'التسويات الجردية', icon: SlidersHorizontal },
+          ...(isAdmin ? [{ id: 'adjustments', label: 'التسويات الجردية', icon: SlidersHorizontal }] : []),
           { id: 'low_stock', label: 'الأصناف الناقصة / رصيدها صفر', icon: AlertTriangle },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -2146,7 +2151,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       )}
 
       {/* TAB: STOCK ADJUSTMENTS */}
-      {activeTab === 'adjustments' && (
+      {isAdmin && activeTab === 'adjustments' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">

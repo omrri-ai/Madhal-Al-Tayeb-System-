@@ -25,8 +25,8 @@ import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { Item, StockMovement, ItemStockSummary } from '../../types/inventory';
 import { playNotificationSound } from '../../services/sound';
-import { isIncomingMovement } from '../../utils/arabicSearch';
-import { signedBaseQty } from '../../utils/stockRules';
+import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
+import { signedBaseQty, isSilentMovement } from '../../utils/stockRules';
 
 interface InventoryAuditViewProps {
   onBackToItems?: () => void;
@@ -193,18 +193,22 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
     };
   }, [allSummaries]);
 
-  // Movement history for inspected item
+  // Movement history for inspected item (silent adjustments strictly hidden from viewer)
   const inspectedItemMovements = useMemo(() => {
     if (!inspectedItem) return [];
     return movements
-      .filter((m) => m.itemId === inspectedItem.id)
+      .filter((m) => {
+        if (m.itemId !== inspectedItem.id) return false;
+        if (!isAdmin && m.type === 'ADJUSTMENT') return false;
+        return !isSilentMovement(m, isAdmin) || isAdmin;
+      })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [inspectedItem, movements]);
+  }, [inspectedItem, movements, isAdmin]);
 
-  // "الخارج": Outgoing movements
+  // "الخارج": All outgoing movements including dispatch, damaged, and negative adjustments
   const outMovements = useMemo(() => {
     return inspectedItemMovements
-      .filter((m) => m.type === 'OUT')
+      .filter((m) => isOutgoingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) < 0))
       .slice()
       .reverse();
   }, [inspectedItemMovements]);
@@ -260,6 +264,11 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
 
   // Helper to get destination display text
   const getDestinationDisplay = (m: StockMovement) => {
+    if (m.type === 'DAMAGED') return `قسم التالف (${m.notes || 'تلف مخزني'})`;
+    if (m.type === 'DAMAGED_RECOVERY') return 'استرداد من التالف إلى المخزون';
+    if (m.type === 'MFG_OUT') return 'المصنع (خروج وتشغيل)';
+    if (m.type === 'MFG_IN') return 'المصنع (وارد إنتاج)';
+    if (m.type === 'ADJUSTMENT') return (m.baseQuantity ?? m.quantity) >= 0 ? 'تسوية جردية (فائض +)' : 'تسوية جردية (عجز -)';
     if (m.destinationName) return m.destinationName;
     if (m.branchName) return `فرع: ${m.branchName}`;
     if (m.customerName) return `عميل: ${m.customerName}`;
@@ -722,7 +731,7 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                       إجمالي المنصرف:{' '}
                       <strong className="text-rose-700 font-mono">
                         {outMovements
-                          .reduce((acc, m) => acc + (m.baseQuantity || m.quantity), 0)
+                          .reduce((acc, m) => acc + Math.abs(m.baseQuantity !== undefined && m.baseQuantity !== null ? m.baseQuantity : (m.quantity || 0)), 0)
                           .toLocaleString('ar-SA')}{' '}
                         {getUnitName(inspectedItem.baseUnitId)}
                       </strong>
@@ -738,45 +747,73 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                       <table className="w-full text-right text-xs">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
+                            <th className="p-3">نوع الخروج</th>
                             <th className="p-3">التاريخ والوقت</th>
                             <th className="p-3 text-center">الكمية المنصرفة</th>
-                            <th className="p-3">الجهة المستلمة</th>
+                            <th className="p-3">الجهة المستلمة / القسم</th>
                             <th className="p-3">رقم السند / المرجع</th>
                             <th className="p-3">ملاحظات</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {outMovements.map((m, idx) => (
-                            <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/50">
+                          {outMovements.map((m, idx) => {
+                            let outTypeBadge = 'صرف مباشر';
+                            let outBadgeClass = 'bg-rose-50 text-rose-800 border-rose-200';
+                            if (m.type === 'DAMAGED') {
+                              outTypeBadge = 'إتلاف مخزني';
+                              outBadgeClass = 'bg-red-50 text-red-800 border-red-200';
+                            } else if (m.type === 'MFG_OUT') {
+                              outTypeBadge = 'خروج للمصنع';
+                              outBadgeClass = 'bg-purple-50 text-purple-800 border-purple-200';
+                            } else if (m.type === 'ADJUSTMENT') {
+                              outTypeBadge = 'تسوية عجز (-)';
+                              outBadgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                            }
 
-                              <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
-                                {new Date(m.date).toLocaleString('ar-SA', {
-                                  year: 'numeric',
-                                  month: 'numeric',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </td>
-                              <td className="p-3 text-center font-mono font-bold text-rose-700">
-                                -{m.quantity} {getUnitName(m.unitId)}
-                              </td>
-                              <td className="p-3 font-bold text-slate-800">
-                                <div className="flex items-center gap-1.5">
-                                  {m.destinationType === 'BRANCH' ? (
-                                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                                  ) : m.destinationType === 'CUSTOMER' ? (
-                                    <Users className="w-3.5 h-3.5 text-indigo-600" />
-                                  ) : (
-                                    <Boxes className="w-3.5 h-3.5 text-slate-400" />
+                            return (
+                              <tr key={m.id ? `${m.id}_${idx}` : idx} className="hover:bg-slate-50/50">
+                                <td className="p-3 whitespace-nowrap">
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${outBadgeClass}`}>
+                                    <ArrowUpRight className="w-3 h-3 text-rose-600" />
+                                    {outTypeBadge}
+                                  </span>
+                                </td>
+                                <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
+                                  {new Date(m.date).toLocaleString('ar-SA', {
+                                    year: 'numeric',
+                                    month: 'numeric',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </td>
+                                <td className="p-3 text-center font-mono font-bold text-rose-700">
+                                  <div>
+                                    -{m.quantity} {getUnitName(m.unitId)}
+                                  </div>
+                                  {((m.factorApplied && m.factorApplied > 1) || (m.baseQuantity && Math.abs(m.baseQuantity) !== m.quantity)) && (
+                                    <div className="text-[10px] text-slate-500 font-normal font-sans">
+                                      (= {Math.abs(m.baseQuantity)} {getUnitName(inspectedItem.baseUnitId)})
+                                    </div>
                                   )}
-                                  <span>{getDestinationDisplay(m)}</span>
-                                </div>
-                              </td>
-                              <td className="p-3 font-mono text-slate-500">{m.referenceNumber || '-'}</td>
-                              <td className="p-3 text-slate-500">{m.notes || '-'}</td>
-                            </tr>
-                          ))}
+                                </td>
+                                <td className="p-3 font-bold text-slate-800">
+                                  <div className="flex items-center gap-1.5">
+                                    {m.destinationType === 'BRANCH' ? (
+                                      <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                                    ) : m.destinationType === 'CUSTOMER' ? (
+                                      <Users className="w-3.5 h-3.5 text-indigo-600" />
+                                    ) : (
+                                      <Boxes className="w-3.5 h-3.5 text-slate-400" />
+                                    )}
+                                    <span>{getDestinationDisplay(m)}</span>
+                                  </div>
+                                </td>
+                                <td className="p-3 font-mono text-slate-500">{m.referenceNumber || '-'}</td>
+                                <td className="p-3 text-slate-500">{m.notes || '-'}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -896,10 +933,14 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                             const isIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
                             const isMfgIn = m.type === 'MFG_IN' || (m.type as string) === 'وارد من المصنع';
                             const isMfgOut = m.type === 'MFG_OUT' || (m.type as string) === 'خروج للمصنع';
+                            const isDamaged = m.type === 'DAMAGED' || (m.type as string) === 'تالف';
+                            const isDamagedRec = m.type === 'DAMAGED_RECOVERY' || (m.type as string) === 'راجع من التالف' || (m.notes || '').includes('راجع من التالف');
                             const isAdj = m.type === 'ADJUSTMENT' || (m.notes || '').includes('تسوية');
 
                             let typeLabel = isIn ? 'وارد (توريد)' : 'صادر (صرف)';
-                            if (isMfgIn) typeLabel = 'وارد من المصنع (+)';
+                            if (isDamagedRec) typeLabel = 'راجع من التالف (+)';
+                            else if (isDamaged) typeLabel = 'إتلاف مخزني (-)';
+                            else if (isMfgIn) typeLabel = 'وارد من المصنع (+)';
                             else if (isMfgOut) typeLabel = 'صرف للمصنع (-)';
                             else if (isAdj) typeLabel = (m.baseQuantity ?? m.quantity) >= 0 ? 'تسوية (فائض +)' : 'تسوية (عجز -)';
 
@@ -932,8 +973,15 @@ export const InventoryAuditView: React.FC<InventoryAuditViewProps> = ({
                                     isIn ? 'text-emerald-700' : 'text-rose-700'
                                   }`}
                                 >
-                                  {isIn ? '+' : '-'}
-                                  {m.quantity} {getUnitName(m.unitId)}
+                                  <div>
+                                    {isIn ? '+' : '-'}
+                                    {m.quantity} {getUnitName(m.unitId)}
+                                  </div>
+                                  {((m.factorApplied && m.factorApplied > 1) || (m.baseQuantity && Math.abs(m.baseQuantity) !== m.quantity)) && (
+                                    <div className="text-[10px] text-slate-400 font-normal font-sans">
+                                      (= {Math.abs(m.baseQuantity)} {getUnitName(inspectedItem.baseUnitId)})
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="p-3 text-slate-700">
                                   <div className="font-bold">{getDestinationDisplay(m)}</div>

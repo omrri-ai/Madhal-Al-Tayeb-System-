@@ -145,7 +145,7 @@ export const UnitsView: React.FC = () => {
                 {units.map((unit) => {
                   const usedAsBase = items.filter((i) => !i.isDeleted && i.baseUnitId === unit.id).length;
                   const usedInConv = items.filter(
-                    (i) => !i.isDeleted && i.conversions.some((c) => c.unitId === unit.id)
+                    (i) => !i.isDeleted && (i.conversions || []).some((c) => c.unitId === unit.id)
                   ).length;
 
                   return (

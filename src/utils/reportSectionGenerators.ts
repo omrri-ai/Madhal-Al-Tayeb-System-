@@ -13,6 +13,7 @@ import {
 } from '../types/inventory';
 import { DateRangeResult, isRecordInDateRange, formatArabicDate } from './reportDateFilters';
 import { isIncomingMovement, isOutgoingMovement } from './arabicSearch';
+import { isSilentMovement } from './stockRules';
 
 export type ReportSectionKey =
   | 'items'
@@ -234,6 +235,9 @@ export function generateMovementsReport(
   } else {
     filtered = data.movements.filter((m) => isRecordInDateRange(m.date, dateRange));
   }
+
+  // Strictly exclude silent / hidden adjustments from report
+  filtered = filtered.filter((m) => !isSilentMovement(m));
 
   if (extraFilter?.branchId && extraFilter.branchId !== 'all') {
     filtered = filtered.filter((m) => m.branchId === extraFilter.branchId);

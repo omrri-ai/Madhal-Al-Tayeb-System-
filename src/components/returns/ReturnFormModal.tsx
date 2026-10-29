@@ -312,7 +312,7 @@ export const ReturnFormModal: React.FC<ReturnFormModalProps> = ({ isOpen, onClos
                 const availableUnits = selectedItem
                   ? [
                       units.find((u) => u.id === selectedItem.baseUnitId),
-                      ...selectedItem.conversions.map((c) => units.find((u) => u.id === c.unitId)),
+                      ...(selectedItem.conversions || []).map((c) => units.find((u) => u.id === c.unitId)),
                     ].filter(Boolean) as typeof units
                   : units;
 

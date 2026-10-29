@@ -25,6 +25,7 @@ import {
   computeReportDateRange,
   formatArabicDate,
 } from '../../utils/reportDateFilters';
+import { isSilentMovement } from '../../utils/stockRules';
 import {
   ReportSectionKey,
   ALL_REPORT_SECTIONS,
@@ -105,11 +106,15 @@ export const UniversalReportModal: React.FC<UniversalReportModalProps> = ({
     return computeReportDateRange(period, customStart, customEnd);
   }, [period, customStart, customEnd]);
 
+  const visibleMovements = useMemo(() => {
+    return movements.filter((m) => !isSilentMovement(m));
+  }, [movements]);
+
   // Context Data Bundle
   const inventoryContextData = useMemo(() => {
     return {
       items,
-      movements,
+      movements: visibleMovements,
       productionOrders,
       returns,
       damagedRecords,
@@ -122,7 +127,7 @@ export const UniversalReportModal: React.FC<UniversalReportModalProps> = ({
     };
   }, [
     items,
-    movements,
+    visibleMovements,
     productionOrders,
     returns,
     damagedRecords,

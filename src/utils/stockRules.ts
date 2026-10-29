@@ -24,6 +24,36 @@ export type NormalizedMovementType =
 export type MovementStockEffect = 'INCREASE' | 'DECREASE' | 'ADJUSTMENT' | 'NONE';
 
 /**
+ * دالة لتحديد حركات التسوية الجردية الصامتة/المخفية التي يجب حجبها تماماً
+ * عن سجلات الحركات، شاشات العرض، وتقارير الحركات للمشاهد والتقارير العامة.
+ */
+export function isSilentMovement(
+  m: {
+    isHidden?: boolean;
+    isSilent?: boolean;
+    notes?: string;
+    type?: string;
+  } | undefined | null,
+  isAdmin?: boolean
+): boolean {
+  if (!m) return false;
+  // If explicitly in viewer mode (not admin), hide all adjustments from the viewer
+  if (isAdmin === false && m.type === 'ADJUSTMENT') return true;
+  if (m.isHidden || m.isSilent) return true;
+  const notes = m.notes || '';
+  if (
+    notes.includes('تسوية جردية صامتة') ||
+    notes.includes('تعديل صامت') ||
+    notes.includes('صامتة') ||
+    notes.includes('تعديل الرصيد الصامت') ||
+    notes.includes('صامت')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * 1. جدول وحيد لتأثير كل نوع حركة:
  * - يزيد الرصيد: IN، PRODUCTION_RECEIPT، PRODUCTION_RETURN، MFG_IN، "وارد من المصنع"، DAMAGED_RECOVERY، "راجع من التالف"
  * - ينقص الرصيد: OUT، PRODUCTION_DISPATCH، MFG_OUT، DAMAGED، "خروج للمصنع"

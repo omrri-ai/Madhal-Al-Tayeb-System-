@@ -414,11 +414,11 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
 
                       {/* Conversions preview */}
                       <td className="py-3.5 px-4 text-xs text-slate-500">
-                        {s.item.conversions.length === 0 ? (
+                        {!(s.item.conversions && s.item.conversions.length > 0) ? (
                           <span className="text-slate-400">-</span>
                         ) : (
                           <div className="flex flex-wrap gap-1 max-w-xs">
-                            {s.item.conversions.map((conv) => {
+                            {(s.item.conversions || []).map((conv) => {
                               const uName = units.find((u) => u.id === conv.unitId)?.name || 'وحدة';
                               return (
                                 <span
@@ -603,11 +603,11 @@ export const ItemsView: React.FC<ItemsViewProps> = ({
                 </div>
 
                 {/* Conversions snippet */}
-                {s.item.conversions.length > 0 && (
+                {Boolean(s.item.conversions && s.item.conversions.length > 0) && (
                   <div className="text-[11px] text-slate-500 mb-3 space-y-1">
                     <span className="font-semibold text-slate-600 block">التحويلات:</span>
                     <div className="flex flex-wrap gap-1">
-                      {s.item.conversions.map((c) => {
+                      {(s.item.conversions || []).map((c) => {
                         const u = units.find((unit) => unit.id === c.unitId);
                         return (
                           <span

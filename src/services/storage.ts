@@ -107,6 +107,20 @@ export const isGenuineItem = (obj: any): obj is Item => {
   );
 };
 
+export const normalizeItem = (obj: any): Item => ({
+  ...obj,
+  conversions: Array.isArray(obj?.conversions) ? obj.conversions : [],
+  openingBalance: typeof obj?.openingBalance === 'number' ? obj.openingBalance : 0,
+});
+
+export const isPurgedMovement = (m: any): boolean => {
+  if (!m) return true;
+  if (m.id === 'mov_adj_1793290849835_0vo9a') return true;
+  if (typeof m.referenceNumber === 'string' && m.referenceNumber === 'ADJ-2026-8326') return true;
+  if (typeof m.notes === 'string' && m.notes.includes('ADJ-2026-8326')) return true;
+  return false;
+};
+
 export const StorageService = {
   // Initial load: loads from LocalStorage synchronously, then verifies/syncs with IndexedDB
   loadAll(): InventoryDatabaseData {
@@ -114,8 +128,9 @@ export const StorageService = {
     const localUnits = loadLocal<Unit[]>(STORAGE_KEYS.UNITS, []);
     const localCategories = loadLocal<Category[]>(STORAGE_KEYS.CATEGORIES, []);
     const rawLocalItems = loadLocal<Item[]>(STORAGE_KEYS.ITEMS, []);
-    const localItems = rawLocalItems.filter(isGenuineItem);
-    const localMovements = loadLocal<StockMovement[]>(STORAGE_KEYS.MOVEMENTS, []);
+    const localItems = rawLocalItems.filter(isGenuineItem).map(normalizeItem);
+    const rawLocalMovements = loadLocal<StockMovement[]>(STORAGE_KEYS.MOVEMENTS, []);
+    const localMovements = rawLocalMovements.filter((m) => !isPurgedMovement(m));
     const localBranches = loadLocal<Branch[]>(STORAGE_KEYS.BRANCHES, []);
     const localReturns = loadLocal<ReturnRecord[]>(STORAGE_KEYS.RETURNS, []);
     const localProductionOrders = loadLocal<ProductionOrder[]>(STORAGE_KEYS.PRODUCTION_ORDERS, []);
@@ -124,6 +139,10 @@ export const StorageService = {
     // Clean up local items key if polluted
     if (rawLocalItems.length !== localItems.length) {
       saveLocal(STORAGE_KEYS.ITEMS, localItems);
+    }
+    // Clean up local movements if any purged movement was found
+    if (rawLocalMovements.length !== localMovements.length) {
+      saveLocal(STORAGE_KEYS.MOVEMENTS, localMovements);
     }
 
     return {
@@ -140,11 +159,12 @@ export const StorageService = {
 
   // Save changes to both LocalStorage and IndexedDB
   async saveAll(data: InventoryDatabaseData): Promise<void> {
-    const cleanItems = (data.items || []).filter(isGenuineItem);
+    const cleanItems = (data.items || []).filter(isGenuineItem).map(normalizeItem);
+    const cleanMovements = (data.movements || []).filter((m) => !isPurgedMovement(m));
     saveLocal(STORAGE_KEYS.UNITS, data.units);
     saveLocal(STORAGE_KEYS.CATEGORIES, data.categories);
     saveLocal(STORAGE_KEYS.ITEMS, cleanItems);
-    saveLocal(STORAGE_KEYS.MOVEMENTS, data.movements);
+    saveLocal(STORAGE_KEYS.MOVEMENTS, cleanMovements);
     if (data.branches) {
       saveLocal(STORAGE_KEYS.BRANCHES, data.branches);
     }
@@ -162,7 +182,7 @@ export const StorageService = {
     if (cleanItems.length > 0) {
       saveLocal(STORAGE_KEYS.EMERGENCY_BACKUP, {
         timestamp: new Date().toISOString(),
-        data: { ...data, items: cleanItems },
+        data: { ...data, items: cleanItems, movements: cleanMovements },
       });
     }
 
@@ -181,7 +201,7 @@ export const StorageService = {
       putStore('units', data.units);
       putStore('categories', data.categories);
       putStore('items', data.items);
-      putStore('movements', data.movements);
+      putStore('movements', cleanMovements);
       putStore('branches', data.branches || []);
       putStore('returns', data.returns || []);
 
@@ -192,6 +212,12 @@ export const StorageService = {
     } catch (err) {
       console.warn('Could not persist to IndexedDB, fallback to localStorage succeeded:', err);
     }
+  },
+
+  // Save movements directly to local storage cache with purging
+  saveMovementsLocally(movements: StockMovement[]): void {
+    const clean = (movements || []).filter((m) => !isPurgedMovement(m));
+    saveLocal(STORAGE_KEYS.MOVEMENTS, clean);
   },
 
   // Read entire state asynchronously from IndexedDB
@@ -225,7 +251,7 @@ export const StorageService = {
         units: units || [],
         categories: categories || [],
         items: (items || []).filter(isGenuineItem),
-        movements: movements || [],
+        movements: (movements || []).filter((m) => !isPurgedMovement(m)),
         branches: branches || [],
         returns: returns || [],
       };

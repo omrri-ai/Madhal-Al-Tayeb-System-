@@ -25,6 +25,7 @@ import { NavView } from '../common/Navigation';
 import { StockMovement } from '../../types/inventory';
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
 import { isIncomingMovement, isOutgoingMovement } from '../../utils/arabicSearch';
+import { isSilentMovement } from '../../utils/stockRules';
 
 interface DashboardViewProps {
   onNavigate: (view: NavView) => void;
@@ -82,7 +83,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Filtered movements for the invoice table with real-time multi-field search
   const filteredMovements = useMemo(() => {
-    let list = movements;
+    let list = movements.filter((m) => !isSilentMovement(m, isAdmin));
     if (movementFilter === 'IN') list = list.filter((m) => isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0));
     if (movementFilter === 'OUT') list = list.filter((m) => isOutgoingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) < 0));
 
@@ -109,7 +110,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     return list.slice(0, 30);
-  }, [movements, movementFilter, searchQuery, items]);
+  }, [movements, movementFilter, searchQuery, items, isAdmin]);
 
   return (
     <div className="space-y-6">

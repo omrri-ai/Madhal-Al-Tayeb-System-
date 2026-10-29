@@ -91,6 +91,8 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
 
   // Helper to identify silent/hidden adjustment movements that shouldn't appear in the movements table
   const isSilentMovement = (m: StockMovement) => {
+    // Hide all adjustments from viewer mode as requested ("ما تظهر للمشاهد")
+    if (!isAdmin && m.type === 'ADJUSTMENT') return true;
     if (m.isHidden || m.isSilent) return true;
     const notes = m.notes || '';
     if (
@@ -104,10 +106,10 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
     return false;
   };
 
-  // Visible movements: strictly excluding silent adjustments
+  // Visible movements: strictly excluding silent adjustments (and all adjustments for viewer)
   const visibleMovements = useMemo(() => {
     return movements.filter((m) => !isSilentMovement(m));
-  }, [movements]);
+  }, [movements, isAdmin]);
 
   // Precomputed Date Ranges & Counts for Quick Buttons
   const todayRange = useMemo(() => computeReportDateRange('today'), []);

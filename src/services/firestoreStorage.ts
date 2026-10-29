@@ -27,7 +27,7 @@ import {
   StockMovement,
   Unit,
 } from '../types/inventory';
-import { StorageService, InventoryDatabaseData } from './storage';
+import { StorageService, InventoryDatabaseData, isPurgedMovement, normalizeItem } from './storage';
 import { deduplicateById } from '../utils/arabicSearch';
 
 
@@ -100,7 +100,7 @@ export const FirestoreStorage = {
           if (!snap || snap.empty || snap.docs.length === 0) {
             return { data: [], state: 'EMPTY' };
           }
-          const validDocs = snap.docs.map((d) => mapper(d.data())).filter(validator);
+          const validDocs = snap.docs.map((d) => mapper({ id: d.id, ...d.data() })).filter(validator);
           return { data: validDocs, state: validDocs.length > 0 ? 'SUCCESS' : 'EMPTY' };
         } catch (err: any) {
           const errMsg = err?.message || String(err);
@@ -130,8 +130,8 @@ export const FirestoreStorage = {
       ] = await Promise.all([
         fetchCollSafely<Unit>('units', (d) => d as Unit, (u) => Boolean(u && u.id && u.name)),
         fetchCollSafely<Category>('categories', (d) => d as Category, (c) => Boolean(c && c.id && c.name)),
-        fetchCollSafely<Item>('items', (d) => d as Item, isGenuineItem),
-        fetchCollSafely<StockMovement>('movements', (d) => d as StockMovement, (m) => Boolean(m && m.id && m.itemId)),
+        fetchCollSafely<Item>('items', (d) => normalizeItem(d), isGenuineItem),
+        fetchCollSafely<StockMovement>('movements', (d) => d as StockMovement, (m) => Boolean(m && m.id && m.itemId && !isPurgedMovement(m))),
         fetchCollSafely<Branch>('branches', (d) => d as Branch, (b) => Boolean(b && b.id && b.name)),
         fetchCollSafely<ReturnRecord>('returns', (d) => d as ReturnRecord, (r) => Boolean(r && r.id && r.type)),
         fetchCollSafely<Customer>('customers', (d) => d as Customer, (c) => Boolean(c && c.id && c.name)),
@@ -165,10 +165,9 @@ export const FirestoreStorage = {
 
         // 2. If cloud returned valid data:
         if (cloudRes.state === 'SUCCESS') {
-          // Two-way merge: include cloud items, plus any local items created offline that have not synced yet
-          const cloudIds = new Set(cloudRes.data.map((c) => c.id).filter(Boolean));
-          const unsyncedLocal = localItems.filter((loc) => loc.id && !cloudIds.has(loc.id));
-          return [...cloudRes.data, ...unsyncedLocal];
+          // Cloud Firestore is the authoritative source of truth.
+          // Do not resurrect items deleted in the cloud from stale local cache.
+          return cloudRes.data;
         }
 
         // 3. If cloud returned EMPTY (0 docs):
@@ -249,8 +248,8 @@ export const FirestoreStorage = {
       const snap = await getDocs(q);
       if (!snap || snap.empty) return [];
       return snap.docs
-        .map((d) => d.data() as StockMovement)
-        .filter((m) => m && m.id && m.itemId);
+        .map((d) => ({ id: d.id, ...d.data() } as StockMovement))
+        .filter((m) => Boolean(m && m.id && m.itemId && !isPurgedMovement(m)));
     } catch (err) {
       console.warn(`[FirestoreStorage] Could not fetch fresh movements for item ${itemId}:`, err);
       return [];
@@ -658,7 +657,7 @@ export const FirestoreStorage = {
       const unsub = onSnapshot(
         collection(db, 'items'),
         (snap) => {
-          const items = snap.docs.map((d) => d.data() as Item).filter(isGenuineItem);
+          const items = snap.docs.map((d) => normalizeItem({ id: d.id, ...d.data() })).filter(isGenuineItem);
           callbacks.onItems?.(deduplicateById(items));
         },
         (err) => callbacks.onError?.(err)
@@ -670,8 +669,12 @@ export const FirestoreStorage = {
       const unsub = onSnapshot(
         collection(db, 'movements'),
         (snap) => {
-          const movements = snap.docs.map((d) => d.data() as StockMovement).filter((m) => m && m.id && m.itemId);
-          callbacks.onMovements?.(deduplicateById(movements));
+          const movements = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as StockMovement))
+            .filter((m) => Boolean(m && m.id && m.itemId && !isPurgedMovement(m)));
+          const deduped = deduplicateById(movements);
+          callbacks.onMovements?.(deduped);
+          StorageService.saveMovementsLocally(deduped);
         },
         (err) => callbacks.onError?.(err)
       );

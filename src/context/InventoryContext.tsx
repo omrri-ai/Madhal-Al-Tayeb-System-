@@ -27,7 +27,7 @@ import {
   Unit,
   UnitConversion,
 } from '../types/inventory';
-import { StorageService, isGenuineItem } from '../services/storage';
+import { StorageService, isGenuineItem, isPurgedMovement, normalizeItem } from '../services/storage';
 import {
   FirestoreStorage,
   AuditLogEntry,
@@ -437,6 +437,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     returnsRef.current = returns;
   }, [returns]);
 
+  // Immediate purge of any cached purged movement upon app initialization
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('makhzouni_movements_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((m) => !isPurgedMovement(m));
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('makhzouni_movements_v1', JSON.stringify(cleaned));
+            setMovements((prev) => prev.filter((m) => !isPurgedMovement(m)));
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
   const { role, isOwner, user } = useAuth();
   const roleRef = useRef(role);
   const isOwnerRef = useRef(isOwner);
@@ -512,7 +529,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }));
       }
 
-      const loadedMovements = deduplicateById(loaded.movements || []);
+      const loadedMovements = deduplicateById(
+        (loaded.movements || []).filter((m) => !isPurgedMovement(m))
+      );
       const loadedDamaged = deduplicateById(loaded.damagedRecords || []);
       const missingMovements: StockMovement[] = [];
 
@@ -548,11 +567,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       }
 
-      const allMovements = missingMovements.length > 0 ? [...missingMovements, ...loadedMovements] : loadedMovements;
+      const allMovements = (missingMovements.length > 0 ? [...missingMovements, ...loadedMovements] : loadedMovements).filter((m) => !isPurgedMovement(m));
 
       setUnits(sortUnitsWithHabbaFirst(deduplicateById(finalUnits)));
       setCategories(deduplicateById(loaded.categories || []));
-      setItems(deduplicateById(loaded.items || []));
+      setItems(deduplicateById(loaded.items || []).map(normalizeItem));
       setMovements(allMovements);
       movementsRef.current = allMovements;
       setBranches(deduplicateById(currentBranches));
@@ -580,8 +599,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setUnits(sortUnitsWithHabbaFirst(deduplicateById(localData.units)));
           }
           if (localData.categories) setCategories(deduplicateById(localData.categories));
-          if (localData.items) setItems(deduplicateById(localData.items));
-          if (localData.movements) setMovements(deduplicateById(localData.movements));
+          if (localData.items) setItems(deduplicateById(localData.items).map(normalizeItem));
+          if (localData.movements) {
+            const cleanMovs = deduplicateById(localData.movements.filter((m) => !isPurgedMovement(m)));
+            setMovements(cleanMovs);
+            movementsRef.current = cleanMovs;
+          }
           if (localData.branches) setBranches(deduplicateById(localData.branches));
           if (localData.returns) setReturns(deduplicateById(localData.returns));
           if (localData.customers) setCustomers(deduplicateById(localData.customers));
@@ -611,12 +634,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Instantaneous multi-device synchronization (PC & Mobile stay perfectly in sync in real time)
     const unsubscribe = FirestoreStorage.subscribeToAllCollections({
       onItems: (cloudItems: Item[]) => {
-        const deduped = deduplicateById(cloudItems);
+        const deduped = deduplicateById(cloudItems).map(normalizeItem);
         setItems(deduped);
         itemsRef.current = deduped;
       },
       onMovements: (cloudMovements: StockMovement[]) => {
-        const deduped = deduplicateById(cloudMovements);
+        const clean = cloudMovements.filter((m) => !isPurgedMovement(m));
+        const deduped = deduplicateById(clean);
         setMovements(deduped);
         movementsRef.current = deduped;
       },
@@ -1153,7 +1177,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const item = items.find((i) => i.id === itemId);
       if (!item) return null;
       if (item.baseUnitId === unitId) return 1;
-      const conv = item.conversions.find((c) => c.unitId === unitId);
+      const conv = (item.conversions || []).find((c) => c.unitId === unitId);
       return conv ? conv.factorToBase : null;
     },
     [items]
@@ -1401,7 +1425,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Check if unit is in use
       const inUseAsBase = items.some((i) => !i.isDeleted && i.baseUnitId === id);
       const inUseInConversions = items.some(
-        (i) => !i.isDeleted && i.conversions.some((c) => c.unitId === id)
+        (i) => !i.isDeleted && (i.conversions || []).some((c) => c.unitId === id)
       );
 
       if (inUseAsBase || inUseInConversions) {

@@ -15,6 +15,7 @@ import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { Item } from '../../types/inventory';
 import { isIncomingMovement } from '../../utils/arabicSearch';
+import { isSilentMovement } from '../../utils/stockRules';
 
 interface ItemDetailModalProps {
   isOpen: boolean;
@@ -38,7 +39,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
   const currentLiveItem = items.find((i) => i.id === item.id) || item;
   const summary = getItemStockSummary(currentLiveItem.id);
-  const itemMovements = movements.filter((m) => m.itemId === currentLiveItem.id);
+  const itemMovements = movements.filter((m) => {
+    if (m.itemId !== currentLiveItem.id) return false;
+    if (!isAdmin && m.type === 'ADJUSTMENT') return false;
+    return !isSilentMovement(m, isAdmin) || isAdmin;
+  });
 
   const category = categories.find((c) => c.id === currentLiveItem.categoryId);
   const baseUnit = units.find((u) => u.id === currentLiveItem.baseUnitId);
@@ -141,7 +146,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
                 معادل الرصيد الحالي بالوحدات المخصصة لهذا الصنف:
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {summary.formattedBalances.map((fb, idx) => (
+                {summary.formattedBalances.map((fb: any, idx: number) => (
                   <div key={idx} className="p-2.5 bg-white rounded-lg border border-slate-100 shadow-2xs">
                     <span className="text-[11px] text-slate-500 block">{fb.unitName}</span>
                     <div className="flex items-baseline gap-1 mt-0.5">

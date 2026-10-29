@@ -41,7 +41,7 @@ export const NewProductionOrderModal: React.FC<NewProductionOrderModalProps> = (
   const availableUnits = selectedItem
     ? [
         units.find((u) => u.id === selectedItem.baseUnitId),
-        ...selectedItem.conversions.map((c) => units.find((u) => u.id === c.unitId)),
+        ...(selectedItem.conversions || []).map((c) => units.find((u) => u.id === c.unitId)),
       ].filter(Boolean)
     : [];
 
