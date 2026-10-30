@@ -65,6 +65,14 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   const [startDate, setStartDate] = useState<string>(initialStartDate || '');
   const [endDate, setEndDate] = useState<string>(initialEndDate || '');
 
+  // Quick period filter state ('ALL' | 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month')
+  const [periodFilter, setPeriodFilter] = useState<'ALL' | 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month'>('ALL');
+
+  const activeDateRange = useMemo(() => {
+    if (periodFilter === 'ALL') return null;
+    return computeReportDateRange(periodFilter);
+  }, [periodFilter]);
+
   const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
   const [voucherMovement, setVoucherMovement] = useState<StockMovement | null>(null);
 
@@ -115,7 +123,9 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
   const todayRange = useMemo(() => computeReportDateRange('today'), []);
   const yesterdayRange = useMemo(() => computeReportDateRange('yesterday'), []);
   const weekRange = useMemo(() => computeReportDateRange('this_week'), []);
+  const lastWeekRange = useMemo(() => computeReportDateRange('last_week'), []);
   const monthRange = useMemo(() => computeReportDateRange('this_month'), []);
+  const lastMonthRange = useMemo(() => computeReportDateRange('last_month'), []);
 
   const todayCount = useMemo(
     () => visibleMovements.filter((m) => isRecordInDateRange(m.date, todayRange)).length,
@@ -129,13 +139,46 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
     () => visibleMovements.filter((m) => isRecordInDateRange(m.date, weekRange)).length,
     [visibleMovements, weekRange]
   );
+  const lastWeekCount = useMemo(
+    () => visibleMovements.filter((m) => isRecordInDateRange(m.date, lastWeekRange)).length,
+    [visibleMovements, lastWeekRange]
+  );
   const monthCount = useMemo(
     () => visibleMovements.filter((m) => isRecordInDateRange(m.date, monthRange)).length,
     [visibleMovements, monthRange]
   );
+  const lastMonthCount = useMemo(
+    () => visibleMovements.filter((m) => isRecordInDateRange(m.date, lastMonthRange)).length,
+    [visibleMovements, lastMonthRange]
+  );
+
+  // Helper to reliably extract timestamp for chronological sorting
+  const getMovementTimestamp = (m: StockMovement): number => {
+    if (m.date) {
+      const t = new Date(m.date).getTime();
+      if (!isNaN(t)) return t;
+    }
+    if (m.createdAt) {
+      const t = new Date(m.createdAt).getTime();
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  };
 
   const filteredMovements = useMemo(() => {
     const list = visibleMovements.filter((m) => {
+      // 1. Quick Period Filter check using Riyadh standardized ranges
+      if (activeDateRange) {
+        if (!isRecordInDateRange(m.date, activeDateRange)) {
+          return false;
+        }
+      }
+
+      // 2. Custom date inputs if provided
+      if (startDate && m.date < startDate) return false;
+      if (endDate && m.date > `${endDate}T23:59:59`) return false;
+
+      // 3. Search query
       const item = items.find((i) => i.id === m.itemId);
       const query = searchQuery.toLowerCase().trim();
       const destinationStr = `${m.destinationName || ''} ${m.branchName || ''} ${m.customerName || ''} ${m.destinationContactName || ''} ${m.supplierName || ''} ${m.shippingCompany || ''} ${m.customShippingCompany || ''}`.toLowerCase();
@@ -147,28 +190,27 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
         destinationStr.includes(query) ||
         (m.notes && m.notes.toLowerCase().includes(query));
 
-      const matchesType =
-        typeFilter === 'ALL' ||
-        (typeFilter === 'IN' ? isIncomingMovement(m.type) : isOutgoingMovement(m.type));
+      if (!matchesSearch) return false;
 
-      return (
-        matchesSearch &&
-        matchesType &&
-        (itemFilter === 'ALL' || m.itemId === itemFilter) &&
-        (branchFilter === 'ALL' || m.branchId === branchFilter) &&
-        (!startDate || m.date >= startDate) &&
-        (!endDate || m.date <= `${endDate}T23:59:59`)
-      );
+      // 4. Type filter
+      if (typeFilter !== 'ALL') {
+        const matchesType =
+          typeFilter === 'IN'
+            ? isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0)
+            : isOutgoingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) < 0);
+        if (!matchesType) return false;
+      }
 
+      // 5. Item & Branch filters
+      if (itemFilter !== 'ALL' && m.itemId !== itemFilter) return false;
+      if (branchFilter !== 'ALL' && m.branchId !== branchFilter) return false;
+
+      return true;
     });
 
-    // Sort descending by date & creation time (newest first)
-    return list.sort((a, b) => {
-      const timeA = new Date(a.createdAt || a.date || 0).getTime();
-      const timeB = new Date(b.createdAt || b.date || 0).getTime();
-      return timeB - timeA;
-    });
-  }, [visibleMovements, items, branches, searchQuery, typeFilter, branchFilter, itemFilter, startDate, endDate]);
+    // Sort strictly descending by date from newest to oldest (الأحدث أولاً)
+    return list.sort((a, b) => getMovementTimestamp(b) - getMovementTimestamp(a));
+  }, [visibleMovements, items, activeDateRange, searchQuery, typeFilter, branchFilter, itemFilter, startDate, endDate]);
 
   const groupedMovements = useMemo(() => {
     const groups: Record<string, StockMovement[]> = {};
@@ -184,7 +226,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       } else if (cleanNotes && cleanNotes.length < 40) {
         key = `notes_${cleanNotes}`;
       } else {
-        const timeMin = new Date(m.createdAt || m.date).toISOString().substring(0, 16);
+        const timeMin = new Date(m.date || m.createdAt).toISOString().substring(0, 16);
         const dest = (m.destinationName || m.branchName || m.customerName || m.supplierName || '').trim().toLowerCase();
         if (dest) {
           key = `time_${timeMin}_dest_${dest}`;
@@ -194,7 +236,18 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       if (!groups[key]) groups[key] = [];
       groups[key].push(m);
     });
-    return Object.values(groups);
+
+    // Sort items within each voucher group newest first
+    const groupList = Object.values(groups).map((group) => {
+      return group.sort((a, b) => getMovementTimestamp(b) - getMovementTimestamp(a));
+    });
+
+    // Sort all voucher groups descending by the latest movement date (الأحدث أولاً)
+    return groupList.sort((groupA, groupB) => {
+      const latestA = Math.max(...groupA.map(getMovementTimestamp));
+      const latestB = Math.max(...groupB.map(getMovementTimestamp));
+      return latestB - latestA;
+    });
   }, [filteredMovements]);
 
   const [expandedVouchers, setExpandedVouchers] = useState<Record<string, boolean>>({});
@@ -219,7 +272,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
       const isMIn = isIncomingMovement(m.type) || (m.type === 'ADJUSTMENT' && (m.baseQuantity ?? m.quantity) > 0);
       const typeStr = m.type === 'MFG_IN' ? 'وارد من المصنع' : m.type === 'MFG_OUT' ? 'صرف للمصنع' : m.type === 'ADJUSTMENT' ? 'تسوية جردية' : isMIn ? 'دخول / وارد' : 'خروج / صادر';
       const dest = m.destinationName || m.branchName || m.customerName || m.supplierName || '-';
-      return [new Date(m.date).toLocaleString('ar-SA'), typeStr, item?.code || '', item?.name || '', m.quantity, unit?.name || '', `${m.baseQuantity} ${baseUnit?.name || ''}`, m.referenceNumber || (isMIn ? 'توريد مخزني' : 'صرف مخزني'), dest, m.notes || ''];
+      return [new Date(m.date).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' }), typeStr, item?.code || '', item?.name || '', m.quantity, unit?.name || '', `${m.baseQuantity} ${baseUnit?.name || ''}`, m.referenceNumber || (isMIn ? 'توريد مخزني' : 'صرف مخزني'), dest, m.notes || ''];
     });
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.map((val) => `"${val}"`).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -258,38 +311,72 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
               <span>تصدير CSV</span>
             </button>
             <button
-              onClick={() => handleOpenReport('all', 'تقرير سجل حركات المخزون')}
+              onClick={() =>
+                handleOpenReport(
+                  periodFilter === 'ALL' ? 'all' : periodFilter,
+                  periodFilter === 'ALL'
+                    ? 'تقرير سجل حركات المخزون'
+                    : `تقرير ${activeDateRange?.label || 'الحركات'}`
+                )
+              }
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
               title="معاينة وطباعة وتصدير التقرير كـ PDF"
             >
               <Printer className="w-4 h-4 text-emerald-400" />
-              <span>طباعة وتصدير التقرير</span>
+              <span>
+                {periodFilter === 'ALL' ? 'طباعة وتصدير التقرير' : `طباعة تقرير ${activeDateRange?.label || ''}`}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Quick Report Download & Print Strip */}
+        {/* Quick Period Filter & Action Strip */}
         <div className="pt-3 border-t border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
             <span className="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
-              <FileText className="w-4 h-4" />
+              <Calendar className="w-4 h-4" />
             </span>
-            <span>تقارير وتنزيل الحركات المباشرة (تنزيل PDF / طباعة فورية):</span>
+            <span>تصفية الحركات بالفترة الزمنية (توقيت الرياض):</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+            {/* All */}
+            <button
+              type="button"
+              onClick={() => setPeriodFilter('ALL')}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'ALL'
+                  ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-slate-900/20'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+              title="عرض كافة الحركات دون تقييد زمني"
+            >
+              <span>جميع الحركات</span>
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'ALL' ? 'bg-slate-800 text-slate-100' : 'bg-slate-200 text-slate-800'
+              }`}>
+                {visibleMovements.length}
+              </span>
+            </button>
+
             {/* Today */}
             <button
               type="button"
-              onClick={() => handleOpenReport('today', 'تقرير حركات اليوم')}
-              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200 text-emerald-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
-              title="فتح معاينة وتنزيل تقرير حركات اليوم"
+              onClick={() => setPeriodFilter((prev) => (prev === 'today' ? 'ALL' : 'today'))}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'today'
+                  ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-600/30'
+                  : 'bg-emerald-50 hover:bg-emerald-100/90 border-emerald-200 text-emerald-950'
+              }`}
+              title="تصفية الجدول لعرض حركات اليوم فقط (من 12:00 ص بتوقيت الرياض)"
             >
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <Calendar className={`w-3.5 h-3.5 ${periodFilter === 'today' ? 'text-white' : 'text-emerald-600'}`} />
                 <span>حركات اليوم</span>
               </div>
-              <span className="px-1.5 py-0.5 bg-emerald-200 text-emerald-900 rounded-md text-[10px] font-mono font-bold">
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'today' ? 'bg-emerald-700 text-white' : 'bg-emerald-200 text-emerald-900'
+              }`}>
                 {todayCount}
               </span>
             </button>
@@ -297,52 +384,149 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
             {/* Yesterday */}
             <button
               type="button"
-              onClick={() => handleOpenReport('yesterday', 'تقرير حركات أمس')}
-              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-sky-50 hover:bg-sky-100/90 border border-sky-200 text-sky-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
-              title="فتح معاينة وتنزيل تقرير حركات أمس"
+              onClick={() => setPeriodFilter((prev) => (prev === 'yesterday' ? 'ALL' : 'yesterday'))}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'yesterday'
+                  ? 'bg-sky-600 text-white border-sky-600 ring-2 ring-sky-600/30'
+                  : 'bg-sky-50 hover:bg-sky-100/90 border-sky-200 text-sky-950'
+              }`}
+              title="تصفية الجدول لعرض حركات أمس فقط"
             >
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-sky-600" />
+                <Calendar className={`w-3.5 h-3.5 ${periodFilter === 'yesterday' ? 'text-white' : 'text-sky-600'}`} />
                 <span>حركات أمس</span>
               </div>
-              <span className="px-1.5 py-0.5 bg-sky-200 text-sky-900 rounded-md text-[10px] font-mono font-bold">
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'yesterday' ? 'bg-sky-700 text-white' : 'bg-sky-200 text-sky-900'
+              }`}>
                 {yesterdayCount}
               </span>
             </button>
 
-            {/* Week */}
+            {/* This Week */}
             <button
               type="button"
-              onClick={() => handleOpenReport('this_week', 'تقرير حركات هذا الأسبوع')}
-              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100/90 border border-indigo-200 text-indigo-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
-              title="فتح معاينة وتنزيل تقرير حركات هذا الأسبوع"
+              onClick={() => setPeriodFilter((prev) => (prev === 'this_week' ? 'ALL' : 'this_week'))}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'this_week'
+                  ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-600/30'
+                  : 'bg-indigo-50 hover:bg-indigo-100/90 border-indigo-200 text-indigo-950'
+              }`}
+              title="تصفية الجدول لعرض حركات هذا الأسبوع الحالي (من الجمعة 12:00 ص إلى نهاية الخميس 11:59 م)"
             >
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                <span>حركات الأسبوع</span>
+                <Calendar className={`w-3.5 h-3.5 ${periodFilter === 'this_week' ? 'text-white' : 'text-indigo-600'}`} />
+                <span>هذا الأسبوع</span>
               </div>
-              <span className="px-1.5 py-0.5 bg-indigo-200 text-indigo-900 rounded-md text-[10px] font-mono font-bold">
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'this_week' ? 'bg-indigo-700 text-white' : 'bg-indigo-200 text-indigo-900'
+              }`}>
                 {weekCount}
               </span>
             </button>
 
-            {/* Month */}
+            {/* Last Week (الأسبوع الماضي / اللي فات) */}
             <button
               type="button"
-              onClick={() => handleOpenReport('this_month', 'تقرير حركات هذا الشهر')}
-              className="flex items-center justify-between sm:justify-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100/90 border border-amber-200 text-amber-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs group"
-              title="فتح معاينة وتنزيل تقرير حركات هذا الشهر"
+              onClick={() => setPeriodFilter((prev) => (prev === 'last_week' ? 'ALL' : 'last_week'))}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'last_week'
+                  ? 'bg-purple-600 text-white border-purple-600 ring-2 ring-purple-600/30'
+                  : 'bg-purple-50 hover:bg-purple-100/90 border-purple-200 text-purple-950'
+              }`}
+              title="تصفية الجدول لعرض حركات الأسبوع الماضي (اللي فات) (من الجمعة السابقة 12:00 ص إلى نهاية الخميس السابق 11:59 م)"
             >
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-amber-600" />
-                <span>حركات الشهر</span>
+                <Calendar className={`w-3.5 h-3.5 ${periodFilter === 'last_week' ? 'text-white' : 'text-purple-600'}`} />
+                <span>الأسبوع الماضي (اللي فات)</span>
               </div>
-              <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded-md text-[10px] font-mono font-bold">
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'last_week' ? 'bg-purple-700 text-white' : 'bg-purple-200 text-purple-900'
+              }`}>
+                {lastWeekCount}
+              </span>
+            </button>
+
+            {/* This Month */}
+            <button
+              type="button"
+              onClick={() => setPeriodFilter((prev) => (prev === 'this_month' ? 'ALL' : 'this_month'))}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'this_month'
+                  ? 'bg-amber-600 text-white border-amber-600 ring-2 ring-amber-600/30'
+                  : 'bg-amber-50 hover:bg-amber-100/90 border-amber-200 text-amber-950'
+              }`}
+              title="تصفية الجدول لعرض حركات هذا الشهر (من يوم 1 إلى نهاية الشهر)"
+            >
+              <div className="flex items-center gap-1.5">
+                <Calendar className={`w-3.5 h-3.5 ${periodFilter === 'this_month' ? 'text-white' : 'text-amber-600'}`} />
+                <span>هذا الشهر</span>
+              </div>
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'this_month' ? 'bg-amber-700 text-white' : 'bg-amber-200 text-amber-900'
+              }`}>
                 {monthCount}
+              </span>
+            </button>
+
+            {/* Last Month */}
+            <button
+              type="button"
+              onClick={() => setPeriodFilter((prev) => (prev === 'last_month' ? 'ALL' : 'last_month'))}
+              className={`flex items-center justify-between sm:justify-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                periodFilter === 'last_month'
+                  ? 'bg-rose-600 text-white border-rose-600 ring-2 ring-rose-600/30'
+                  : 'bg-rose-50 hover:bg-rose-100/90 border-rose-200 text-rose-950'
+              }`}
+              title="تصفية الجدول لعرض حركات الشهر الماضي بالكامل"
+            >
+              <div className="flex items-center gap-1.5">
+                <Calendar className={`w-3.5 h-3.5 ${periodFilter === 'last_month' ? 'text-white' : 'text-rose-600'}`} />
+                <span>الشهر الماضي</span>
+              </div>
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                periodFilter === 'last_month' ? 'bg-rose-700 text-white' : 'bg-rose-200 text-rose-900'
+              }`}>
+                {lastMonthCount}
               </span>
             </button>
           </div>
         </div>
+
+        {/* Active Filter Notice Bar with One-Click PDF Print Button */}
+        {periodFilter !== 'ALL' && activeDateRange && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+            <div className="flex items-center gap-2 text-emerald-950 font-bold flex-wrap">
+              <span className="p-1.5 bg-emerald-200 text-emerald-900 rounded-lg">
+                <Filter className="w-4 h-4" />
+              </span>
+              <span>يتم الآن عرض: {activeDateRange.label} فقط</span>
+              <span className="text-emerald-700 font-normal">({activeDateRange.inclusiveNote})</span>
+              <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded-full font-mono font-bold text-[11px]">
+                {filteredMovements.length} حركة مطابقة
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => handleOpenReport(periodFilter, `تقرير ${activeDateRange.label}`)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg transition-colors cursor-pointer shadow-xs text-xs"
+                title="معاينة وطباعة تقرير هذه الفترة كـ PDF"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-200" />
+                <span>معاينة وطباعة تقرير هذه الفترة</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodFilter('ALL')}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer text-xs"
+              >
+                إلغاء التصفية (عرض الكل)
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Movements Table */}
@@ -437,8 +621,8 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
                           </span>
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        {new Date(first.createdAt || first.date).toLocaleString('ar-SA')}
+                      <td className="py-3.5 px-4 text-xs text-slate-600 font-mono">
+                        {new Date(first.date || first.createdAt).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}
                       </td>
                       <td className="py-3.5 px-4 text-xs font-bold font-mono">
                         {movementsGroup.length} صنف
@@ -569,7 +753,7 @@ export const MovementsView: React.FC<MovementsViewProps> = ({
           searchQuery,
           type: typeFilter === 'ALL' ? undefined : typeFilter,
           branchId: branchFilter === 'ALL' ? undefined : branchFilter,
-          customData: reportInitialPeriod === 'all' && (searchQuery || typeFilter !== 'ALL' || branchFilter !== 'ALL' || itemFilter !== 'ALL' || startDate || endDate) ? filteredMovements : undefined,
+          customData: filteredMovements,
         }}
       />
     </div>

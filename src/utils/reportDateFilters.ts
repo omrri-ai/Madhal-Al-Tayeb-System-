@@ -210,7 +210,7 @@ export function computeReportDateRange(
       end,
       startDateStr: formatLocalDate(start),
       endDateStr: formatLocalDate(end),
-      label: 'الأسبوع الماضي',
+      label: 'الأسبوع الماضي (اللي فات)',
       inclusiveNote: `من بداية يوم الجمعة السابق (12:00 ص) حتى نهاية يوم الخميس السابق (11:59 م بتوقيت الرياض) [${formatLocalDate(start)} إلى ${formatLocalDate(end)}]`,
     };
   }

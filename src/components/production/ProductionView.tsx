@@ -30,7 +30,7 @@ interface ProductionViewProps {
   onOpenAddItem?: () => void;
 }
 
-type PeriodFilter = 'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM';
+type PeriodFilter = 'ALL' | 'TODAY' | 'WEEK' | 'LAST_WEEK' | 'MONTH' | 'LAST_MONTH' | 'CUSTOM';
 type TypeFilter = 'ALL' | 'MFG_OUT' | 'MFG_IN';
 
 export const ProductionView: React.FC<ProductionViewProps> = () => {
@@ -81,8 +81,12 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
         ? 'today'
         : periodFilter === 'WEEK'
         ? 'this_week'
+        : periodFilter === 'LAST_WEEK'
+        ? 'last_week'
         : periodFilter === 'MONTH'
         ? 'this_month'
+        : periodFilter === 'LAST_MONTH'
+        ? 'last_month'
         : periodFilter === 'CUSTOM'
         ? 'custom'
         : 'all',
@@ -391,7 +395,9 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
               <option value="ALL">جميع الفترات</option>
               <option value="TODAY">اليوم (من 12:00 ص بتوقيت الرياض)</option>
               <option value="WEEK">هذا الأسبوع (الجمعة إلى الخميس)</option>
+              <option value="LAST_WEEK">الأسبوع الماضي (اللي فات)</option>
               <option value="MONTH">هذا الشهر (من 1 إلى نهاية الشهر)</option>
+              <option value="LAST_MONTH">الشهر الماضي</option>
               <option value="CUSTOM">تاريخ مخصص...</option>
             </select>
 
