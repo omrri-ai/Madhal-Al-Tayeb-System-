@@ -569,7 +569,7 @@ export function generateMovementsReport(
       <div class="comprehensive-report" style="font-family: 'Tajawal', sans-serif;" dir="rtl">
         <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0f172a; padding-bottom: 12px;">
           <h2 style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 0 0 6px 0;">تقرير حركات المخزون الشامل</h2>
-          <div style="font-size: 12px; color: #475569;">الفترة: ${dateRange.label} | تاريخ التقرير: ${new Date().toLocaleDateString('ar-SA')}</div>
+          <div style="font-size: 12px; color: #475569;">الفترة: ${dateRange.label} (${dateRange.inclusiveNote}) | تاريخ التقرير: ${new Date().toLocaleDateString('ar-SA', { timeZone: 'Asia/Riyadh' })}</div>
         </div>
 
         <div class="kpi-strip" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 24px;">

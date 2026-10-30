@@ -24,6 +24,7 @@ import { FactoryMovementModal } from './FactoryMovementModal';
 import { FactoryVoucherModal } from './FactoryVoucherModal';
 import { deduplicateById } from '../../utils/arabicSearch';
 import { UniversalReportModal } from '../reports/UniversalReportModal';
+import { computeReportDateRange, isRecordInDateRange } from '../../utils/reportDateFilters';
 
 interface ProductionViewProps {
   onOpenAddItem?: () => void;
@@ -73,20 +74,21 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
     return deduplicateById(list);
   }, [movements, items]);
 
-  // Filtered movements based on search and filters
+  // Filtered movements based on search and Riyadh standardized date ranges
   const filteredMovements = useMemo(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-
-    // Compute start of week (Saturday in Arab region or 7 days ago)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(today.getDate() - 7);
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
-
-    // Compute start of month
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-      .toISOString()
-      .split('T')[0];
+    const activeRange = computeReportDateRange(
+      periodFilter === 'TODAY'
+        ? 'today'
+        : periodFilter === 'WEEK'
+        ? 'this_week'
+        : periodFilter === 'MONTH'
+        ? 'this_month'
+        : periodFilter === 'CUSTOM'
+        ? 'custom'
+        : 'all',
+      customStartDate,
+      customEndDate
+    );
 
     return factoryMovements.filter((m) => {
       const item = items.find((i) => i.id === m.itemId);
@@ -125,20 +127,8 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
         matchesType = isInMovement;
       }
 
-      // Period filter matching
-      const movDate = m.date ? m.date.split('T')[0] : '';
-      let matchesPeriod = true;
-
-      if (periodFilter === 'TODAY') {
-        matchesPeriod = movDate === todayStr;
-      } else if (periodFilter === 'WEEK') {
-        matchesPeriod = movDate >= sevenDaysAgoStr && movDate <= todayStr;
-      } else if (periodFilter === 'MONTH') {
-        matchesPeriod = movDate >= startOfMonth && movDate <= todayStr;
-      } else if (periodFilter === 'CUSTOM') {
-        if (customStartDate && movDate < customStartDate) matchesPeriod = false;
-        if (customEndDate && movDate > customEndDate) matchesPeriod = false;
-      }
+      // Period filter matching using exact Riyadh boundary check
+      const matchesPeriod = isRecordInDateRange(m.date, activeRange);
 
       return matchesSearch && matchesType && matchesPeriod;
     });
@@ -399,10 +389,10 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
               className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900"
             >
               <option value="ALL">جميع الفترات</option>
-              <option value="TODAY">اليوم فقط</option>
-              <option value="WEEK">آخر 7 أيام</option>
-              <option value="MONTH">هذا الشهر</option>
-              <option value="CUSTOM">تاريخ مخصص</option>
+              <option value="TODAY">اليوم (من 12:00 ص بتوقيت الرياض)</option>
+              <option value="WEEK">هذا الأسبوع (الجمعة إلى الخميس)</option>
+              <option value="MONTH">هذا الشهر (من 1 إلى نهاية الشهر)</option>
+              <option value="CUSTOM">تاريخ مخصص...</option>
             </select>
 
             <button
@@ -716,7 +706,7 @@ export const ProductionView: React.FC<ProductionViewProps> = () => {
         onClose={() => setIsReportModalOpen(false)}
         initialSections={['production']}
         reportTitle="تقرير حركات الإنتاج والتصنيع (حسب التاريخ والفلاتر المحددة)"
-        initialPeriod={periodFilter === 'TODAY' ? 'today' : periodFilter === 'WEEK' ? 'last_7_days' : periodFilter === 'MONTH' ? 'this_month' : periodFilter === 'CUSTOM' ? 'custom' : 'all'}
+        initialPeriod={periodFilter === 'TODAY' ? 'today' : periodFilter === 'WEEK' ? 'this_week' : periodFilter === 'MONTH' ? 'this_month' : periodFilter === 'CUSTOM' ? 'custom' : 'all'}
         customStartDate={customStartDate}
         customEndDate={customEndDate}
         extraParams={{ customData: filteredMovements }}

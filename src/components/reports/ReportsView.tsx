@@ -44,15 +44,23 @@ import { NavView } from '../common/Navigation';
 import { MovementVoucherModal } from '../movements/MovementVoucherModal';
 import { UniversalReportModal } from './UniversalReportModal';
 import { ReportSectionKey } from '../../utils/reportSectionGenerators';
+import {
+  getRiyadhParts,
+  makeRiyadhDate,
+  formatLocalDate,
+  formatArabicDate,
+  RIYADH_TIMEZONE,
+} from '../../utils/reportDateFilters';
 
 function isDateInRange(dateStr: string | undefined | null, start: Date, end: Date): boolean {
   if (!dateStr) return false;
   let timeMs: number;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    timeMs = new Date(y, m - 1, d, 12, 0, 0).getTime();
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split('-').map(Number);
+    timeMs = makeRiyadhDate(y, m - 1, d, 12, 0, 0, 0).getTime();
   } else {
-    timeMs = new Date(dateStr).getTime();
+    timeMs = new Date(trimmed).getTime();
   }
   if (isNaN(timeMs)) return false;
   return timeMs >= start.getTime() && timeMs <= end.getTime();
@@ -195,113 +203,127 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     }, 450);
   };
 
-  // Date Range calculation with exact boundaries (Start of day 00:00:00 to End of day 23:59:59)
+  // Date Range calculation with exact boundaries in Asia/Riyadh (12:00 AM start, Friday-Thursday week, 1st-to-end month)
   const dateRange = useMemo(() => {
     const now = new Date();
+    const r = getRiyadhParts(now);
     let start: Date;
-    let end: Date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    let end: Date = makeRiyadhDate(r.year, r.month, r.date, 23, 59, 59, 999);
 
-    // Helper for previous period
+    // Helpers for previous comparison period
     let prevStart: Date;
     let prevEnd: Date;
 
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const daysSinceFriday = (r.dayOfWeek + 7 - 5) % 7;
+    const fridayDate = r.date - daysSinceFriday;
 
     switch (period) {
       case 'today': {
-        start = startOfToday;
-        prevStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
-        prevEnd = new Date(startOfToday.getTime() - 1);
+        // بداية اليوم 12:00 ص بتوقيت الرياض حتى 11:59 م
+        start = makeRiyadhDate(r.year, r.month, r.date, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, r.date, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month, r.date - 1, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, r.date - 1, 23, 59, 59, 999);
         break;
       }
       case 'yesterday': {
-        start = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
-        end = new Date(startOfToday.getTime() - 1);
-        prevStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
-        prevEnd = new Date(start.getTime() - 1);
+        start = makeRiyadhDate(r.year, r.month, r.date - 1, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, r.date - 1, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month, r.date - 2, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, r.date - 2, 23, 59, 59, 999);
         break;
       }
       case 'last_7_days': {
-        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const duration = end.getTime() - start.getTime();
-        prevEnd = new Date(start.getTime() - 1);
-        prevStart = new Date(prevEnd.getTime() - duration);
+        start = makeRiyadhDate(r.year, r.month, r.date - 6, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, r.date, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month, r.date - 13, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, r.date - 7, 23, 59, 59, 999);
         break;
       }
       case 'this_week': {
-        // Week starts on Saturday (common in KSA) or Sunday
-        const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
-        // Let's assume Saturday is 0 offset
-        const diffToSaturday = (dayOfWeek + 1) % 7;
-        start = new Date(startOfToday.getTime() - diffToSaturday * 24 * 60 * 60 * 1000);
-        const duration = end.getTime() - start.getTime();
-        prevEnd = new Date(start.getTime() - 1);
-        prevStart = new Date(prevEnd.getTime() - duration);
+        // الأسبوع: من بداية يوم الجمعة 12:00 ص إلى نهاية يوم الخميس 11:59 م بتوقيت الرياض
+        start = makeRiyadhDate(r.year, r.month, fridayDate, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, fridayDate + 6, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month, fridayDate - 7, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, fridayDate - 1, 23, 59, 59, 999);
         break;
       }
       case 'last_week': {
-        const dayOfWeek = now.getDay();
-        const diffToSaturday = (dayOfWeek + 1) % 7;
-        const currentWeekStart = new Date(
-          startOfToday.getTime() - diffToSaturday * 24 * 60 * 60 * 1000
-        );
-        end = new Date(currentWeekStart.getTime() - 1);
-        start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000 + 1);
-        prevEnd = new Date(start.getTime() - 1);
-        prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000 + 1);
+        // الأسبوع السابق: الجمعة السابقة حتى الخميس السابق
+        start = makeRiyadhDate(r.year, r.month, fridayDate - 7, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, fridayDate - 1, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month, fridayDate - 14, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, fridayDate - 8, 23, 59, 59, 999);
         break;
       }
       case 'last_30_days': {
-        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const duration = end.getTime() - start.getTime();
-        prevEnd = new Date(start.getTime() - 1);
-        prevStart = new Date(prevEnd.getTime() - duration);
+        start = makeRiyadhDate(r.year, r.month, r.date - 29, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, r.date, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month, r.date - 59, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, r.date - 30, 23, 59, 59, 999);
         break;
       }
       case 'this_month': {
-        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-        const prevMonthLastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-        prevEnd = new Date(start.getTime() - 1);
-        prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+        // الشهري: من يوم 1 حتى نهاية الشهر (سواء 28 أو 29 أو 30 أو 31 يوماً) بتوقيت الرياض
+        start = makeRiyadhDate(r.year, r.month, 1, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month + 1, 0, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month - 1, 1, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month, 0, 23, 59, 59, 999);
         break;
       }
       case 'last_month': {
-        start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-        prevStart = new Date(now.getFullYear(), now.getMonth() - 2, 1, 0, 0, 0, 0);
-        prevEnd = new Date(start.getTime() - 1);
+        start = makeRiyadhDate(r.year, r.month - 1, 1, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, r.month, 0, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year, r.month - 2, 1, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year, r.month - 1, 0, 23, 59, 59, 999);
         break;
       }
       case 'last_3_months': {
-        start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate(), 0, 0, 0, 0);
+        start = makeRiyadhDate(r.year, r.month - 3, r.date, 0, 0, 0, 0);
         const duration = end.getTime() - start.getTime();
         prevEnd = new Date(start.getTime() - 1);
         prevStart = new Date(prevEnd.getTime() - duration);
         break;
       }
       case 'last_6_months': {
-        start = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate(), 0, 0, 0, 0);
+        start = makeRiyadhDate(r.year, r.month - 6, r.date, 0, 0, 0, 0);
         const duration = end.getTime() - start.getTime();
         prevEnd = new Date(start.getTime() - 1);
         prevStart = new Date(prevEnd.getTime() - duration);
         break;
       }
       case 'this_year': {
-        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-        prevStart = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
-        prevEnd = new Date(start.getTime() - 1);
+        start = makeRiyadhDate(r.year, 0, 1, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year, 11, 31, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year - 1, 0, 1, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year - 1, 11, 31, 23, 59, 59, 999);
         break;
       }
       case 'last_year': {
-        start = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
-        end = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
-        prevStart = new Date(now.getFullYear() - 2, 0, 1, 0, 0, 0, 0);
-        prevEnd = new Date(start.getTime() - 1);
+        start = makeRiyadhDate(r.year - 1, 0, 1, 0, 0, 0, 0);
+        end = makeRiyadhDate(r.year - 1, 11, 31, 23, 59, 59, 999);
+        prevStart = makeRiyadhDate(r.year - 2, 0, 1, 0, 0, 0, 0);
+        prevEnd = makeRiyadhDate(r.year - 2, 11, 31, 23, 59, 59, 999);
         break;
       }
       case 'custom': {
-        start = customStartDate ? new Date(`${customStartDate}T00:00:00`) : new Date(0);
-        end = customEndDate ? new Date(`${customEndDate}T23:59:59.999`) : now;
+        if (customStartDate) {
+          const [y1, m1, d1] = customStartDate.split('-').map(Number);
+          start = makeRiyadhDate(y1, m1 - 1, d1, 0, 0, 0, 0);
+        } else {
+          start = makeRiyadhDate(r.year, r.month, 1, 0, 0, 0, 0);
+        }
+        if (customEndDate) {
+          const [y2, m2, d2] = customEndDate.split('-').map(Number);
+          end = makeRiyadhDate(y2, m2 - 1, d2, 23, 59, 59, 999);
+        } else {
+          end = makeRiyadhDate(r.year, r.month, r.date, 23, 59, 59, 999);
+        }
+        if (start.getTime() > end.getTime()) {
+          const tmp = start;
+          start = end;
+          end = tmp;
+        }
         const duration = Math.max(end.getTime() - start.getTime(), 24 * 60 * 60 * 1000);
         prevEnd = new Date(start.getTime() - 1);
         prevStart = new Date(prevEnd.getTime() - duration);
@@ -323,8 +345,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       endIso: end.toISOString(),
       prevStartIso: prevStart.toISOString(),
       prevEndIso: prevEnd.toISOString(),
-      formattedStart: start.toLocaleDateString('ar-SA'),
-      formattedEnd: end.toLocaleDateString('ar-SA'),
+      formattedStart: start.toLocaleDateString('ar-SA', { timeZone: RIYADH_TIMEZONE }),
+      formattedEnd: end.toLocaleDateString('ar-SA', { timeZone: RIYADH_TIMEZONE }),
     };
   }, [period, customStartDate, customEndDate]);
 

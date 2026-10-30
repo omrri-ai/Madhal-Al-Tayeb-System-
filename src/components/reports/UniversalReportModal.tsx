@@ -414,7 +414,7 @@ export const UniversalReportModal: React.FC<UniversalReportModalProps> = ({
               <div className="text-right sm:text-left">
                 <h2 className="text-lg font-bold text-slate-900 m-0">{displayTitle}</h2>
                 <div className="text-[11px] font-mono text-slate-400 mt-0.5">
-                  تاريخ التقرير: {new Date().toLocaleDateString('ar-SA')}
+                  تاريخ التقرير: {new Date().toLocaleDateString('ar-SA', { timeZone: 'Asia/Riyadh' })}
                 </div>
               </div>
             </div>
